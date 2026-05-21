@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "web": "pnpm --filter @en/web dev",
+    "server": "pnpm --filter @en/server start:dev",
+    "ai": "pnpm --filter @en/server start:dev ai",
+    "all": "concurrently \"pnpm run web\" \"pnpm run server\" \"pnpm run ai\""
+  }
+}
