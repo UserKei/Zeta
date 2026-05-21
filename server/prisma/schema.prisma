@@ -1,13 +1,312 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Zeta MVP database schema.
+// PostgreSQL-specific search and vector columns stay visible as Unsupported
+// fields so migrations can create them and retrieval code can use raw SQL.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum AiModelType {
+  CHAT
+  EMBEDDING
+  RERANKER
+
+  @@map("ai_model_type")
+}
+
+enum KnowledgeBaseStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("knowledge_base_status")
+}
+
+enum FileStatus {
+  UPLOADED
+  AVAILABLE
+  FAILED
+
+  @@map("file_status")
+}
+
+enum DocumentSourceType {
+  FILE_UPLOAD
+  MANUAL
+  AI_EXTRACTED
+  WEB_IMPORT
+
+  @@map("document_source_type")
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PARSING
+  CHUNKING
+  EMBEDDING
+  INDEXED
+  FAILED
+  DISABLED
+
+  @@map("document_status")
+}
+
+enum ChunkStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("chunk_status")
+}
+
+enum AgentStatus {
+  DRAFT
+  PUBLISHED
+  DISABLED
+
+  @@map("agent_status")
+}
+
+enum ChatMessageRole {
+  SYSTEM
+  USER
+  ASSISTANT
+
+  @@map("chat_message_role")
+}
+
+model AiModel {
+  id              String      @id @default(uuid()) @db.Uuid
+  name            String      @db.VarChar(120)
+  provider        String      @db.VarChar(80)
+  type            AiModelType
+  modelName       String      @map("model_name") @db.VarChar(160)
+  baseUrl         String?     @map("base_url") @db.VarChar(512)
+  apiKeyEncrypted String?     @map("api_key_encrypted")
+  isEnabled       Boolean     @default(true) @map("is_enabled")
+  configJson      Json        @default("{}") @map("config_json") @db.JsonB
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeBases  KnowledgeBase[]
+  chunkEmbeddings ChunkEmbedding[]
+  agents          Agent[]
+  chatMessages    ChatMessage[]
+
+  @@index([type, isEnabled])
+  @@index([provider, modelName])
+  @@map("ai_models")
+}
+
+model File {
+  id         String     @id @default(uuid()) @db.Uuid
+  fileName   String     @map("file_name") @db.VarChar(512)
+  mimeType   String?    @map("mime_type") @db.VarChar(255)
+  fileSize   BigInt     @map("file_size") @db.BigInt
+  sha256Hash String?    @map("sha256_hash") @db.VarChar(64)
+  // The binary content is stored as a PostgreSQL Large Object.
+  loid       BigInt     @db.BigInt
+  status     FileStatus @default(UPLOADED)
+  metadata   Json       @default("{}") @db.JsonB
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  documents Document[]
+
+  @@index([loid])
+  @@index([sha256Hash])
+  @@index([status])
+  @@map("files")
+}
+
+model KnowledgeBase {
+  id               String              @id @default(uuid()) @db.Uuid
+  name             String              @db.VarChar(180)
+  description      String?
+  status           KnowledgeBaseStatus @default(ACTIVE)
+  embeddingModelId String              @map("embedding_model_id") @db.Uuid
+  chunkSize        Int                 @default(800) @map("chunk_size")
+  chunkOverlap     Int                 @default(100) @map("chunk_overlap")
+  metadata         Json                @default("{}") @db.JsonB
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  embeddingModel      AiModel              @relation(fields: [embeddingModelId], references: [id])
+  documents           Document[]
+  chunks              Chunk[]
+  agentKnowledgeBases AgentKnowledgeBase[]
+
+  @@index([name])
+  @@index([status])
+  @@index([embeddingModelId])
+  @@map("knowledge_bases")
+}
+
+model Document {
+  id              String             @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String             @map("knowledge_base_id") @db.Uuid
+  sourceFileId    String?            @map("source_file_id") @db.Uuid
+  name            String             @db.VarChar(255)
+  sourceType      DocumentSourceType @map("source_type")
+  status          DocumentStatus     @default(UPLOADED)
+  charCount       Int                @default(0) @map("char_count")
+  chunkCount      Int                @default(0) @map("chunk_count")
+  errorMessage    String?            @map("error_message")
+  metadata        Json               @default("{}") @db.JsonB
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeBase KnowledgeBase  @relation(fields: [knowledgeBaseId], references: [id])
+  sourceFile    File?          @relation(fields: [sourceFileId], references: [id])
+  chunks        Chunk[]
+  chatCitations ChatCitation[]
+
+  @@index([knowledgeBaseId])
+  @@index([sourceFileId])
+  @@index([knowledgeBaseId, status])
+  @@index([knowledgeBaseId, sourceType])
+  @@map("documents")
+}
+
+model Chunk {
+  id              String                   @id @default(uuid()) @db.Uuid
+  knowledgeBaseId String                   @map("knowledge_base_id") @db.Uuid
+  documentId      String                   @map("document_id") @db.Uuid
+  title           String?                  @db.VarChar(512)
+  content         String
+  // Generated from content for PostgreSQL full-text retrieval.
+  searchVector    Unsupported("tsvector")? @map("search_vector")
+  position        Int
+  tokenCount      Int?                     @map("token_count")
+  charCount       Int                      @default(0) @map("char_count")
+  status          ChunkStatus              @default(ACTIVE)
+  metadata        Json                     @default("{}") @db.JsonB
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeBase   KnowledgeBase    @relation(fields: [knowledgeBaseId], references: [id])
+  document        Document         @relation(fields: [documentId], references: [id])
+  chunkEmbeddings ChunkEmbedding[]
+  chatCitations   ChatCitation[]
+
+  @@unique([documentId, position])
+  @@index([knowledgeBaseId])
+  @@index([documentId])
+  @@index([knowledgeBaseId, status])
+  @@index([searchVector], type: Gin)
+  @@map("chunks")
+}
+
+model ChunkEmbedding {
+  id               String                @id @default(uuid()) @db.Uuid
+  chunkId          String                @map("chunk_id") @db.Uuid
+  embeddingModelId String                @map("embedding_model_id") @db.Uuid
+  // Prisma Client cannot write pgvector columns directly.
+  embedding        Unsupported("vector")
+  dimension        Int
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  chunk          Chunk   @relation(fields: [chunkId], references: [id])
+  embeddingModel AiModel @relation(fields: [embeddingModelId], references: [id])
+
+  @@unique([chunkId, embeddingModelId])
+  @@index([chunkId])
+  @@index([embeddingModelId])
+  @@map("chunk_embeddings")
+}
+
+model Agent {
+  id             String      @id @default(uuid()) @db.Uuid
+  name           String      @db.VarChar(180)
+  description    String?
+  modelId        String      @map("model_id") @db.Uuid
+  systemPrompt   String      @map("system_prompt")
+  openingMessage String?     @map("opening_message")
+  status         AgentStatus @default(DRAFT)
+  temperature    Decimal?    @db.Decimal(4, 3)
+  topP           Decimal?    @map("top_p") @db.Decimal(4, 3)
+  metadata       Json        @default("{}") @db.JsonB
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  model               AiModel              @relation(fields: [modelId], references: [id])
+  agentKnowledgeBases AgentKnowledgeBase[]
+  chatSessions        ChatSession[]
+
+  @@index([name])
+  @@index([status])
+  @@index([modelId])
+  @@map("agents")
+}
+
+model AgentKnowledgeBase {
+  agentId         String   @map("agent_id") @db.Uuid
+  knowledgeBaseId String   @map("knowledge_base_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  agent         Agent         @relation(fields: [agentId], references: [id])
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id])
+
+  @@id([agentId, knowledgeBaseId])
+  @@index([knowledgeBaseId])
+  @@map("agent_knowledge_bases")
+}
+
+model ChatSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  agentId   String   @map("agent_id") @db.Uuid
+  title     String?  @db.VarChar(255)
+  metadata  Json     @default("{}") @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  agent    Agent         @relation(fields: [agentId], references: [id])
+  messages ChatMessage[]
+
+  @@index([agentId])
+  @@index([agentId, updatedAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id         String          @id @default(uuid()) @db.Uuid
+  sessionId  String          @map("session_id") @db.Uuid
+  role       ChatMessageRole
+  content    String
+  modelId    String?         @map("model_id") @db.Uuid
+  tokenUsage Json            @default("{}") @map("token_usage") @db.JsonB
+  metadata   Json            @default("{}") @db.JsonB
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session   ChatSession    @relation(fields: [sessionId], references: [id])
+  model     AiModel?       @relation(fields: [modelId], references: [id])
+  citations ChatCitation[]
+
+  @@index([sessionId])
+  @@index([sessionId, createdAt])
+  @@index([role])
+  @@map("chat_messages")
+}
+
+model ChatCitation {
+  id         String   @id @default(uuid()) @db.Uuid
+  messageId  String   @map("message_id") @db.Uuid
+  chunkId    String   @map("chunk_id") @db.Uuid
+  documentId String   @map("document_id") @db.Uuid
+  score      Decimal? @db.Decimal(8, 6)
+  quote      String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  message  ChatMessage @relation(fields: [messageId], references: [id])
+  chunk    Chunk       @relation(fields: [chunkId], references: [id])
+  document Document    @relation(fields: [documentId], references: [id])
+
+  @@index([messageId])
+  @@index([chunkId])
+  @@index([documentId])
+  @@map("chat_citations")
 }
