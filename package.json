@@ -3,6 +3,10 @@
     "web": "pnpm --filter @en/web dev",
     "server": "pnpm --filter @en/server start:dev",
     "ai": "pnpm --filter @en/server start:dev ai",
-    "all": "concurrently \"pnpm run web\" \"pnpm run server\" \"pnpm run ai\""
+    "all": "concurrently \"pnpm run web\" \"pnpm run server\" \"pnpm run ai\"",
+    "infra:up": "docker compose -f docker-compose.infra.yml up -d",
+    "infra:down": "docker compose -f docker-compose.infra.yml down",
+    "infra:logs": "docker compose -f docker-compose.infra.yml logs -f",
+    "infra:ps": "docker compose -f docker-compose.infra.yml ps"
   }
 }
