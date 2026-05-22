@@ -1,35 +1,96 @@
 @import './base.css';
 
+:root {
+  color-scheme: light;
+  --zeta-bg: #f3f5f9;
+  --zeta-panel: #ffffff;
+  --zeta-ink: #172033;
+  --zeta-muted: #62718c;
+  --zeta-line: #dbe3ef;
+  --zeta-blue: #246bfd;
+  --zeta-blue-soft: #dfeaff;
+  --zeta-green: #15835b;
+  --zeta-danger: #c43d4b;
+  --zeta-shadow: 0 16px 48px rgba(24, 40, 72, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--zeta-bg);
+  color: var(--zeta-ink);
+  font-family:
+    Inter, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui,
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  font-weight: normal;
+  min-height: 100vh;
 }
 
-a,
-.green {
-  text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
-  padding: 3px;
+.button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: var(--zeta-blue);
+  color: #fff;
+  font-weight: 600;
 }
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
-  }
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
+.button.secondary {
+  border: 1px solid var(--zeta-line);
+  background: #fff;
+  color: var(--zeta-ink);
+}
 
-  #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
-  }
+.button.danger {
+  border: 1px solid #f3c6cb;
+  background: #fff4f5;
+  color: var(--zeta-danger);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: var(--zeta-muted);
+  font-size: 14px;
+}
+
+.field input,
+.field select {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--zeta-line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--zeta-ink);
+}
+
+.message {
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fff4f5;
+  color: var(--zeta-danger);
 }
