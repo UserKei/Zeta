@@ -79,6 +79,21 @@ enum ChatMessageRole {
   @@map("chat_message_role")
 }
 
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique @db.VarChar(64)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  displayName  String?  @map("display_name") @db.VarChar(120)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  chatSessions ChatSession[]
+
+  @@index([isActive])
+  @@map("users")
+}
+
 model AiModel {
   id              String      @id @default(uuid()) @db.Uuid
   name            String      @db.VarChar(120)
@@ -258,17 +273,20 @@ model AgentKnowledgeBase {
 
 model ChatSession {
   id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
   agentId   String   @map("agent_id") @db.Uuid
   title     String?  @db.VarChar(255)
   metadata  Json     @default("{}") @db.JsonB
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  user     User          @relation(fields: [userId], references: [id])
   agent    Agent         @relation(fields: [agentId], references: [id])
   messages ChatMessage[]
 
+  @@index([userId])
   @@index([agentId])
-  @@index([agentId, updatedAt])
+  @@index([userId, updatedAt])
   @@map("chat_sessions")
 }
 
