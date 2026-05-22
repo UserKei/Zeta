@@ -1,4 +1,7 @@
 {
+  "ts-node": {
+    "experimentalResolver": true
+  },
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",
@@ -23,7 +26,8 @@
     "noFallthroughCasesInSwitch": false,
     "paths": {
       "@libs/shared": ["libs/shared/src"],
-      "@libs/shared/*": ["libs/shared/src/*"]
+      "@libs/shared/*": ["libs/shared/src/*"],
+      "@zeta/common/*": ["../packages/common/*"]
     }
   }
 }
