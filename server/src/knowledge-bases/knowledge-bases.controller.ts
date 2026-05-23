@@ -31,6 +31,11 @@ export class KnowledgeBasesController {
     return this.knowledgeBasesService.list();
   }
 
+  @Get(':id')
+  get(@Param('id') id: string) {
+    return this.knowledgeBasesService.get(id);
+  }
+
   @Post()
   create(@Body() body: KnowledgeBaseBody) {
     return this.knowledgeBasesService.create(body);

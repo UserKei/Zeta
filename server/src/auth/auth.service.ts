@@ -6,12 +6,8 @@ import type {
   AuthTokenClaims,
   AuthTokenPayload,
   AuthUser,
+  TokenPair,
 } from '@zeta/common/user';
-
-type TokenPair = {
-  accessToken: string;
-  refreshToken: string;
-};
 
 const BCRYPT_ROUNDS = 10;
 

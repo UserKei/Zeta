@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { ModelsModule } from './models/models.module';
 import { UserModule } from './user/user.module';
 import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module';
+import { KnowledgeDocsModule } from './knowledge-docs/knowledge-docs.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module';
     UserModule,
     ModelsModule,
     KnowledgeBasesModule,
+    KnowledgeDocsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

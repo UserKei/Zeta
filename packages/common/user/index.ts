@@ -4,6 +4,11 @@ export type AuthUser = {
   displayName: string | null;
 };
 
+export type TokenPair = {
+  accessToken: string;
+  refreshToken: string;
+};
+
 export type AuthRequestUser = Pick<AuthUser, 'id' | 'username'>;
 
 export type AuthTokenClaims = {

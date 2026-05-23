@@ -31,6 +31,15 @@ export class KnowledgeBasesService {
     });
   }
 
+  async get(id: string) {
+    await this.requireKnowledgeBase(id);
+
+    return this.prisma.knowledgeBase.findUnique({
+      where: { id },
+      select: knowledgeBaseSelect,
+    });
+  }
+
   async create(input: KnowledgeBaseInput) {
     const data = await this.createData(input);
 
