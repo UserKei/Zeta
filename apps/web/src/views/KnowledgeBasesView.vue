@@ -2,54 +2,59 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  createModel,
-  deleteModel,
+  createKnowledgeBase,
+  deleteKnowledgeBase,
   getCurrentUser,
+  listKnowledgeBases,
   listModels,
-  updateModel,
+  updateKnowledgeBase,
   type AiModel,
-  type AiModelType,
-  type ModelPayload,
+  type KnowledgeBase,
+  type KnowledgeBasePayload,
+  type KnowledgeBaseStatus,
 } from '@/api'
 import { clearAuth, getStoredUser, type AuthUser } from '@/auth'
 
 const router = useRouter()
-const models = ref<AiModel[]>([])
 const user = ref<AuthUser | null>(getStoredUser())
+const knowledgeBases = ref<KnowledgeBase[]>([])
+const models = ref<AiModel[]>([])
 const error = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
 
-const modelTypes: { value: AiModelType; label: string; hint: string }[] = [
-  { value: 'CHAT', label: '对话模型', hint: 'Agent 生成回答' },
-  { value: 'EMBEDDING', label: 'Embedding', hint: '文档与问题向量化' },
-  { value: 'RERANKER', label: 'Reranker', hint: '召回结果重排' },
-]
-
-const form = reactive<ModelPayload>({
+const form = reactive<KnowledgeBasePayload>({
   name: '',
-  provider: '',
-  type: 'CHAT',
-  modelName: '',
-  baseUrl: '',
-  apiKey: '',
-  isEnabled: true,
+  description: '',
+  status: 'ACTIVE',
+  embeddingModelId: '',
+  chunkSize: 800,
+  chunkOverlap: 100,
 })
 
-const title = computed(() => (editingId.value ? '编辑模型' : '添加模型'))
+const embeddingModels = computed(() =>
+  models.value.filter((model) => model.type === 'EMBEDDING' && model.isEnabled),
+)
+
+const title = computed(() => (editingId.value ? '编辑知识库' : '创建知识库'))
 
 const load = async () => {
   loading.value = true
   error.value = ''
 
   try {
-    const [currentUser, modelList] = await Promise.all([getCurrentUser(), listModels()])
+    const [currentUser, knowledgeBaseList, modelList] = await Promise.all([
+      getCurrentUser(),
+      listKnowledgeBases(),
+      listModels(),
+    ])
     user.value = currentUser
+    knowledgeBases.value = knowledgeBaseList
     models.value = modelList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载模型失败'
+    error.value = cause instanceof Error ? cause.message : '加载知识库失败'
   } finally {
     loading.value = false
   }
@@ -59,26 +64,24 @@ const openCreate = () => {
   editingId.value = null
   Object.assign(form, {
     name: '',
-    provider: '',
-    type: 'CHAT',
-    modelName: '',
-    baseUrl: '',
-    apiKey: '',
-    isEnabled: true,
+    description: '',
+    status: 'ACTIVE' as KnowledgeBaseStatus,
+    embeddingModelId: embeddingModels.value[0]?.id ?? '',
+    chunkSize: 800,
+    chunkOverlap: 100,
   })
   formOpen.value = true
 }
 
-const openEdit = (model: AiModel) => {
-  editingId.value = model.id
+const openEdit = (knowledgeBase: KnowledgeBase) => {
+  editingId.value = knowledgeBase.id
   Object.assign(form, {
-    name: model.name,
-    provider: model.provider,
-    type: model.type,
-    modelName: model.modelName,
-    baseUrl: model.baseUrl ?? '',
-    apiKey: '',
-    isEnabled: model.isEnabled,
+    name: knowledgeBase.name,
+    description: knowledgeBase.description ?? '',
+    status: knowledgeBase.status,
+    embeddingModelId: knowledgeBase.embeddingModelId,
+    chunkSize: knowledgeBase.chunkSize,
+    chunkOverlap: knowledgeBase.chunkOverlap,
   })
   formOpen.value = true
 }
@@ -90,38 +93,35 @@ const save = async () => {
   try {
     const payload = {
       ...form,
-      apiKey: form.apiKey || undefined,
-      baseUrl: form.baseUrl || undefined,
+      description: form.description || undefined,
     }
-
     const saved = editingId.value
-      ? await updateModel(editingId.value, payload)
-      : await createModel(payload)
-
-    const index = models.value.findIndex((model) => model.id === saved.id)
+      ? await updateKnowledgeBase(editingId.value, payload)
+      : await createKnowledgeBase(payload)
+    const index = knowledgeBases.value.findIndex((item) => item.id === saved.id)
 
     if (index >= 0) {
-      models.value[index] = saved
+      knowledgeBases.value[index] = saved
     } else {
-      models.value.unshift(saved)
+      knowledgeBases.value.unshift(saved)
     }
 
     formOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存模型失败'
+    error.value = cause instanceof Error ? cause.message : '保存知识库失败'
   } finally {
     saving.value = false
   }
 }
 
-const remove = async (model: AiModel) => {
+const remove = async (knowledgeBase: KnowledgeBase) => {
   error.value = ''
 
   try {
-    await deleteModel(model.id)
-    models.value = models.value.filter((item) => item.id !== model.id)
+    await deleteKnowledgeBase(knowledgeBase.id)
+    knowledgeBases.value = knowledgeBases.value.filter((item) => item.id !== knowledgeBase.id)
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '删除模型失败'
+    error.value = cause instanceof Error ? cause.message : '删除知识库失败'
   }
 }
 
@@ -129,6 +129,14 @@ const logout = async () => {
   clearAuth()
   await router.replace({ name: 'login' })
 }
+
+const formatTime = (value: string) =>
+  new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 
 onMounted(load)
 </script>
@@ -139,8 +147,8 @@ onMounted(load)
       <div>
         <p class="brand">Zeta</p>
         <nav>
-          <button class="nav-item active">模型管理</button>
-          <button class="nav-item" @click="router.push({ name: 'knowledge-bases' })">知识库</button>
+          <button class="nav-item" @click="router.push({ name: 'models' })">模型管理</button>
+          <button class="nav-item active">知识库</button>
           <button class="nav-item" disabled>专家 Agent</button>
         </nav>
       </div>
@@ -154,56 +162,75 @@ onMounted(load)
     <section class="content">
       <header class="page-head">
         <div>
-          <p class="eyebrow">MVP 第一阶段</p>
-          <h1>模型管理</h1>
-          <p>先把对话、向量化和重排能力接进平台。</p>
+          <p class="eyebrow">MVP 第二阶段</p>
+          <h1>知识库</h1>
+          <p>先建立知识域和分块配置，后续文档入库会落到这里。</p>
         </div>
-        <button class="button" @click="openCreate">添加模型</button>
+        <button class="button" @click="openCreate">创建知识库</button>
       </header>
 
       <p v-if="error" class="message">{{ error }}</p>
 
-      <section class="type-strip" aria-label="模型用途">
-        <article v-for="type in modelTypes" :key="type.value">
-          <strong>{{ type.label }}</strong>
-          <span>{{ type.hint }}</span>
+      <section v-if="embeddingModels.length === 0" class="notice">
+        还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
+      </section>
+
+      <section class="summary-strip" aria-label="知识库配置说明">
+        <article>
+          <strong>一级分类</strong>
+          <span>知识库就是首版知识分类单位</span>
+        </article>
+        <article>
+          <strong>Embedding 模型</strong>
+          <span>决定后续文档和问题的向量空间</span>
+        </article>
+        <article>
+          <strong>分块参数</strong>
+          <span>控制文档切分大小与上下文重叠</span>
         </article>
       </section>
 
-      <section class="model-panel">
-        <div v-if="loading" class="empty">模型加载中</div>
-        <div v-else-if="models.length === 0" class="empty">还没有模型配置</div>
+      <section class="knowledge-panel">
+        <div v-if="loading" class="empty">知识库加载中</div>
+        <div v-else-if="knowledgeBases.length === 0" class="empty">还没有知识库</div>
 
         <table v-else>
           <thead>
             <tr>
               <th>名称</th>
-              <th>供应商</th>
-              <th>类型</th>
-              <th>模型标识</th>
-              <th>凭证</th>
+              <th>Embedding 模型</th>
+              <th>分块配置</th>
               <th>状态</th>
+              <th>更新时间</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="model in models" :key="model.id">
+            <tr v-for="knowledgeBase in knowledgeBases" :key="knowledgeBase.id">
               <td>
-                <strong>{{ model.name }}</strong>
-                <small>{{ model.baseUrl || '默认 Base URL' }}</small>
+                <strong>{{ knowledgeBase.name }}</strong>
+                <small>{{ knowledgeBase.description || '暂无描述' }}</small>
               </td>
-              <td>{{ model.provider }}</td>
-              <td>{{ modelTypes.find((item) => item.value === model.type)?.label }}</td>
-              <td>{{ model.modelName }}</td>
-              <td>{{ model.apiKeyMasked || '未配置' }}</td>
               <td>
-                <span :class="['status', model.isEnabled ? 'enabled' : 'disabled']">
-                  {{ model.isEnabled ? '启用' : '停用' }}
+                <strong>{{ knowledgeBase.embeddingModel.name }}</strong>
+                <small>
+                  {{ knowledgeBase.embeddingModel.provider }} /
+                  {{ knowledgeBase.embeddingModel.modelName }}
+                </small>
+              </td>
+              <td>
+                <strong>{{ knowledgeBase.chunkSize }}</strong>
+                <small>重叠 {{ knowledgeBase.chunkOverlap }}</small>
+              </td>
+              <td>
+                <span :class="['status', knowledgeBase.status === 'ACTIVE' ? 'enabled' : 'disabled']">
+                  {{ knowledgeBase.status === 'ACTIVE' ? '启用' : '停用' }}
                 </span>
               </td>
+              <td>{{ formatTime(knowledgeBase.updatedAt) }}</td>
               <td class="actions">
-                <button class="button secondary" @click="openEdit(model)">编辑</button>
-                <button class="button danger" @click="remove(model)">删除</button>
+                <button class="button secondary" @click="openEdit(knowledgeBase)">编辑</button>
+                <button class="button danger" @click="remove(knowledgeBase)">删除</button>
               </td>
             </tr>
           </tbody>
@@ -218,50 +245,48 @@ onMounted(load)
           <button class="close" aria-label="关闭" type="button" @click="formOpen = false">x</button>
         </header>
 
+        <p v-if="embeddingModels.length === 0" class="message">
+          创建知识库前需要先配置一个启用状态的 Embedding 模型。
+        </p>
+
         <div class="form-grid">
           <label class="field">
-            配置名称
+            知识库名称
             <input v-model="form.name" required />
           </label>
           <label class="field">
-            供应商
-            <input v-model="form.provider" placeholder="OpenAI / DeepSeek" required />
+            状态
+            <select v-model="form.status">
+              <option value="ACTIVE">启用</option>
+              <option value="DISABLED">停用</option>
+            </select>
           </label>
-          <label class="field">
-            模型类型
-            <select v-model="form.type">
-              <option v-for="type in modelTypes" :key="type.value" :value="type.value">
-                {{ type.label }}
+          <label class="field full">
+            描述
+            <input v-model="form.description" placeholder="例如：人事制度、采购流程、IT 支持" />
+          </label>
+          <label class="field full">
+            Embedding 模型
+            <select v-model="form.embeddingModelId" :disabled="embeddingModels.length === 0" required>
+              <option value="" disabled>请选择 Embedding 模型</option>
+              <option v-for="model in embeddingModels" :key="model.id" :value="model.id">
+                {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
               </option>
             </select>
           </label>
           <label class="field">
-            模型标识
-            <input v-model="form.modelName" placeholder="gpt-4.1-mini" required />
+            分块大小
+            <input v-model.number="form.chunkSize" min="1" required type="number" />
           </label>
-          <label class="field full">
-            Base URL
-            <input v-model="form.baseUrl" placeholder="https://api.example.com/v1" />
-          </label>
-          <label class="field full">
-            API Key
-            <input
-              v-model="form.apiKey"
-              autocomplete="off"
-              :placeholder="editingId ? '留空表示保持原凭证' : '可留空'"
-              type="password"
-            />
+          <label class="field">
+            重叠长度
+            <input v-model.number="form.chunkOverlap" min="0" required type="number" />
           </label>
         </div>
 
-        <label class="toggle">
-          <input v-model="form.isEnabled" type="checkbox" />
-          启用这个模型配置
-        </label>
-
         <footer>
           <button class="button secondary" type="button" @click="formOpen = false">取消</button>
-          <button class="button" :disabled="saving" type="submit">
+          <button class="button" :disabled="saving || embeddingModels.length === 0" type="submit">
             {{ saving ? '保存中' : '保存' }}
           </button>
         </footer>
@@ -357,13 +382,21 @@ h1 {
   color: var(--zeta-muted);
 }
 
-.type-strip {
+.notice {
+  border: 1px solid #f4d19b;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fff8eb;
+  color: #8a5a10;
+}
+
+.summary-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
-.type-strip article {
+.summary-strip article {
   display: grid;
   gap: 8px;
   border: 1px solid var(--zeta-line);
@@ -372,12 +405,12 @@ h1 {
   background: var(--zeta-panel);
 }
 
-.type-strip span,
+.summary-strip span,
 td small {
   color: var(--zeta-muted);
 }
 
-.model-panel {
+.knowledge-panel {
   min-width: 0;
   overflow: auto;
   border: 1px solid var(--zeta-line);
@@ -394,7 +427,7 @@ td small {
 
 table {
   width: 100%;
-  min-width: 860px;
+  min-width: 920px;
   border-collapse: collapse;
 }
 
@@ -411,7 +444,9 @@ th {
   font-weight: 700;
 }
 
-td:first-child {
+td:first-child,
+td:nth-child(2),
+td:nth-child(3) {
   display: grid;
   gap: 4px;
 }
@@ -500,12 +535,6 @@ tr:last-child td {
   grid-column: 1 / -1;
 }
 
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 @media (max-width: 820px) {
   .workspace {
     grid-template-columns: 1fr;
@@ -522,7 +551,7 @@ tr:last-child td {
   }
 
   nav,
-  .type-strip,
+  .summary-strip,
   .form-grid {
     grid-template-columns: 1fr;
   }

@@ -15,6 +15,7 @@ type ApiEnvelope<T> = {
 }
 
 export type AiModelType = 'CHAT' | 'EMBEDDING' | 'RERANKER'
+export type KnowledgeBaseStatus = 'ACTIVE' | 'DISABLED'
 
 export type AiModel = {
   id: string
@@ -29,6 +30,25 @@ export type AiModel = {
   updatedAt: string
 }
 
+export type KnowledgeBase = {
+  id: string
+  name: string
+  description: string | null
+  status: KnowledgeBaseStatus
+  embeddingModelId: string
+  chunkSize: number
+  chunkOverlap: number
+  createdAt: string
+  updatedAt: string
+  embeddingModel: {
+    id: string
+    name: string
+    provider: string
+    modelName: string
+    isEnabled: boolean
+  }
+}
+
 export type ModelPayload = {
   name: string
   provider: string
@@ -37,6 +57,15 @@ export type ModelPayload = {
   baseUrl?: string
   apiKey?: string
   isEnabled: boolean
+}
+
+export type KnowledgeBasePayload = {
+  name: string
+  description?: string
+  status: KnowledgeBaseStatus
+  embeddingModelId: string
+  chunkSize: number
+  chunkOverlap: number
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
@@ -127,5 +156,24 @@ export const updateModel = (id: string, payload: Partial<ModelPayload>) =>
 
 export const deleteModel = (id: string) =>
   request<{ id: string }>(`/models/${id}`, {
+    method: 'DELETE',
+  })
+
+export const listKnowledgeBases = () => request<KnowledgeBase[]>('/knowledge-bases')
+
+export const createKnowledgeBase = (payload: KnowledgeBasePayload) =>
+  request<KnowledgeBase>('/knowledge-bases', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const updateKnowledgeBase = (id: string, payload: Partial<KnowledgeBasePayload>) =>
+  request<KnowledgeBase>(`/knowledge-bases/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+
+export const deleteKnowledgeBase = (id: string) =>
+  request<{ id: string }>(`/knowledge-bases/${id}`, {
     method: 'DELETE',
   })
