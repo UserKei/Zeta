@@ -7,6 +7,8 @@ import { ModelsModule } from './models/models.module';
 import { UserModule } from './user/user.module';
 import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module';
 import { KnowledgeDocsModule } from './knowledge-docs/knowledge-docs.module';
+import { AgentsModule } from './agents/agents.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { KnowledgeDocsModule } from './knowledge-docs/knowledge-docs.module';
     ModelsModule,
     KnowledgeBasesModule,
     KnowledgeDocsModule,
+    AgentsModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
