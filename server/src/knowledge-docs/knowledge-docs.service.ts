@@ -4,7 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { EmbeddingService, PrismaService } from '@libs/shared';
+import {
+  EmbeddingService,
+  PrismaService,
+  RetrievalService,
+} from '@libs/shared';
 import {
   AiModelType,
   ChunkStatus,
@@ -27,25 +31,14 @@ type ChunkDraft = {
   endOffset: number;
 };
 
-type RetrievalRow = {
-  chunk_id: string;
-  document_id: string;
-  document_name: string;
-  content: string;
-  position: number;
-  char_count: number;
-  score: number | string;
-};
-
 const MAX_MANUAL_CONTENT_LENGTH = 200_000;
-const DEFAULT_RETRIEVAL_TOP_K = 5;
-const MAX_RETRIEVAL_TOP_K = 20;
 
 @Injectable()
 export class KnowledgeDocsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    private readonly retrievalService: RetrievalService,
   ) {}
 
   async listByKnowledgeBase(knowledgeBaseId: string) {
@@ -175,39 +168,11 @@ export class KnowledgeDocsService {
   }
 
   async retrievalTest(knowledgeBaseId: string, input: RetrievalTestPayload) {
-    const knowledgeBase =
-      await this.requireIndexableKnowledgeBase(knowledgeBaseId);
-    const question = input.question?.trim();
-
-    if (!question) {
-      throw new BadRequestException('question is required');
-    }
-
-    const topK = this.parseTopK(input.topK);
-    const [queryEmbedding] = await this.embeddingService.embedTexts(
-      knowledgeBase.embeddingModel,
-      [question],
+    return this.retrievalService.retrieveFromKnowledgeBase(
+      knowledgeBaseId,
+      input.question,
+      input.topK,
     );
-    const hits = await this.searchByVector(
-      knowledgeBase.id,
-      knowledgeBase.embeddingModel.id,
-      queryEmbedding,
-      topK,
-    );
-
-    return {
-      question,
-      topK,
-      hits: hits.map((hit) => ({
-        chunkId: hit.chunk_id,
-        documentId: hit.document_id,
-        documentName: hit.document_name,
-        content: hit.content,
-        position: hit.position,
-        charCount: hit.char_count,
-        score: Number(hit.score),
-      })),
-    };
   }
 
   private async createChunks(
@@ -264,35 +229,6 @@ export class KnowledgeDocsService {
     `;
   }
 
-  private async searchByVector(
-    knowledgeBaseId: string,
-    embeddingModelId: string,
-    embedding: number[],
-    topK: number,
-  ) {
-    const vector = this.toVectorLiteral(embedding);
-
-    return this.prisma.$queryRaw<RetrievalRow[]>`
-      SELECT
-        c."id" AS chunk_id,
-        d."id" AS document_id,
-        d."name" AS document_name,
-        c."content",
-        c."position",
-        c."char_count",
-        1 - (ce."embedding" <=> ${vector}::vector) AS score
-      FROM "chunk_embeddings" ce
-      INNER JOIN "chunks" c ON c."id" = ce."chunk_id"
-      INNER JOIN "documents" d ON d."id" = c."document_id"
-      WHERE c."knowledge_base_id" = ${knowledgeBaseId}::uuid
-        AND c."status" = 'ACTIVE'
-        AND d."status" = 'INDEXED'
-        AND ce."embedding_model_id" = ${embeddingModelId}::uuid
-      ORDER BY ce."embedding" <=> ${vector}::vector
-      LIMIT ${topK}
-    `;
-  }
-
   private splitContent(
     content: string,
     chunkSize: number,
@@ -328,18 +264,6 @@ export class KnowledgeDocsService {
 
   private normalizeContent(content: string | undefined) {
     return content?.replace(/\r\n/g, '\n').trim() ?? '';
-  }
-
-  private parseTopK(value: number | undefined) {
-    const topK = value ?? DEFAULT_RETRIEVAL_TOP_K;
-
-    if (!Number.isInteger(topK) || topK <= 0 || topK > MAX_RETRIEVAL_TOP_K) {
-      throw new BadRequestException(
-        `topK must be an integer between 1 and ${MAX_RETRIEVAL_TOP_K}`,
-      );
-    }
-
-    return topK;
   }
 
   private toVectorLiteral(embedding: number[]) {

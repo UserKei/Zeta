@@ -6,6 +6,7 @@ import { ResponseModule } from './response/response.module';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthGuard } from './auth/auth.guard';
 import { EmbeddingModule } from './embedding/embedding.module';
+import { RetrievalModule } from './retrieval/retrieval.module';
 
 @Global()
 @Module({
@@ -17,11 +18,13 @@ import { EmbeddingModule } from './embedding/embedding.module';
     ConfigModule,
     JwtModule,
     EmbeddingModule,
+    RetrievalModule,
   ],
   imports: [
     PrismaModule,
     ResponseModule,
     EmbeddingModule,
+    RetrievalModule,
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
