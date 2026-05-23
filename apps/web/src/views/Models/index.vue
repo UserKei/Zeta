@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import {
   createModel,
   deleteModel,
@@ -115,9 +116,18 @@ const remove = async (model: AiModel) => {
   error.value = ''
 
   try {
+    await ElMessageBox.confirm(`删除模型「${model.name}」？`, '删除模型', {
+      cancelButtonText: '取消',
+      confirmButtonText: '删除',
+      type: 'warning',
+    })
     await deleteModel(model.id)
     models.value = models.value.filter((item) => item.id !== model.id)
   } catch (cause) {
+    if (cause === 'cancel' || cause === 'close') {
+      return
+    }
+
     error.value = cause instanceof Error ? cause.message : '删除模型失败'
   }
 }
@@ -126,315 +136,113 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page-shell">
-    <header class="page-head">
+  <div class="grid gap-5">
+    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <p class="eyebrow">MVP 第一阶段</p>
-        <h1>模型管理</h1>
-        <p>先把对话、向量化和重排能力接进平台。</p>
+        <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第一阶段</p>
+        <h1 class="m-0 text-[34px] font-bold">模型管理</h1>
+        <p class="mt-2.5 text-(--zeta-muted)">先把对话、向量化和重排能力接进平台。</p>
       </div>
-      <button class="button" @click="openCreate">添加模型</button>
+      <el-button type="primary" @click="openCreate">添加模型</el-button>
     </header>
 
-    <p v-if="error" class="message">{{ error }}</p>
+    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
-    <section class="type-strip" aria-label="模型用途">
-      <article v-for="type in modelTypes" :key="type.value">
+    <section class="grid grid-cols-1 gap-3.5 lg:grid-cols-3" aria-label="模型用途">
+      <article
+        v-for="type in modelTypes"
+        :key="type.value"
+        class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5"
+      >
         <strong>{{ type.label }}</strong>
-        <span>{{ type.hint }}</span>
+        <span class="text-(--zeta-muted)">{{ type.hint }}</span>
       </article>
     </section>
 
-    <section class="model-panel">
-      <div v-if="loading" class="empty">模型加载中</div>
-      <div v-else-if="models.length === 0" class="empty">还没有模型配置</div>
-
-      <table v-else>
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>供应商</th>
-            <th>类型</th>
-            <th>模型标识</th>
-            <th>凭证</th>
-            <th>状态</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="model in models" :key="model.id">
-            <td>
-              <strong>{{ model.name }}</strong>
-              <small>{{ model.baseUrl || '默认 Base URL' }}</small>
-            </td>
-            <td>{{ model.provider }}</td>
-            <td>{{ modelTypes.find((item) => item.value === model.type)?.label }}</td>
-            <td>{{ model.modelName }}</td>
-            <td>{{ model.apiKeyMasked || '未配置' }}</td>
-            <td>
-              <span :class="['status', model.isEnabled ? 'enabled' : 'disabled']">
-                {{ model.isEnabled ? '启用' : '停用' }}
-              </span>
-            </td>
-            <td class="actions">
-              <button class="button secondary" @click="openEdit(model)">编辑</button>
-              <button class="button danger" @click="remove(model)">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <section
+      class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"
+    >
+      <el-table v-loading="loading" :data="models" empty-text="还没有模型配置">
+        <el-table-column label="名称" min-width="220">
+          <template #default="{ row }: { row: AiModel }">
+            <div class="grid gap-1">
+              <strong>{{ row.name }}</strong>
+              <small class="text-(--zeta-muted)">{{ row.baseUrl || '默认 Base URL' }}</small>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="供应商" min-width="140" prop="provider" />
+        <el-table-column label="类型" min-width="140">
+          <template #default="{ row }: { row: AiModel }">
+            {{ modelTypes.find((item) => item.value === row.type)?.label }}
+          </template>
+        </el-table-column>
+        <el-table-column label="模型标识" min-width="180" prop="modelName" />
+        <el-table-column label="凭证" min-width="150">
+          <template #default="{ row }: { row: AiModel }">
+            {{ row.apiKeyMasked || '未配置' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="100">
+          <template #default="{ row }: { row: AiModel }">
+            <el-tag :type="row.isEnabled ? 'success' : 'info'" effect="light">
+              {{ row.isEnabled ? '启用' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column align="right" fixed="right" label="操作" min-width="150">
+          <template #default="{ row }: { row: AiModel }">
+            <el-button size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </section>
 
-    <div v-if="formOpen" class="dialog-backdrop" @click.self="formOpen = false">
-      <form class="dialog" @submit.prevent="save">
-        <header>
-          <h2>{{ title }}</h2>
-          <button class="close" aria-label="关闭" type="button" @click="formOpen = false">x</button>
-        </header>
-
-        <div class="form-grid">
-          <label class="field">
-            配置名称
-            <input v-model="form.name" required />
-          </label>
-          <label class="field">
-            供应商
-            <input v-model="form.provider" placeholder="OpenAI / DeepSeek" required />
-          </label>
-          <label class="field">
-            模型类型
-            <select v-model="form.type">
-              <option v-for="type in modelTypes" :key="type.value" :value="type.value">
-                {{ type.label }}
-              </option>
-            </select>
-          </label>
-          <label class="field">
-            模型标识
-            <input v-model="form.modelName" placeholder="gpt-4.1-mini" required />
-          </label>
-          <label class="field full">
-            Base URL
-            <input v-model="form.baseUrl" placeholder="https://api.example.com/v1" />
-          </label>
-          <label class="field full">
-            API Key
-            <input
+    <el-dialog v-model="formOpen" :title="title" width="680px">
+      <el-form label-position="top" @submit.prevent="save">
+        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+          <el-form-item label="配置名称">
+            <el-input v-model="form.name" />
+          </el-form-item>
+          <el-form-item label="供应商">
+            <el-input v-model="form.provider" placeholder="OpenAI / DeepSeek" />
+          </el-form-item>
+          <el-form-item label="模型类型">
+            <el-select v-model="form.type">
+              <el-option
+                v-for="type in modelTypes"
+                :key="type.value"
+                :label="type.label"
+                :value="type.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="模型标识">
+            <el-input v-model="form.modelName" placeholder="gpt-4.1-mini" />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="Base URL">
+            <el-input v-model="form.baseUrl" placeholder="https://api.example.com/v1" />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="API Key">
+            <el-input
               v-model="form.apiKey"
               autocomplete="off"
               :placeholder="editingId ? '留空表示保持原凭证' : '可留空'"
+              show-password
               type="password"
             />
-          </label>
+          </el-form-item>
+          <el-form-item class="md:col-span-2">
+            <el-checkbox v-model="form.isEnabled">启用这个模型配置</el-checkbox>
+          </el-form-item>
         </div>
+      </el-form>
 
-        <label class="toggle">
-          <input v-model="form.isEnabled" type="checkbox" />
-          启用这个模型配置
-        </label>
-
-        <footer>
-          <button class="button secondary" type="button" @click="formOpen = false">取消</button>
-          <button class="button" :disabled="saving" type="submit">
-            {{ saving ? '保存中' : '保存' }}
-          </button>
-        </footer>
-      </form>
-    </div>
+      <template #footer>
+        <el-button @click="formOpen = false">取消</el-button>
+        <el-button :loading="saving" type="primary" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
-
-<style scoped>
-.page-shell {
-  display: grid;
-  gap: 20px;
-}
-
-.page-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.eyebrow {
-  margin: 0 0 10px;
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-h1,
-h2 {
-  margin: 0;
-}
-
-h1 {
-  font-size: 34px;
-}
-
-.page-head p:last-child {
-  margin: 10px 0 0;
-  color: var(--zeta-muted);
-}
-
-.type-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.type-strip article {
-  display: grid;
-  gap: 8px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 18px;
-  background: var(--zeta-panel);
-}
-
-.type-strip span,
-td small {
-  color: var(--zeta-muted);
-}
-
-.model-panel {
-  min-width: 0;
-  overflow: auto;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: var(--zeta-panel);
-}
-
-.empty {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  color: var(--zeta-muted);
-}
-
-table {
-  width: 100%;
-  min-width: 860px;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  border-bottom: 1px solid var(--zeta-line);
-  padding: 16px;
-  text-align: left;
-}
-
-th {
-  color: var(--zeta-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-td:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-tr:last-child td {
-  border-bottom: 0;
-}
-
-.status {
-  display: inline-flex;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status.enabled {
-  background: #e3f6ed;
-  color: var(--zeta-green);
-}
-
-.status.disabled {
-  background: #eef1f6;
-  color: var(--zeta-muted);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.actions .button {
-  min-height: 34px;
-  padding: 0 12px;
-}
-
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(14, 24, 45, 0.34);
-}
-
-.dialog {
-  width: min(100%, 680px);
-  display: grid;
-  gap: 20px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 24px;
-  background: #fff;
-  box-shadow: var(--zeta-shadow);
-}
-
-.dialog header,
-.dialog footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.dialog footer {
-  justify-content: flex-end;
-}
-
-.close {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--zeta-muted);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.field.full {
-  grid-column: 1 / -1;
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-@media (max-width: 820px) {
-  .type-strip,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .page-head {
-    align-items: start;
-    flex-direction: column;
-  }
-}
-</style>
