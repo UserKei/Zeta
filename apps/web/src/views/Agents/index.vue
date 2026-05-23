@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import {
   createAgent,
   deleteAgent,
@@ -133,16 +134,21 @@ const save = async () => {
 }
 
 const remove = async (agent: Agent) => {
-  if (!window.confirm(`删除 Agent「${agent.name}」？`)) {
-    return
-  }
-
   error.value = ''
 
   try {
+    await ElMessageBox.confirm(`删除 Agent「${agent.name}」？`, '删除 Agent', {
+      cancelButtonText: '取消',
+      confirmButtonText: '删除',
+      type: 'warning',
+    })
     await deleteAgent(agent.id)
     agents.value = agents.value.filter((item) => item.id !== agent.id)
   } catch (cause) {
+    if (cause === 'cancel' || cause === 'close') {
+      return
+    }
+
     error.value = cause instanceof Error ? cause.message : '删除 Agent 失败'
   }
 }
@@ -170,371 +176,160 @@ const statusText = (status: AgentStatus) =>
     DISABLED: '停用',
   })[status]
 
+const statusTagType = (status: AgentStatus) => {
+  if (status === 'PUBLISHED') {
+    return 'success'
+  }
+
+  if (status === 'DRAFT') {
+    return 'warning'
+  }
+
+  return 'info'
+}
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="page-shell">
-    <header class="page-head">
+  <div class="grid gap-5">
+    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <p class="eyebrow">MVP 第四阶段</p>
-        <h1>专家 Agent</h1>
-        <p>绑定对话模型和知识库，形成可问答的知识消费入口。</p>
+        <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第四阶段</p>
+        <h1 class="m-0 text-[34px] font-bold">专家 Agent</h1>
+        <p class="mt-2.5 text-(--zeta-muted)">绑定对话模型和知识库，形成可问答的知识消费入口。</p>
       </div>
-      <button class="button" @click="openCreate">创建 Agent</button>
+      <el-button type="primary" @click="openCreate">创建 Agent</el-button>
     </header>
 
-      <p v-if="error" class="message">{{ error }}</p>
+    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
-      <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0" class="notice">
-        创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
-      </section>
+    <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
+      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)">
+      创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
+    </section>
 
-      <section class="summary-strip" aria-label="Agent 配置说明">
-        <article>
-          <strong>对话模型</strong>
-          <span>负责最终回答生成</span>
-        </article>
-        <article>
-          <strong>绑定知识库</strong>
-          <span>限定 Agent 可检索的知识范围</span>
-        </article>
-        <article>
-          <strong>引用来源</strong>
-          <span>聊天结果会保存命中的 Chunk 证据</span>
-        </article>
-      </section>
+    <section class="grid grid-cols-1 gap-3.5 lg:grid-cols-3" aria-label="Agent 配置说明">
+      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
+        <strong>对话模型</strong>
+        <span class="text-(--zeta-muted)">负责最终回答生成</span>
+      </article>
+      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
+        <strong>绑定知识库</strong>
+        <span class="text-(--zeta-muted)">限定 Agent 可检索的知识范围</span>
+      </article>
+      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
+        <strong>引用来源</strong>
+        <span class="text-(--zeta-muted)">聊天结果会保存命中的 Chunk 证据</span>
+      </article>
+    </section>
 
-      <section class="agent-panel">
-        <div v-if="loading" class="empty">Agent 加载中</div>
-        <div v-else-if="agents.length === 0" class="empty">还没有 Agent</div>
-
-        <table v-else>
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>模型</th>
-              <th>绑定知识库</th>
-              <th>状态</th>
-              <th>更新时间</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="agent in agents" :key="agent.id">
-              <td>
-                <strong>{{ agent.name }}</strong>
-                <small>{{ agent.description || agent.openingMessage || '暂无描述' }}</small>
-              </td>
-              <td>
-                <strong>{{ agent.model.name }}</strong>
-                <small>{{ agent.model.provider }} / {{ agent.model.modelName }}</small>
-              </td>
-              <td>
-                <strong>{{ agent.knowledgeBases.length }} 个知识库</strong>
-                <small>{{ agent.knowledgeBases.map((item) => item.name).join('、') }}</small>
-              </td>
-              <td>
-                <span :class="['status', agent.status === 'DISABLED' ? 'disabled' : 'enabled']">
-                  {{ statusText(agent.status) }}
-                </span>
-              </td>
-              <td>{{ formatTime(agent.updatedAt) }}</td>
-              <td class="actions">
-                <button
-                  class="button secondary"
-                  @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
-                >
-                  聊天
-                </button>
-                <button class="button secondary" @click="openEdit(agent)">编辑</button>
-                <button class="button danger" @click="remove(agent)">删除</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-    <div v-if="formOpen" class="dialog-backdrop" @click.self="formOpen = false">
-      <form class="dialog" @submit.prevent="save">
-        <header>
-          <h2>{{ title }}</h2>
-          <button class="close" aria-label="关闭" type="button" @click="formOpen = false">x</button>
-        </header>
-
-        <div class="form-grid">
-          <label class="field">
-            Agent 名称
-            <input v-model="form.name" required />
-          </label>
-          <label class="field">
-            状态
-            <select v-model="form.status">
-              <option value="DRAFT">草稿</option>
-              <option value="PUBLISHED">已发布</option>
-              <option value="DISABLED">停用</option>
-            </select>
-          </label>
-          <label class="field full">
-            描述
-            <input v-model="form.description" placeholder="例如：IT 服务台、采购制度专家" />
-          </label>
-          <label class="field full">
-            对话模型
-            <select v-model="form.modelId" :disabled="chatModels.length === 0" required>
-              <option value="" disabled>请选择对话模型</option>
-              <option v-for="model in chatModels" :key="model.id" :value="model.id">
-                {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
-              </option>
-            </select>
-          </label>
-          <label class="field full">
-            绑定知识库
-            <select
-              v-model="form.knowledgeBaseIds"
-              :disabled="activeKnowledgeBases.length === 0"
-              multiple
-              required
-            >
-              <option v-for="knowledgeBase in activeKnowledgeBases" :key="knowledgeBase.id" :value="knowledgeBase.id">
-                {{ knowledgeBase.name }}
-              </option>
-            </select>
-          </label>
-          <label class="field">
-            Temperature
-            <input v-model.number="form.temperature" max="2" min="0" step="0.1" type="number" />
-          </label>
-          <label class="field">
-            Top P
-            <input v-model.number="form.topP" max="1" min="0" step="0.1" type="number" />
-          </label>
-          <label class="field full">
-            开场白
-            <textarea v-model="form.openingMessage" rows="3" />
-          </label>
-          <label class="field full">
-            Prompt
-            <textarea v-model="form.systemPrompt" required rows="7" />
-          </label>
+    <section class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+      <el-table v-loading="loading" :data="agents" empty-text="还没有 Agent">
+        <el-table-column label="名称" min-width="240">
+          <template #default="{ row }: { row: Agent }">
+            <div class="grid gap-1">
+              <strong>{{ row.name }}</strong>
+              <small class="text-(--zeta-muted)">
+                {{ row.description || row.openingMessage || '暂无描述' }}
+              </small>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="模型" min-width="220">
+          <template #default="{ row }: { row: Agent }">
+            <div class="grid gap-1">
+              <strong>{{ row.model.name }}</strong>
+              <small class="text-(--zeta-muted)">
+                {{ row.model.provider }} / {{ row.model.modelName }}
+              </small>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="绑定知识库" min-width="240">
+          <template #default="{ row }: { row: Agent }">
+            <div class="grid gap-1">
+              <strong>{{ row.knowledgeBases.length }} 个知识库</strong>
+              <small class="text-(--zeta-muted)">
+                {{row.knowledgeBases.map((item) => item.name).join('、')}}
+              </small>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="100">
+          <template #default="{ row }: { row: Agent }">
+            <el-tag :type="statusTagType(row.status)" effect="light">
+              {{ statusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="更新时间" min-width="150">
+          <template #default="{ row }: { row: Agent }">
+            {{ formatTime(row.updatedAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column align="right" fixed="right" label="操作" min-width="210">
+          <template #default="{ row }: { row: Agent }">
+            <el-button size="small" @click="router.push({ name: 'agent-chat', params: { agentId: row.id } })">
+              聊天
+            </el-button>
+            <el-button size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
+    <el-dialog v-model="formOpen" :title="title" width="760px">
+      <el-form label-position="top" @submit.prevent="save">
+        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+          <el-form-item label="Agent 名称">
+            <el-input v-model="form.name" />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="form.status">
+              <el-option label="草稿" value="DRAFT" />
+              <el-option label="已发布" value="PUBLISHED" />
+              <el-option label="停用" value="DISABLED" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="描述">
+            <el-input v-model="form.description" placeholder="例如：IT 服务台、采购制度专家" />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="对话模型">
+            <el-select v-model="form.modelId" :disabled="chatModels.length === 0" placeholder="请选择对话模型">
+              <el-option v-for="model in chatModels" :key="model.id"
+                :label="`${model.name} - ${model.provider} / ${model.modelName}`" :value="model.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="绑定知识库">
+            <el-select v-model="form.knowledgeBaseIds" collapse-tags collapse-tags-tooltip
+              :disabled="activeKnowledgeBases.length === 0" multiple placeholder="请选择知识库">
+              <el-option v-for="knowledgeBase in activeKnowledgeBases" :key="knowledgeBase.id"
+                :label="knowledgeBase.name" :value="knowledgeBase.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Temperature">
+            <el-input-number v-model="form.temperature" :max="2" :min="0" :step="0.1" controls-position="right" />
+          </el-form-item>
+          <el-form-item label="Top P">
+            <el-input-number v-model="form.topP" :max="1" :min="0" :step="0.1" controls-position="right" />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="开场白">
+            <el-input v-model="form.openingMessage" :rows="3" type="textarea" />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="Prompt">
+            <el-input v-model="form.systemPrompt" :rows="7" type="textarea" />
+          </el-form-item>
         </div>
+      </el-form>
 
-        <footer>
-          <button class="button secondary" type="button" @click="formOpen = false">取消</button>
-          <button
-            class="button"
-            :disabled="saving || chatModels.length === 0 || activeKnowledgeBases.length === 0"
-            type="submit"
-          >
-            {{ saving ? '保存中' : '保存' }}
-          </button>
-        </footer>
-      </form>
-    </div>
+      <template #footer>
+        <el-button @click="formOpen = false">取消</el-button>
+        <el-button :disabled="chatModels.length === 0 || activeKnowledgeBases.length === 0" :loading="saving"
+          type="primary" @click="save">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
-
-<style scoped>
-.page-shell {
-  display: grid;
-  gap: 20px;
-}
-
-.page-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.eyebrow {
-  margin: 0 0 10px;
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-h1,
-h2 {
-  margin: 0;
-}
-
-h1 {
-  font-size: 34px;
-}
-
-.page-head p:last-child {
-  margin: 10px 0 0;
-  color: var(--zeta-muted);
-}
-
-.notice {
-  border: 1px solid #f4d19b;
-  border-radius: 8px;
-  padding: 14px 16px;
-  background: #fff8eb;
-  color: #8a5a10;
-}
-
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.summary-strip article {
-  display: grid;
-  gap: 8px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 18px;
-  background: var(--zeta-panel);
-}
-
-.summary-strip span,
-td small {
-  color: var(--zeta-muted);
-}
-
-.agent-panel {
-  min-width: 0;
-  overflow: auto;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: var(--zeta-panel);
-}
-
-.empty {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  color: var(--zeta-muted);
-}
-
-table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  border-bottom: 1px solid var(--zeta-line);
-  padding: 16px;
-  text-align: left;
-}
-
-th {
-  color: var(--zeta-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-td:first-child,
-td:nth-child(2),
-td:nth-child(3) {
-  display: grid;
-  gap: 4px;
-}
-
-tr:last-child td {
-  border-bottom: 0;
-}
-
-.status {
-  display: inline-flex;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status.enabled {
-  background: #e3f6ed;
-  color: var(--zeta-green);
-}
-
-.status.disabled {
-  background: #eef1f6;
-  color: var(--zeta-muted);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.actions .button {
-  min-height: 34px;
-  padding: 0 12px;
-}
-
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(14, 24, 45, 0.34);
-}
-
-.dialog {
-  width: min(100%, 760px);
-  max-height: min(92vh, 860px);
-  overflow: auto;
-  display: grid;
-  gap: 20px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 24px;
-  background: #fff;
-  box-shadow: var(--zeta-shadow);
-}
-
-.dialog header,
-.dialog footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.dialog footer {
-  justify-content: flex-end;
-}
-
-.close {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--zeta-muted);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.field.full {
-  grid-column: 1 / -1;
-}
-
-.field select[multiple] {
-  min-height: 108px;
-  padding: 8px;
-}
-
-@media (max-width: 820px) {
-  .summary-strip,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .page-head {
-    align-items: start;
-    flex-direction: column;
-  }
-}
-</style>
