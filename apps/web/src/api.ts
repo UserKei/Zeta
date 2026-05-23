@@ -13,6 +13,8 @@ import type {
   RetrievalResult,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs'
+import type { Agent, AgentPayload } from '@zeta/common/agents'
+import type { ChatMessage, ChatPayload, ChatResponse, ChatSession } from '@zeta/common/chat'
 
 type ApiEnvelope<T> = {
   success: boolean
@@ -23,6 +25,22 @@ type ApiEnvelope<T> = {
 
 export type AiModelType = 'CHAT' | 'EMBEDDING' | 'RERANKER'
 export type KnowledgeBaseStatus = 'ACTIVE' | 'DISABLED'
+
+export type {
+  Agent,
+  AgentKnowledgeBaseSummary,
+  AgentPayload,
+  AgentStatus,
+} from '@zeta/common/agents'
+
+export type {
+  ChatCitation,
+  ChatMessage,
+  ChatMessageRole,
+  ChatPayload,
+  ChatResponse,
+  ChatSession,
+} from '@zeta/common/chat'
 
 export type {
   ChunkStatus,
@@ -227,3 +245,35 @@ export const testKnowledgeBaseRetrieval = (
     method: 'POST',
     body: JSON.stringify(payload),
   })
+
+export const listAgents = () => request<Agent[]>('/agents')
+
+export const getAgent = (id: string) => request<Agent>(`/agents/${id}`)
+
+export const createAgent = (payload: AgentPayload) =>
+  request<Agent>('/agents', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const updateAgent = (id: string, payload: Partial<AgentPayload>) =>
+  request<Agent>(`/agents/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+
+export const deleteAgent = (id: string) =>
+  request<{ id: string }>(`/agents/${id}`, {
+    method: 'DELETE',
+  })
+
+export const sendAgentMessage = (agentId: string, payload: ChatPayload) =>
+  request<ChatResponse>(`/agents/${agentId}/chat`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const listChatSessions = () => request<ChatSession[]>('/chat-sessions')
+
+export const listChatMessages = (sessionId: string) =>
+  request<ChatMessage[]>(`/chat-sessions/${sessionId}/messages`)

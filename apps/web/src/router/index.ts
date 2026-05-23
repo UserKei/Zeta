@@ -27,6 +27,18 @@ const router = createRouter({
       component: () => import('../views/KnowledgeBaseDetailView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/agents',
+      name: 'agents',
+      component: () => import('../views/AgentsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/agents/:id/chat',
+      name: 'agent-chat',
+      component: () => import('../views/AgentChatView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 

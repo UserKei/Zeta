@@ -202,7 +202,7 @@ onMounted(load)
           <button class="nav-item active" @click="router.push({ name: 'knowledge-bases' })">
             知识库
           </button>
-          <button class="nav-item" disabled>专家 Agent</button>
+          <button class="nav-item" @click="router.push({ name: 'agents' })">专家 Agent</button>
         </nav>
       </div>
 

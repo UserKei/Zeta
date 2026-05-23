@@ -2,59 +2,71 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  createKnowledgeBase,
-  deleteKnowledgeBase,
+  createAgent,
+  deleteAgent,
   getCurrentUser,
+  listAgents,
   listKnowledgeBases,
   listModels,
-  updateKnowledgeBase,
+  updateAgent,
+  type Agent,
+  type AgentPayload,
+  type AgentStatus,
   type AiModel,
   type KnowledgeBase,
-  type KnowledgeBasePayload,
-  type KnowledgeBaseStatus,
 } from '@/api'
 import { clearAuth, getStoredUser, type AuthUser } from '@/auth'
 
 const router = useRouter()
 const user = ref<AuthUser | null>(getStoredUser())
-const knowledgeBases = ref<KnowledgeBase[]>([])
+const agents = ref<Agent[]>([])
 const models = ref<AiModel[]>([])
+const knowledgeBases = ref<KnowledgeBase[]>([])
 const error = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
 
-const form = reactive<KnowledgeBasePayload>({
+const form = reactive<AgentPayload>({
   name: '',
   description: '',
-  status: 'ACTIVE',
-  embeddingModelId: '',
-  chunkSize: 800,
-  chunkOverlap: 100,
+  modelId: '',
+  knowledgeBaseIds: [],
+  systemPrompt: '你是企业知识库专家，请基于知识库上下文回答问题，并在回答末尾列出引用。',
+  openingMessage: '你好，我可以基于已绑定知识库回答问题。',
+  status: 'PUBLISHED',
+  temperature: 0.2,
+  topP: 0.8,
 })
 
-const embeddingModels = computed(() =>
-  models.value.filter((model) => model.type === 'EMBEDDING' && model.isEnabled),
+const chatModels = computed(() =>
+  models.value.filter((model) => model.type === 'CHAT' && model.isEnabled),
 )
 
-const title = computed(() => (editingId.value ? '编辑知识库' : '创建知识库'))
+const activeKnowledgeBases = computed(() =>
+  knowledgeBases.value.filter((knowledgeBase) => knowledgeBase.status === 'ACTIVE'),
+)
+
+const title = computed(() => (editingId.value ? '编辑 Agent' : '创建 Agent'))
 
 const load = async () => {
   loading.value = true
   error.value = ''
 
   try {
-    const [currentUser, knowledgeBaseList, modelList] = await Promise.all([
+    const [currentUser, agentList, modelList, knowledgeBaseList] = await Promise.all([
       getCurrentUser(),
-      listKnowledgeBases(),
+      listAgents(),
       listModels(),
+      listKnowledgeBases(),
     ])
     user.value = currentUser
-    knowledgeBases.value = knowledgeBaseList
+    agents.value = agentList
     models.value = modelList
+    knowledgeBases.value = knowledgeBaseList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载知识库失败'
+    error.value = cause instanceof Error ? cause.message : '加载 Agent 失败'
   } finally {
     loading.value = false
   }
@@ -65,23 +77,29 @@ const openCreate = () => {
   Object.assign(form, {
     name: '',
     description: '',
-    status: 'ACTIVE' as KnowledgeBaseStatus,
-    embeddingModelId: embeddingModels.value[0]?.id ?? '',
-    chunkSize: 800,
-    chunkOverlap: 100,
+    modelId: chatModels.value[0]?.id ?? '',
+    knowledgeBaseIds: activeKnowledgeBases.value[0] ? [activeKnowledgeBases.value[0].id] : [],
+    systemPrompt: '你是企业知识库专家，请基于知识库上下文回答问题，并在回答末尾列出引用。',
+    openingMessage: '你好，我可以基于已绑定知识库回答问题。',
+    status: 'PUBLISHED' as AgentStatus,
+    temperature: 0.2,
+    topP: 0.8,
   })
   formOpen.value = true
 }
 
-const openEdit = (knowledgeBase: KnowledgeBase) => {
-  editingId.value = knowledgeBase.id
+const openEdit = (agent: Agent) => {
+  editingId.value = agent.id
   Object.assign(form, {
-    name: knowledgeBase.name,
-    description: knowledgeBase.description ?? '',
-    status: knowledgeBase.status,
-    embeddingModelId: knowledgeBase.embeddingModelId,
-    chunkSize: knowledgeBase.chunkSize,
-    chunkOverlap: knowledgeBase.chunkOverlap,
+    name: agent.name,
+    description: agent.description ?? '',
+    modelId: agent.modelId,
+    knowledgeBaseIds: agent.knowledgeBases.map((knowledgeBase) => knowledgeBase.id),
+    systemPrompt: agent.systemPrompt,
+    openingMessage: agent.openingMessage ?? '',
+    status: agent.status,
+    temperature: agent.temperature,
+    topP: agent.topP,
   })
   formOpen.value = true
 }
@@ -94,35 +112,50 @@ const save = async () => {
     const payload = {
       ...form,
       description: form.description || undefined,
+      openingMessage: form.openingMessage || undefined,
+      temperature: normalizeOptionalNumber(form.temperature),
+      topP: normalizeOptionalNumber(form.topP),
     }
     const saved = editingId.value
-      ? await updateKnowledgeBase(editingId.value, payload)
-      : await createKnowledgeBase(payload)
-    const index = knowledgeBases.value.findIndex((item) => item.id === saved.id)
+      ? await updateAgent(editingId.value, payload)
+      : await createAgent(payload)
+    const index = agents.value.findIndex((agent) => agent.id === saved.id)
 
     if (index >= 0) {
-      knowledgeBases.value[index] = saved
+      agents.value[index] = saved
     } else {
-      knowledgeBases.value.unshift(saved)
+      agents.value.unshift(saved)
     }
 
     formOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存知识库失败'
+    error.value = cause instanceof Error ? cause.message : '保存 Agent 失败'
   } finally {
     saving.value = false
   }
 }
 
-const remove = async (knowledgeBase: KnowledgeBase) => {
+const remove = async (agent: Agent) => {
+  if (!window.confirm(`删除 Agent「${agent.name}」？`)) {
+    return
+  }
+
   error.value = ''
 
   try {
-    await deleteKnowledgeBase(knowledgeBase.id)
-    knowledgeBases.value = knowledgeBases.value.filter((item) => item.id !== knowledgeBase.id)
+    await deleteAgent(agent.id)
+    agents.value = agents.value.filter((item) => item.id !== agent.id)
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '删除知识库失败'
+    error.value = cause instanceof Error ? cause.message : '删除 Agent 失败'
   }
+}
+
+const normalizeOptionalNumber = (value: unknown) => {
+  if (value === '' || value === null || value === undefined) {
+    return null
+  }
+
+  return Number(value)
 }
 
 const logout = async () => {
@@ -138,6 +171,13 @@ const formatTime = (value: string) =>
     minute: '2-digit',
   }).format(new Date(value))
 
+const statusText = (status: AgentStatus) =>
+  ({
+    DRAFT: '草稿',
+    PUBLISHED: '已发布',
+    DISABLED: '停用',
+  })[status]
+
 onMounted(load)
 </script>
 
@@ -148,8 +188,8 @@ onMounted(load)
         <p class="brand">Zeta</p>
         <nav>
           <button class="nav-item" @click="router.push({ name: 'models' })">模型管理</button>
-          <button class="nav-item active">知识库</button>
-          <button class="nav-item" @click="router.push({ name: 'agents' })">专家 Agent</button>
+          <button class="nav-item" @click="router.push({ name: 'knowledge-bases' })">知识库</button>
+          <button class="nav-item active">专家 Agent</button>
         </nav>
       </div>
 
@@ -162,81 +202,78 @@ onMounted(load)
     <section class="content">
       <header class="page-head">
         <div>
-          <p class="eyebrow">MVP 第二阶段</p>
-          <h1>知识库</h1>
-          <p>管理知识域、分块配置和后续文档入库入口。</p>
+          <p class="eyebrow">MVP 第四阶段</p>
+          <h1>专家 Agent</h1>
+          <p>绑定对话模型和知识库，形成可问答的知识消费入口。</p>
         </div>
-        <button class="button" @click="openCreate">创建知识库</button>
+        <button class="button" @click="openCreate">创建 Agent</button>
       </header>
 
       <p v-if="error" class="message">{{ error }}</p>
 
-      <section v-if="embeddingModels.length === 0" class="notice">
-        还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
+      <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0" class="notice">
+        创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
       </section>
 
-      <section class="summary-strip" aria-label="知识库配置说明">
+      <section class="summary-strip" aria-label="Agent 配置说明">
         <article>
-          <strong>一级分类</strong>
-          <span>知识库就是首版知识分类单位</span>
+          <strong>对话模型</strong>
+          <span>负责最终回答生成</span>
         </article>
         <article>
-          <strong>Embedding 模型</strong>
-          <span>决定后续文档和问题的向量空间</span>
+          <strong>绑定知识库</strong>
+          <span>限定 Agent 可检索的知识范围</span>
         </article>
         <article>
-          <strong>分块参数</strong>
-          <span>控制文档切分大小与上下文重叠</span>
+          <strong>引用来源</strong>
+          <span>聊天结果会保存命中的 Chunk 证据</span>
         </article>
       </section>
 
-      <section class="knowledge-panel">
-        <div v-if="loading" class="empty">知识库加载中</div>
-        <div v-else-if="knowledgeBases.length === 0" class="empty">还没有知识库</div>
+      <section class="agent-panel">
+        <div v-if="loading" class="empty">Agent 加载中</div>
+        <div v-else-if="agents.length === 0" class="empty">还没有 Agent</div>
 
         <table v-else>
           <thead>
             <tr>
               <th>名称</th>
-              <th>Embedding 模型</th>
-              <th>分块配置</th>
+              <th>模型</th>
+              <th>绑定知识库</th>
               <th>状态</th>
               <th>更新时间</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="knowledgeBase in knowledgeBases" :key="knowledgeBase.id">
+            <tr v-for="agent in agents" :key="agent.id">
               <td>
-                <strong>{{ knowledgeBase.name }}</strong>
-                <small>{{ knowledgeBase.description || '暂无描述' }}</small>
+                <strong>{{ agent.name }}</strong>
+                <small>{{ agent.description || agent.openingMessage || '暂无描述' }}</small>
               </td>
               <td>
-                <strong>{{ knowledgeBase.embeddingModel.name }}</strong>
-                <small>
-                  {{ knowledgeBase.embeddingModel.provider }} /
-                  {{ knowledgeBase.embeddingModel.modelName }}
-                </small>
+                <strong>{{ agent.model.name }}</strong>
+                <small>{{ agent.model.provider }} / {{ agent.model.modelName }}</small>
               </td>
               <td>
-                <strong>{{ knowledgeBase.chunkSize }}</strong>
-                <small>重叠 {{ knowledgeBase.chunkOverlap }}</small>
+                <strong>{{ agent.knowledgeBases.length }} 个知识库</strong>
+                <small>{{ agent.knowledgeBases.map((item) => item.name).join('、') }}</small>
               </td>
               <td>
-                <span :class="['status', knowledgeBase.status === 'ACTIVE' ? 'enabled' : 'disabled']">
-                  {{ knowledgeBase.status === 'ACTIVE' ? '启用' : '停用' }}
+                <span :class="['status', agent.status === 'DISABLED' ? 'disabled' : 'enabled']">
+                  {{ statusText(agent.status) }}
                 </span>
               </td>
-              <td>{{ formatTime(knowledgeBase.updatedAt) }}</td>
+              <td>{{ formatTime(agent.updatedAt) }}</td>
               <td class="actions">
                 <button
                   class="button secondary"
-                  @click="router.push({ name: 'knowledge-base-detail', params: { id: knowledgeBase.id } })"
+                  @click="router.push({ name: 'agent-chat', params: { id: agent.id } })"
                 >
-                  进入
+                  聊天
                 </button>
-                <button class="button secondary" @click="openEdit(knowledgeBase)">编辑</button>
-                <button class="button danger" @click="remove(knowledgeBase)">删除</button>
+                <button class="button secondary" @click="openEdit(agent)">编辑</button>
+                <button class="button danger" @click="remove(agent)">删除</button>
               </td>
             </tr>
           </tbody>
@@ -251,48 +288,70 @@ onMounted(load)
           <button class="close" aria-label="关闭" type="button" @click="formOpen = false">x</button>
         </header>
 
-        <p v-if="embeddingModels.length === 0" class="message">
-          创建知识库前需要先配置一个启用状态的 Embedding 模型。
-        </p>
-
         <div class="form-grid">
           <label class="field">
-            知识库名称
+            Agent 名称
             <input v-model="form.name" required />
           </label>
           <label class="field">
             状态
             <select v-model="form.status">
-              <option value="ACTIVE">启用</option>
+              <option value="DRAFT">草稿</option>
+              <option value="PUBLISHED">已发布</option>
               <option value="DISABLED">停用</option>
             </select>
           </label>
           <label class="field full">
             描述
-            <input v-model="form.description" placeholder="例如：人事制度、采购流程、IT 支持" />
+            <input v-model="form.description" placeholder="例如：IT 服务台、采购制度专家" />
           </label>
           <label class="field full">
-            Embedding 模型
-            <select v-model="form.embeddingModelId" :disabled="embeddingModels.length === 0" required>
-              <option value="" disabled>请选择 Embedding 模型</option>
-              <option v-for="model in embeddingModels" :key="model.id" :value="model.id">
+            对话模型
+            <select v-model="form.modelId" :disabled="chatModels.length === 0" required>
+              <option value="" disabled>请选择对话模型</option>
+              <option v-for="model in chatModels" :key="model.id" :value="model.id">
                 {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
               </option>
             </select>
           </label>
-          <label class="field">
-            分块大小
-            <input v-model.number="form.chunkSize" min="1" required type="number" />
+          <label class="field full">
+            绑定知识库
+            <select
+              v-model="form.knowledgeBaseIds"
+              :disabled="activeKnowledgeBases.length === 0"
+              multiple
+              required
+            >
+              <option v-for="knowledgeBase in activeKnowledgeBases" :key="knowledgeBase.id" :value="knowledgeBase.id">
+                {{ knowledgeBase.name }}
+              </option>
+            </select>
           </label>
           <label class="field">
-            重叠长度
-            <input v-model.number="form.chunkOverlap" min="0" required type="number" />
+            Temperature
+            <input v-model.number="form.temperature" max="2" min="0" step="0.1" type="number" />
+          </label>
+          <label class="field">
+            Top P
+            <input v-model.number="form.topP" max="1" min="0" step="0.1" type="number" />
+          </label>
+          <label class="field full">
+            开场白
+            <textarea v-model="form.openingMessage" rows="3" />
+          </label>
+          <label class="field full">
+            Prompt
+            <textarea v-model="form.systemPrompt" required rows="7" />
           </label>
         </div>
 
         <footer>
           <button class="button secondary" type="button" @click="formOpen = false">取消</button>
-          <button class="button" :disabled="saving || embeddingModels.length === 0" type="submit">
+          <button
+            class="button"
+            :disabled="saving || chatModels.length === 0 || activeKnowledgeBases.length === 0"
+            type="submit"
+          >
             {{ saving ? '保存中' : '保存' }}
           </button>
         </footer>
@@ -416,7 +475,7 @@ td small {
   color: var(--zeta-muted);
 }
 
-.knowledge-panel {
+.agent-panel {
   min-width: 0;
   overflow: auto;
   border: 1px solid var(--zeta-line);
@@ -433,7 +492,7 @@ td small {
 
 table {
   width: 100%;
-  min-width: 920px;
+  min-width: 980px;
   border-collapse: collapse;
 }
 
@@ -500,7 +559,9 @@ tr:last-child td {
 }
 
 .dialog {
-  width: min(100%, 680px);
+  width: min(100%, 760px);
+  max-height: min(92vh, 860px);
+  overflow: auto;
   display: grid;
   gap: 20px;
   border: 1px solid var(--zeta-line);
@@ -539,6 +600,11 @@ tr:last-child td {
 
 .field.full {
   grid-column: 1 / -1;
+}
+
+.field select[multiple] {
+  min-height: 108px;
+  padding: 8px;
 }
 
 @media (max-width: 820px) {
