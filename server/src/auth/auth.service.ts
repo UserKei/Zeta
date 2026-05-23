@@ -2,7 +2,11 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcrypt';
-import { AuthTokenClaims, AuthTokenPayload, AuthUser } from '@zeta/common/user';
+import type {
+  AuthTokenClaims,
+  AuthTokenPayload,
+  AuthUser,
+} from '@zeta/common/user';
 
 type TokenPair = {
   accessToken: string;

@@ -26,8 +26,7 @@
     "noFallthroughCasesInSwitch": false,
     "paths": {
       "@libs/shared": ["libs/shared/src"],
-      "@libs/shared/*": ["libs/shared/src/*"],
-      "@zeta/common/*": ["../packages/common/*"]
+      "@libs/shared/*": ["libs/shared/src/*"]
     }
   }
 }

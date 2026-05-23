@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '@libs/shared';
-import { AuthTokenPayload, AuthUser } from '@zeta/common/user';
+import type { AuthTokenPayload, AuthUser } from '@zeta/common/user';
 import { AuthService } from '../auth/auth.service';
 
 @Injectable()

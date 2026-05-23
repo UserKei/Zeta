@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
-import { AuthRequestUser, AuthTokenPayload } from '@zeta/common/user';
+import type { AuthRequestUser, AuthTokenPayload } from '@zeta/common/user';
 
 export type { AuthRequestUser } from '@zeta/common/user';
 
