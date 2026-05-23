@@ -3,12 +3,18 @@
     "web": "pnpm --filter @zeta/web dev",
     "server": "pnpm --filter @zeta/server start:dev",
     "all": "concurrently \"pnpm run web\" \"pnpm run server\"",
+    "prepare": "husky",
+    "lint": "pnpm --filter @zeta/server lint && pnpm --filter @zeta/web lint",
+    "lint-staged": "lint-staged",
+    "type-check": "pnpm --filter @zeta/server build && pnpm --filter @zeta/web type-check",
     "infra:up": "docker compose -f docker-compose.infra.yml up -d",
     "infra:down": "docker compose -f docker-compose.infra.yml down",
     "infra:logs": "docker compose -f docker-compose.infra.yml logs -f",
     "infra:ps": "docker compose -f docker-compose.infra.yml ps"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5"
   }
 }
