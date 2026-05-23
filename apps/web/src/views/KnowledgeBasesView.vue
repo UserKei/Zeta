@@ -164,7 +164,7 @@ onMounted(load)
         <div>
           <p class="eyebrow">MVP 第二阶段</p>
           <h1>知识库</h1>
-          <p>先建立知识域和分块配置，后续文档入库会落到这里。</p>
+          <p>管理知识域、分块配置和后续文档入库入口。</p>
         </div>
         <button class="button" @click="openCreate">创建知识库</button>
       </header>
@@ -229,6 +229,12 @@ onMounted(load)
               </td>
               <td>{{ formatTime(knowledgeBase.updatedAt) }}</td>
               <td class="actions">
+                <button
+                  class="button secondary"
+                  @click="router.push({ name: 'knowledge-base-detail', params: { id: knowledgeBase.id } })"
+                >
+                  进入
+                </button>
                 <button class="button secondary" @click="openEdit(knowledgeBase)">编辑</button>
                 <button class="button danger" @click="remove(knowledgeBase)">删除</button>
               </td>

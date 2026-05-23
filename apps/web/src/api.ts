@@ -6,6 +6,13 @@ import {
   type AuthUser,
   type TokenPair,
 } from './auth'
+import type {
+  KnowledgeChunk,
+  KnowledgeDocument,
+  ManualDocumentPayload,
+  RetrievalResult,
+  RetrievalTestPayload,
+} from '@zeta/common/knowledge-docs'
 
 type ApiEnvelope<T> = {
   success: boolean
@@ -16,6 +23,18 @@ type ApiEnvelope<T> = {
 
 export type AiModelType = 'CHAT' | 'EMBEDDING' | 'RERANKER'
 export type KnowledgeBaseStatus = 'ACTIVE' | 'DISABLED'
+
+export type {
+  ChunkStatus,
+  DocumentSourceType,
+  DocumentStatus,
+  KnowledgeChunk,
+  KnowledgeDocument,
+  ManualDocumentPayload,
+  RetrievalHit,
+  RetrievalResult,
+  RetrievalTestPayload,
+} from '@zeta/common/knowledge-docs'
 
 export type AiModel = {
   id: string
@@ -161,6 +180,8 @@ export const deleteModel = (id: string) =>
 
 export const listKnowledgeBases = () => request<KnowledgeBase[]>('/knowledge-bases')
 
+export const getKnowledgeBase = (id: string) => request<KnowledgeBase>(`/knowledge-bases/${id}`)
+
 export const createKnowledgeBase = (payload: KnowledgeBasePayload) =>
   request<KnowledgeBase>('/knowledge-bases', {
     method: 'POST',
@@ -176,4 +197,33 @@ export const updateKnowledgeBase = (id: string, payload: Partial<KnowledgeBasePa
 export const deleteKnowledgeBase = (id: string) =>
   request<{ id: string }>(`/knowledge-bases/${id}`, {
     method: 'DELETE',
+  })
+
+export const listDocuments = (knowledgeBaseId: string) =>
+  request<KnowledgeDocument[]>(`/knowledge-bases/${knowledgeBaseId}/documents`)
+
+export const createManualDocument = (
+  knowledgeBaseId: string,
+  payload: ManualDocumentPayload,
+) =>
+  request<KnowledgeDocument>(`/knowledge-bases/${knowledgeBaseId}/documents/manual`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const listDocumentChunks = (documentId: string) =>
+  request<KnowledgeChunk[]>(`/documents/${documentId}/chunks`)
+
+export const deleteDocument = (documentId: string) =>
+  request<{ id: string }>(`/documents/${documentId}`, {
+    method: 'DELETE',
+  })
+
+export const testKnowledgeBaseRetrieval = (
+  knowledgeBaseId: string,
+  payload: RetrievalTestPayload,
+) =>
+  request<RetrievalResult>(`/knowledge-bases/${knowledgeBaseId}/retrieval-test`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   })

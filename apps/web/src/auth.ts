@@ -1,13 +1,6 @@
-export type AuthUser = {
-  id: string
-  username: string
-  displayName: string | null
-}
+import type { AuthUser, TokenPair } from '@zeta/common/user'
 
-export type TokenPair = {
-  accessToken: string
-  refreshToken: string
-}
+export type { AuthUser, TokenPair } from '@zeta/common/user'
 
 const ACCESS_TOKEN_KEY = 'zeta.accessToken'
 const REFRESH_TOKEN_KEY = 'zeta.refreshToken'
