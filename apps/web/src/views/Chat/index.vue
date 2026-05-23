@@ -119,304 +119,106 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page-shell">
-    <header class="page-head">
+  <div class="grid gap-5">
+    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <p class="eyebrow">Agent 问答</p>
-        <h1>{{ agent?.name || 'Agent 聊天' }}</h1>
-        <p>{{ agent?.description || '基于绑定知识库召回内容并生成回答。' }}</p>
+        <p class="mb-2.5 font-bold text-(--zeta-blue)">Agent 问答</p>
+        <h1 class="m-0 text-[34px] font-bold">{{ agent?.name || 'Agent 聊天' }}</h1>
+        <p class="mt-2.5 text-(--zeta-muted)">
+          {{ agent?.description || '基于绑定知识库召回内容并生成回答。' }}
+        </p>
       </div>
-      <div class="head-actions">
-        <button class="button secondary" @click="router.push({ name: 'agents' })">返回</button>
-        <button class="button" @click="startNewSession">新会话</button>
+      <div class="flex flex-col items-start gap-4.5 sm:flex-row sm:items-center">
+        <el-button @click="router.push({ name: 'agents' })">返回</el-button>
+        <el-button type="primary" @click="startNewSession">新会话</el-button>
       </div>
     </header>
 
-      <p v-if="error" class="message">{{ error }}</p>
+    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
-      <section class="chat-grid">
-        <aside class="session-panel">
-          <header>
-            <h2>我的聊天记录</h2>
-          </header>
-          <div v-if="loading" class="empty compact">会话加载中</div>
-          <div v-else-if="agentSessions.length === 0" class="empty compact">还没有会话</div>
-          <button
-            v-for="session in agentSessions"
-            :key="session.id"
-            :class="['session-item', session.id === sessionId ? 'active' : '']"
-            @click="loadSession(session)"
-          >
-            <strong>{{ session.title || '未命名会话' }}</strong>
-            <span>{{ formatTime(session.updatedAt) }}</span>
-          </button>
-        </aside>
+    <section class="grid min-w-0 grid-cols-1 gap-4.5 xl:grid-cols-[300px_minmax(0,1fr)]">
+      <aside class="grid content-start overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+        <header class="border-b border-(--zeta-line) p-4.5">
+          <h2 class="m-0 text-lg font-bold">我的聊天记录</h2>
+        </header>
+        <div v-if="loading" class="grid min-h-24 place-items-center p-4 text-(--zeta-muted)">
+          会话加载中
+        </div>
+        <div v-else-if="agentSessions.length === 0" class="grid min-h-24 place-items-center p-4 text-(--zeta-muted)">
+          还没有会话
+        </div>
+        <button
+          v-for="session in agentSessions"
+          :key="session.id"
+          :class="[
+            'grid w-full gap-1.5 border-b border-(--zeta-line) px-4.5 py-3.5 text-left whitespace-normal text-(--zeta-ink) transition-colors hover:bg-(--zeta-surface-soft) focus-visible:outline-2 focus-visible:outline-(--zeta-blue)',
+            session.id === sessionId ? 'bg-(--zeta-blue-soft)' : 'bg-(--zeta-panel)',
+          ]"
+          type="button"
+          @click="loadSession(session)"
+        >
+          <strong>{{ session.title || '未命名会话' }}</strong>
+          <span class="text-[13px] text-(--zeta-muted)">
+            {{ formatTime(session.updatedAt) }}
+          </span>
+        </button>
+      </aside>
 
-        <section class="chat-panel">
-          <div class="message-list">
-            <article v-if="messages.length === 0" class="opening">
-              {{ agent?.openingMessage || '开始提问后，Agent 会基于绑定知识库回答并展示引用来源。' }}
-            </article>
+      <section
+        class="grid min-h-160 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+        <div class="grid content-start gap-4 overflow-auto p-5">
+          <article v-if="messages.length === 0"
+            class="grid min-h-65 place-items-center rounded-lg border border-dashed border-(--zeta-line) bg-(--zeta-panel) p-6 text-center text-(--zeta-muted)">
+            {{ agent?.openingMessage || '开始提问后，Agent 会基于绑定知识库回答并展示引用来源。' }}
+          </article>
 
-            <article
-              v-for="message in messages"
-              :key="message.id"
-              :class="['chat-message', message.role === 'USER' ? 'user' : 'assistant']"
-            >
-              <header>
-                <strong>{{ message.role === 'USER' ? '你' : agent?.name || 'Agent' }}</strong>
-                <span>{{ formatTime(message.createdAt) }}</span>
-              </header>
-              <p>{{ message.content }}</p>
+          <article v-for="message in messages" :key="message.id" :class="[
+            'grid w-full max-w-215 gap-2.5 rounded-lg border border-(--zeta-line) p-4',
+            message.role === 'USER'
+              ? 'max-w-170 justify-self-end bg-(--zeta-surface-soft)'
+              : 'bg-(--zeta-panel)',
+          ]">
+            <header class="flex justify-between gap-3 text-[13px] text-(--zeta-muted)">
+              <strong>{{ message.role === 'USER' ? '你' : agent?.name || 'Agent' }}</strong>
+              <span>{{ formatTime(message.createdAt) }}</span>
+            </header>
+            <p class="m-0 whitespace-pre-wrap leading-7">{{ message.content }}</p>
 
-              <div v-if="message.citations.length > 0" class="citation-list">
-                <article v-for="citation in message.citations" :key="citation.id" class="citation">
-                  <header>
-                    <strong>{{ citation.documentName }}</strong>
-                    <span v-if="citation.score !== null">
-                      {{ (citation.score * 100).toFixed(1) }}%
-                    </span>
-                  </header>
-                  <p>{{ citation.quote }}</p>
-                  <small>分块 #{{ citation.chunkPosition + 1 }}</small>
-                </article>
-              </div>
-            </article>
-          </div>
+            <div v-if="message.citations.length > 0" class="grid gap-2.5">
+              <article v-for="citation in message.citations" :key="citation.id"
+                class="grid gap-2 rounded-md border-l-3 border-l-(--zeta-blue) bg-(--zeta-surface-tint) p-3">
+                <header class="flex justify-between gap-3 text-[13px] text-(--zeta-muted)">
+                  <strong>{{ citation.documentName }}</strong>
+                  <span v-if="citation.score !== null">
+                    {{ (citation.score * 100).toFixed(1) }}%
+                  </span>
+                </header>
+                <p class="m-0 max-h-45 overflow-auto whitespace-pre-wrap text-(--zeta-content) leading-7">
+                  {{ citation.quote }}
+                </p>
+                <small class="text-(--zeta-muted)">分块 #{{ citation.chunkPosition + 1 }}</small>
+              </article>
+            </div>
+          </article>
+        </div>
 
-          <form class="composer" @submit.prevent="send">
-            <label class="field top-k">
-              Top K
-              <input v-model.number="form.topK" max="20" min="1" required type="number" />
-            </label>
-            <label class="field message-field">
-              问题
-              <textarea
-                v-model="form.message"
-                :disabled="sending"
-                placeholder="例如：我怎么开通 IT 账号？"
-                required
-                rows="3"
-              />
-            </label>
-            <button class="button" :disabled="sending" type="submit">
-              {{ sending ? '回答中' : '发送' }}
-            </button>
-          </form>
-        </section>
+        <el-form
+          class="grid grid-cols-1 items-end gap-3.5 border-t border-(--zeta-line) bg-(--zeta-panel) p-4 lg:grid-cols-[120px_minmax(0,1fr)_auto]"
+          label-position="top"
+          @submit.prevent="send"
+        >
+          <el-form-item class="m-0" label="Top K">
+            <el-input-number v-model="form.topK" :max="20" :min="1" controls-position="right" />
+          </el-form-item>
+          <el-form-item class="m-0" label="问题">
+            <el-input v-model="form.message" :disabled="sending" placeholder="例如：我怎么开通 IT 账号？" :rows="3"
+              type="textarea" />
+          </el-form-item>
+          <el-button :loading="sending" native-type="submit" type="primary">
+            发送
+          </el-button>
+        </el-form>
       </section>
+    </section>
   </div>
 </template>
-
-<style scoped>
-.page-shell {
-  display: grid;
-  gap: 20px;
-}
-
-.page-head,
-.head-actions {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.head-actions {
-  align-items: center;
-}
-
-.eyebrow {
-  margin: 0 0 10px;
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-h1,
-h2 {
-  margin: 0;
-}
-
-h1 {
-  font-size: 34px;
-}
-
-h2 {
-  font-size: 18px;
-}
-
-.page-head p:last-child {
-  margin: 10px 0 0;
-  color: var(--zeta-muted);
-}
-
-.chat-grid {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 18px;
-}
-
-.session-panel,
-.chat-panel {
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: var(--zeta-panel);
-}
-
-.session-panel {
-  align-content: start;
-  display: grid;
-  overflow: hidden;
-}
-
-.session-panel header {
-  border-bottom: 1px solid var(--zeta-line);
-  padding: 18px;
-}
-
-.session-item {
-  display: grid;
-  gap: 6px;
-  border: 0;
-  border-bottom: 1px solid var(--zeta-line);
-  padding: 14px 18px;
-  background: #fff;
-  color: var(--zeta-ink);
-  text-align: left;
-}
-
-.session-item.active {
-  background: var(--zeta-blue-soft);
-}
-
-.session-item span {
-  color: var(--zeta-muted);
-  font-size: 13px;
-}
-
-.chat-panel {
-  min-width: 0;
-  min-height: 640px;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  overflow: hidden;
-}
-
-.message-list {
-  display: grid;
-  align-content: start;
-  gap: 16px;
-  overflow: auto;
-  padding: 20px;
-}
-
-.opening,
-.empty {
-  display: grid;
-  place-items: center;
-  color: var(--zeta-muted);
-}
-
-.opening {
-  min-height: 260px;
-  border: 1px dashed var(--zeta-line);
-  border-radius: 8px;
-  padding: 24px;
-  background: #fff;
-  text-align: center;
-}
-
-.empty.compact {
-  min-height: 96px;
-  padding: 16px;
-}
-
-.chat-message {
-  width: min(100%, 860px);
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 16px;
-  background: #fff;
-}
-
-.chat-message.user {
-  justify-self: end;
-  width: min(100%, 680px);
-  background: #f3f7ff;
-}
-
-.chat-message header,
-.citation header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--zeta-muted);
-  font-size: 13px;
-}
-
-.chat-message p,
-.citation p {
-  margin: 0;
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.citation-list {
-  display: grid;
-  gap: 10px;
-}
-
-.citation {
-  display: grid;
-  gap: 8px;
-  border-left: 3px solid var(--zeta-blue);
-  border-radius: 6px;
-  padding: 12px;
-  background: #f8faff;
-}
-
-.citation p {
-  max-height: 180px;
-  overflow: auto;
-  color: #25324a;
-}
-
-.citation small {
-  color: var(--zeta-muted);
-}
-
-.composer {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 14px;
-  border-top: 1px solid var(--zeta-line);
-  padding: 16px;
-  background: #fff;
-}
-
-.message-field textarea {
-  min-height: 76px;
-}
-
-@media (max-width: 1080px) {
-  .chat-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 820px) {
-  .composer {
-    grid-template-columns: 1fr;
-  }
-
-  .page-head,
-  .head-actions {
-    align-items: start;
-    flex-direction: column;
-  }
-}
-</style>
