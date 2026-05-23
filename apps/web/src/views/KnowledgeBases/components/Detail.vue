@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import {
   createManualDocument,
   deleteDocument,
@@ -114,13 +115,14 @@ const showChunks = async (document: KnowledgeDocument) => {
 }
 
 const removeDocument = async (document: KnowledgeDocument) => {
-  if (!window.confirm(`删除文档「${document.name}」？`)) {
-    return
-  }
-
   error.value = ''
 
   try {
+    await ElMessageBox.confirm(`删除文档「${document.name}」？`, '删除文档', {
+      cancelButtonText: '取消',
+      confirmButtonText: '删除',
+      type: 'warning',
+    })
     await deleteDocument(document.id)
     documents.value = documents.value.filter((item) => item.id !== document.id)
 
@@ -129,6 +131,10 @@ const removeDocument = async (document: KnowledgeDocument) => {
       chunks.value = []
     }
   } catch (cause) {
+    if (cause === 'cancel' || cause === 'close') {
+      return
+    }
+
     error.value = cause instanceof Error ? cause.message : '删除文档失败'
   }
 }
@@ -172,469 +178,197 @@ const statusText = (status: DocumentStatus) =>
 
 const statusClass = (status: DocumentStatus) => {
   if (status === 'INDEXED') {
-    return 'enabled'
+    return 'success'
   }
 
   if (status === 'FAILED' || status === 'DISABLED') {
     return 'danger'
   }
 
-  return 'pending'
+  return 'warning'
 }
 
 onMounted(load)
 </script>
 
 <template>
-  <div class="page-shell">
-    <header class="page-head">
+  <div class="grid gap-5">
+    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <p class="eyebrow">MVP 第三阶段</p>
-        <h1>{{ knowledgeBase?.name || '知识库详情' }}</h1>
-        <p>{{ knowledgeBase?.description || '维护文档、分块和检索测试。' }}</p>
+        <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第三阶段</p>
+        <h1 class="m-0 text-[34px] font-bold">{{ knowledgeBase?.name || '知识库详情' }}</h1>
+        <p class="mt-2.5 text-(--zeta-muted)">
+          {{ knowledgeBase?.description || '维护文档、分块和检索测试。' }}
+        </p>
       </div>
-      <div class="head-actions">
-        <button class="button secondary" @click="router.push({ name: 'knowledge-bases' })">
+      <div class="flex flex-col items-start gap-4.5 sm:flex-row sm:items-center">
+        <el-button @click="router.push({ name: 'knowledge-bases' })">
           返回
-        </button>
-        <button class="button" :disabled="loading" @click="openCreate">新增文本知识</button>
+        </el-button>
+        <el-button :disabled="loading" type="primary" @click="openCreate">新增文本知识</el-button>
       </div>
     </header>
 
-      <p v-if="error" class="message">{{ error }}</p>
+    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
-      <section class="summary-strip" aria-label="知识库索引状态">
-        <article>
-          <strong>{{ knowledgeBase?.embeddingModel.name || '-' }}</strong>
-          <span>{{ knowledgeBase?.embeddingModel.modelName || 'Embedding 模型' }}</span>
-        </article>
-        <article>
-          <strong>{{ knowledgeBase?.chunkSize || 0 }} / {{ knowledgeBase?.chunkOverlap || 0 }}</strong>
-          <span>分块大小 / 重叠长度</span>
-        </article>
-        <article>
-          <strong>{{ indexedCount }} / {{ documents.length }}</strong>
-          <span>已索引文档 / 全部文档，分块 {{ totalChunks }}</span>
-        </article>
-      </section>
+    <section class="grid grid-cols-1 gap-3.5 lg:grid-cols-3" aria-label="知识库索引状态">
+      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
+        <strong>{{ knowledgeBase?.embeddingModel.name || '-' }}</strong>
+        <span class="text-(--zeta-muted)">
+          {{ knowledgeBase?.embeddingModel.modelName || 'Embedding 模型' }}
+        </span>
+      </article>
+      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
+        <strong>{{ knowledgeBase?.chunkSize || 0 }} / {{ knowledgeBase?.chunkOverlap || 0 }}</strong>
+        <span class="text-(--zeta-muted)">分块大小 / 重叠长度</span>
+      </article>
+      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
+        <strong>{{ indexedCount }} / {{ documents.length }}</strong>
+        <span class="text-(--zeta-muted)">已索引文档 / 全部文档，分块 {{ totalChunks }}</span>
+      </article>
+    </section>
 
-      <section class="detail-grid">
-        <article class="panel documents-panel">
-          <header class="panel-head">
-            <div>
-              <h2>文档</h2>
-              <p>手动文本会立即分块并写入向量索引。</p>
-            </div>
-          </header>
-
-          <div v-if="loading" class="empty">文档加载中</div>
-          <div v-else-if="documents.length === 0" class="empty">还没有文档</div>
-
-          <table v-else>
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>状态</th>
-                <th>字符 / 分块</th>
-                <th>更新时间</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="document in documents" :key="document.id">
-                <td>
-                  <strong>{{ document.name }}</strong>
-                  <small>{{ document.sourceType === 'MANUAL' ? '手动录入' : document.sourceType }}</small>
-                </td>
-                <td>
-                  <span :class="['status', statusClass(document.status)]">
-                    {{ statusText(document.status) }}
-                  </span>
-                  <small v-if="document.errorMessage">{{ document.errorMessage }}</small>
-                </td>
-                <td>
-                  <strong>{{ document.charCount }}</strong>
-                  <small>分块 {{ document.chunkCount }}</small>
-                </td>
-                <td>{{ formatTime(document.updatedAt) }}</td>
-                <td class="actions">
-                  <button class="button secondary" @click="showChunks(document)">分块</button>
-                  <button class="button danger" @click="removeDocument(document)">删除</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </article>
-
-        <article class="panel retrieval-panel">
-          <header class="panel-head">
-            <div>
-              <h2>检索测试</h2>
-              <p>在当前知识库的已索引分块里召回内容。</p>
-            </div>
-          </header>
-
-          <form class="retrieval-form" @submit.prevent="runRetrieval">
-            <label class="field">
-              问题
-              <textarea v-model="retrievalForm.question" required rows="4" />
-            </label>
-            <label class="field">
-              Top K
-              <input v-model.number="retrievalForm.topK" max="20" min="1" required type="number" />
-            </label>
-            <button class="button" :disabled="retrieving" type="submit">
-              {{ retrieving ? '检索中' : '测试检索' }}
-            </button>
-          </form>
-
-          <div v-if="retrievalResult" class="hit-list">
-            <article v-if="retrievalResult.hits.length === 0" class="empty compact">暂无命中</article>
-            <template v-else>
-              <article v-for="hit in retrievalResult.hits" :key="hit.chunkId" class="hit">
-                <header>
-                  <strong>{{ hit.documentName }}</strong>
-                  <span>{{ formatScore(hit.score) }}</span>
-                </header>
-                <p>{{ hit.content }}</p>
-                <small>分块 #{{ hit.position + 1 }}，{{ hit.charCount }} 字符</small>
-              </article>
-            </template>
-          </div>
-        </article>
-      </section>
-
-      <section v-if="selectedDocument" class="panel chunks-panel">
-        <header class="panel-head">
+    <section class="grid min-w-0 grid-cols-1 gap-4.5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+      <article class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+        <header
+          class="flex flex-col items-start justify-between gap-4.5 border-b border-(--zeta-line) p-4.5 lg:flex-row lg:items-end">
           <div>
-            <h2>{{ selectedDocument.name }} 的分块</h2>
-            <p>{{ selectedDocument.chunkCount }} 个分块</p>
+            <h2 class="m-0 text-xl font-bold">文档</h2>
+            <p class="mt-2.5 text-(--zeta-muted)">手动文本会立即分块并写入向量索引。</p>
           </div>
-          <button class="button secondary" @click="selectedDocument = null">收起</button>
         </header>
 
-        <div v-if="chunksLoading" class="empty compact">分块加载中</div>
-        <div v-else class="chunk-list">
-          <article v-for="chunk in chunks" :key="chunk.id" class="chunk">
-            <header>
-              <strong>#{{ chunk.position + 1 }}</strong>
-              <span>{{ chunk.charCount }} 字符</span>
-            </header>
-            <p>{{ chunk.content }}</p>
+        <el-table v-loading="loading" :data="documents" empty-text="还没有文档">
+          <el-table-column label="名称" min-width="220">
+            <template #default="{ row }: { row: KnowledgeDocument }">
+              <div class="grid gap-1">
+                <strong>{{ row.name }}</strong>
+                <small class="text-(--zeta-muted)">
+                  {{ row.sourceType === 'MANUAL' ? '手动录入' : row.sourceType }}
+                </small>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" min-width="150">
+            <template #default="{ row }: { row: KnowledgeDocument }">
+              <div class="grid gap-1">
+                <el-tag :type="statusClass(row.status)" effect="light">
+                  {{ statusText(row.status) }}
+                </el-tag>
+                <small v-if="row.errorMessage" class="text-(--zeta-muted)">
+                  {{ row.errorMessage }}
+                </small>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="字符 / 分块" min-width="130">
+            <template #default="{ row }: { row: KnowledgeDocument }">
+              <div class="grid gap-1">
+                <strong>{{ row.charCount }}</strong>
+                <small class="text-(--zeta-muted)">分块 {{ row.chunkCount }}</small>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="更新时间" min-width="150">
+            <template #default="{ row }: { row: KnowledgeDocument }">
+              {{ formatTime(row.updatedAt) }}
+            </template>
+          </el-table-column>
+          <el-table-column align="right" fixed="right" label="操作" min-width="140">
+            <template #default="{ row }: { row: KnowledgeDocument }">
+              <el-button size="small" @click="showChunks(row)">分块</el-button>
+              <el-button size="small" type="danger" @click="removeDocument(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </article>
+
+      <article
+        class="grid min-w-0 content-start overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+        <header
+          class="flex flex-col items-start justify-between gap-4.5 border-b border-(--zeta-line) p-4.5 lg:flex-row lg:items-end">
+          <div>
+            <h2 class="m-0 text-xl font-bold">检索测试</h2>
+            <p class="mt-2.5 text-(--zeta-muted)">在当前知识库的已索引分块里召回内容。</p>
+          </div>
+        </header>
+
+        <el-form class="grid gap-3.5 p-4.5" label-position="top" @submit.prevent="runRetrieval">
+          <el-form-item label="问题">
+            <el-input v-model="retrievalForm.question" :rows="4" type="textarea" />
+          </el-form-item>
+          <el-form-item label="Top K">
+            <el-input-number v-model="retrievalForm.topK" :max="20" :min="1" controls-position="right" />
+          </el-form-item>
+          <el-button :loading="retrieving" native-type="submit" type="primary">
+            测试检索
+          </el-button>
+        </el-form>
+
+        <div v-if="retrievalResult" class="grid gap-3.5 p-4.5">
+          <article v-if="retrievalResult.hits.length === 0"
+            class="grid min-h-24 place-items-center text-(--zeta-muted)">
+            暂无命中
           </article>
+          <template v-else>
+            <article v-for="hit in retrievalResult.hits" :key="hit.chunkId"
+              class="grid gap-2.5 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-3.5">
+              <header class="flex justify-between gap-3">
+                <strong>{{ hit.documentName }}</strong>
+                <el-tag effect="light" type="success">{{ formatScore(hit.score) }}</el-tag>
+              </header>
+              <p class="m-0 whitespace-pre-wrap text-(--zeta-content) leading-7">{{ hit.content }}</p>
+              <small class="text-(--zeta-muted)">
+                分块 #{{ hit.position + 1 }}，{{ hit.charCount }} 字符
+              </small>
+            </article>
+          </template>
         </div>
-      </section>
-    <div v-if="formOpen" class="dialog-backdrop" @click.self="formOpen = false">
-      <form class="dialog" @submit.prevent="saveDocument">
-        <header>
-          <h2>新增文本知识</h2>
-          <button class="close" aria-label="关闭" type="button" @click="formOpen = false">x</button>
-        </header>
+      </article>
+    </section>
 
-        <div class="form-grid">
-          <label class="field">
-            文档名称
-            <input v-model="form.name" required />
-          </label>
-          <label class="field">
-            描述
-            <input v-model="form.description" />
-          </label>
-          <label class="field full">
-            正文
-            <textarea v-model="form.content" required rows="12" />
-          </label>
+    <section v-if="selectedDocument"
+      class="min-w-0 overflow-visible rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+      <header
+        class="flex flex-col items-start justify-between gap-4.5 border-b border-(--zeta-line) p-4.5 lg:flex-row lg:items-end">
+        <div>
+          <h2 class="m-0 text-xl font-bold">{{ selectedDocument.name }} 的分块</h2>
+          <p class="mt-2.5 text-(--zeta-muted)">{{ selectedDocument.chunkCount }} 个分块</p>
         </div>
+        <el-button @click="selectedDocument = null">收起</el-button>
+      </header>
 
-        <footer>
-          <button class="button secondary" type="button" @click="formOpen = false">取消</button>
-          <button class="button" :disabled="saving" type="submit">
-            {{ saving ? '索引中' : '保存并索引' }}
-          </button>
-        </footer>
-      </form>
-    </div>
+      <div v-if="chunksLoading" class="grid min-h-24 place-items-center text-(--zeta-muted)">分块加载中</div>
+      <div v-else class="grid max-h-130 gap-3.5 overflow-auto p-4.5">
+        <article v-for="chunk in chunks" :key="chunk.id"
+          class="grid gap-2.5 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-3.5">
+          <header class="flex justify-between gap-3">
+            <strong>#{{ chunk.position + 1 }}</strong>
+            <span class="text-(--zeta-muted)">{{ chunk.charCount }} 字符</span>
+          </header>
+          <p class="m-0 whitespace-pre-wrap text-(--zeta-content) leading-7">{{ chunk.content }}</p>
+        </article>
+      </div>
+    </section>
+    <el-dialog v-model="formOpen" title="新增文本知识" width="760px">
+      <el-form label-position="top" @submit.prevent="saveDocument">
+        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+          <el-form-item label="文档名称">
+            <el-input v-model="form.name" />
+          </el-form-item>
+          <el-form-item label="描述">
+            <el-input v-model="form.description" />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="正文">
+            <el-input v-model="form.content" :rows="12" type="textarea" />
+          </el-form-item>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="formOpen = false">取消</el-button>
+        <el-button :loading="saving" type="primary" @click="saveDocument">保存并索引</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
-
-<style scoped>
-.page-shell {
-  display: grid;
-  gap: 20px;
-}
-
-.page-head,
-.head-actions,
-.panel-head {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.head-actions {
-  align-items: center;
-}
-
-.eyebrow {
-  margin: 0 0 10px;
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-h1,
-h2 {
-  margin: 0;
-}
-
-h1 {
-  font-size: 34px;
-}
-
-.page-head p:last-child,
-.panel-head p {
-  margin: 10px 0 0;
-  color: var(--zeta-muted);
-}
-
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.summary-strip article,
-.panel {
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: var(--zeta-panel);
-}
-
-.summary-strip article {
-  display: grid;
-  gap: 8px;
-  padding: 18px;
-}
-
-.summary-strip span,
-td small,
-.hit small,
-.chunk span {
-  color: var(--zeta-muted);
-}
-
-.detail-grid {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
-  gap: 18px;
-}
-
-.panel {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.panel-head {
-  border-bottom: 1px solid var(--zeta-line);
-  padding: 18px;
-}
-
-.documents-panel {
-  overflow-x: auto;
-}
-
-.empty {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  color: var(--zeta-muted);
-}
-
-.empty.compact {
-  min-height: 96px;
-}
-
-table {
-  width: 100%;
-  min-width: 780px;
-  border-collapse: collapse;
-}
-
-th,
-td {
-  border-bottom: 1px solid var(--zeta-line);
-  padding: 16px;
-  text-align: left;
-}
-
-th {
-  color: var(--zeta-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-td:first-child,
-td:nth-child(2),
-td:nth-child(3) {
-  display: grid;
-  gap: 4px;
-}
-
-tr:last-child td {
-  border-bottom: 0;
-}
-
-.status {
-  display: inline-flex;
-  width: fit-content;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status.enabled {
-  background: #e3f6ed;
-  color: var(--zeta-green);
-}
-
-.status.pending {
-  background: #fff4df;
-  color: #9a6400;
-}
-
-.status.danger {
-  background: #fff4f5;
-  color: var(--zeta-danger);
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.actions .button {
-  min-height: 34px;
-  padding: 0 12px;
-}
-
-.retrieval-panel {
-  display: grid;
-  align-content: start;
-}
-
-.retrieval-form,
-.hit-list,
-.chunk-list {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-}
-
-.hit,
-.chunk {
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 14px;
-  background: #fff;
-}
-
-.hit header,
-.chunk header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.hit p,
-.chunk p {
-  margin: 0;
-  color: #25324a;
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.chunks-panel {
-  overflow: visible;
-}
-
-.chunk-list {
-  max-height: 520px;
-  overflow: auto;
-}
-
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(14, 24, 45, 0.34);
-}
-
-.dialog {
-  width: min(100%, 760px);
-  display: grid;
-  gap: 20px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: 24px;
-  background: #fff;
-  box-shadow: var(--zeta-shadow);
-}
-
-.dialog header,
-.dialog footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.dialog footer {
-  justify-content: flex-end;
-}
-
-.close {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--zeta-muted);
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.field.full {
-  grid-column: 1 / -1;
-}
-
-@media (max-width: 1020px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 820px) {
-  .summary-strip,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .page-head,
-  .head-actions,
-  .panel-head {
-    align-items: start;
-    flex-direction: column;
-  }
-}
-</style>
