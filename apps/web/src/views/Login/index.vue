@@ -32,106 +32,40 @@ const submit = async () => {
 </script>
 
 <template>
-  <main class="login-page">
-    <section class="login-intro">
-      <p class="eyebrow">Zeta</p>
-      <h1>AI 知识库管理平台</h1>
-      <p>先登录，再把模型能力接进知识库主链路。</p>
+  <main
+    class="grid min-h-screen grid-cols-1 items-center gap-8 bg-(image:--zeta-login-bg) p-6 md:grid-cols-[minmax(280px,1fr)_minmax(320px,420px)] lg:gap-20 lg:p-24">
+    <section class="max-w-160">
+      <p
+        class="mb-5 w-fit rounded-full border border-(--zeta-blue-line) bg-(--zeta-panel) px-3 py-1.75 font-bold text-(--zeta-blue)">
+        Zeta
+      </p>
+      <h1 class="m-0 text-[40px] leading-[1.08] font-bold lg:text-[64px]">AI 知识库管理平台</h1>
+      <p class="mt-5.5 max-w-120 text-lg text-(--zeta-muted)">
+        先登录，再把模型能力接进知识库主链路。
+      </p>
     </section>
 
-    <form class="login-panel" @submit.prevent="submit">
+    <el-form
+      class="grid gap-1 rounded-lg border border-(--zeta-line) bg-(--zeta-panel-glass) p-5 shadow-(--zeta-shadow) sm:p-9"
+      label-position="top" @submit.prevent="submit">
       <header>
-        <h2>登录</h2>
-        <p>首版账号由 seed 初始化。</p>
+        <h2 class="m-0 mb-2 text-[28px] font-bold">登录</h2>
+        <p class="m-0 text-(--zeta-muted)">首版账号由 seed 初始化。</p>
       </header>
 
-      <label class="field">
-        用户名
-        <input v-model="username" autocomplete="username" required />
-      </label>
+      <el-form-item label="用户名">
+        <el-input v-model="username" autocomplete="username" />
+      </el-form-item>
 
-      <label class="field">
-        密码
-        <input v-model="password" autocomplete="current-password" type="password" required />
-      </label>
+      <el-form-item label="密码">
+        <el-input v-model="password" autocomplete="current-password" show-password type="password" />
+      </el-form-item>
 
-      <p v-if="error" class="message">{{ error }}</p>
+      <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
-      <button class="button" :disabled="loading" type="submit">
+      <el-button class="mt-1 w-full" :loading="loading" native-type="submit" type="primary">
         {{ loading ? '登录中' : '进入平台' }}
-      </button>
-    </form>
+      </el-button>
+    </el-form>
   </main>
 </template>
-
-<style scoped>
-.login-page {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 420px);
-  align-items: center;
-  gap: clamp(24px, 6vw, 92px);
-  padding: clamp(24px, 7vw, 96px);
-  background:
-    linear-gradient(120deg, rgba(36, 107, 253, 0.16), transparent 42%),
-    linear-gradient(180deg, #f8fbff 0%, #f3f5f9 100%);
-}
-
-.login-intro {
-  max-width: 640px;
-}
-
-.eyebrow {
-  width: fit-content;
-  margin: 0 0 20px;
-  border: 1px solid #cbdcfb;
-  border-radius: 999px;
-  padding: 7px 12px;
-  background: #fff;
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(38px, 5vw, 72px);
-  line-height: 1.08;
-}
-
-.login-intro p:last-child {
-  max-width: 480px;
-  margin: 22px 0 0;
-  color: var(--zeta-muted);
-  font-size: 18px;
-}
-
-.login-panel {
-  display: grid;
-  gap: 18px;
-  border: 1px solid var(--zeta-line);
-  border-radius: 8px;
-  padding: clamp(20px, 4vw, 36px);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: var(--zeta-shadow);
-}
-
-.login-panel h2 {
-  margin: 0 0 8px;
-  font-size: 28px;
-}
-
-.login-panel header p {
-  margin: 0;
-  color: var(--zeta-muted);
-}
-
-@media (max-width: 760px) {
-  .login-page {
-    grid-template-columns: 1fr;
-  }
-
-  h1 {
-    font-size: 40px;
-  }
-}
-</style>

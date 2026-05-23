@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { Box, ChatDotRound, Collection } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -17,16 +18,20 @@ const navItems = [
   { name: 'agents', label: '专家 Agent', icon: ChatDotRound },
 ]
 
-const isActive = (name: string) => {
-  if (name === 'knowledge-bases') {
-    return route.name === 'knowledge-bases' || route.name === 'knowledge-base-detail'
+const activeMenu = computed(() => {
+  if (route.name === 'knowledge-base-detail') {
+    return 'knowledge-bases'
   }
 
-  if (name === 'agents') {
-    return route.name === 'agents' || route.name === 'agent-chat'
+  if (route.name === 'agent-chat') {
+    return 'agents'
   }
 
-  return route.name === name
+  return typeof route.name === 'string' ? route.name : ''
+})
+
+const openMenu = async (name: string) => {
+  await router.push({ name })
 }
 
 const logout = async () => {
@@ -36,117 +41,42 @@ const logout = async () => {
 </script>
 
 <template>
-  <main class="workspace">
-    <aside class="sidebar">
+  <main class="grid min-h-screen grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <aside
+      class="flex flex-col justify-between gap-4.5 border-b border-(--zeta-line) bg-(--zeta-panel) px-4.5 py-7 lg:border-r lg:border-b-0">
       <div>
-        <p class="brand">Zeta</p>
-        <nav>
-          <button
-            v-for="item in navItems"
-            :key="item.name"
-            :class="['nav-item', isActive(item.name) ? 'active' : '']"
-            @click="router.push({ name: item.name })"
-          >
+        <p class="mb-4 text-[28px] font-extrabold text-(--zeta-blue) lg:mb-8.5">Zeta</p>
+        <el-menu
+          :default-active="activeMenu"
+          active-text-color="var(--zeta-blue)"
+          background-color="transparent"
+          class="zeta-sidebar-menu"
+          text-color="var(--zeta-muted)"
+          @select="openMenu"
+        >
+          <el-menu-item v-for="item in navItems" :key="item.name" :index="item.name">
             <el-icon>
               <component :is="item.icon" />
             </el-icon>
             <span>{{ item.label }}</span>
-          </button>
-        </nav>
+          </el-menu-item>
+        </el-menu>
       </div>
 
-      <footer>
+      <footer class="grid gap-3">
         <strong>{{ userStore.displayName }}</strong>
-        <button class="button secondary" @click="logout">退出</button>
+        <el-button @click="logout">退出</el-button>
       </footer>
     </aside>
 
-    <section class="content">
+    <section class="grid min-w-0 content-start gap-5 bg-(image:--zeta-workspace-bg) p-5 lg:p-11">
       <RouterView />
     </section>
   </main>
 </template>
 
 <style scoped>
-.workspace {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--zeta-line);
-  padding: 28px 18px;
-  background: #fff;
-}
-
-.brand {
-  margin: 0 0 34px;
-  color: var(--zeta-blue);
-  font-size: 28px;
-  font-weight: 800;
-}
-
-nav {
-  display: grid;
-  gap: 8px;
-}
-
-.nav-item {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 14px;
-  background: transparent;
-  color: var(--zeta-muted);
-  text-align: left;
-}
-
-.nav-item.active {
-  background: var(--zeta-blue-soft);
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-.sidebar footer {
-  display: grid;
-  gap: 12px;
-}
-
-.content {
-  min-width: 0;
-  display: grid;
-  align-content: start;
-  gap: 20px;
-  padding: clamp(20px, 4vw, 44px);
-  background:
-    linear-gradient(180deg, rgba(36, 107, 253, 0.1), transparent 210px),
-    var(--zeta-bg);
-}
-
-@media (max-width: 820px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    gap: 18px;
-    border-right: 0;
-    border-bottom: 1px solid var(--zeta-line);
-  }
-
-  .brand {
-    margin-bottom: 16px;
-  }
-
-  nav {
-    grid-template-columns: 1fr;
-  }
+.zeta-sidebar-menu {
+  border-right: 0;
 }
 </style>
