@@ -4,21 +4,20 @@ import { useRouter } from 'vue-router'
 import {
   createAgent,
   deleteAgent,
-  getCurrentUser,
   listAgents,
-  listKnowledgeBases,
-  listModels,
   updateAgent,
   type Agent,
   type AgentPayload,
   type AgentStatus,
-  type AiModel,
-  type KnowledgeBase,
-} from '@/api'
-import { clearAuth, getStoredUser, type AuthUser } from '@/auth'
+} from '@/apis/agents'
+import { listModels, type AiModel } from '@/apis/models'
+import { listKnowledgeBases, type KnowledgeBase } from '@/apis/knowledge-bases'
+
+defineOptions({
+  name: 'AgentsView',
+})
 
 const router = useRouter()
-const user = ref<AuthUser | null>(getStoredUser())
 const agents = ref<Agent[]>([])
 const models = ref<AiModel[]>([])
 const knowledgeBases = ref<KnowledgeBase[]>([])
@@ -55,13 +54,11 @@ const load = async () => {
   error.value = ''
 
   try {
-    const [currentUser, agentList, modelList, knowledgeBaseList] = await Promise.all([
-      getCurrentUser(),
+    const [agentList, modelList, knowledgeBaseList] = await Promise.all([
       listAgents(),
       listModels(),
       listKnowledgeBases(),
     ])
-    user.value = currentUser
     agents.value = agentList
     models.value = modelList
     knowledgeBases.value = knowledgeBaseList
@@ -158,11 +155,6 @@ const normalizeOptionalNumber = (value: unknown) => {
   return Number(value)
 }
 
-const logout = async () => {
-  clearAuth()
-  await router.replace({ name: 'login' })
-}
-
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -182,32 +174,15 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="workspace">
-    <aside class="sidebar">
+  <div class="page-shell">
+    <header class="page-head">
       <div>
-        <p class="brand">Zeta</p>
-        <nav>
-          <button class="nav-item" @click="router.push({ name: 'models' })">模型管理</button>
-          <button class="nav-item" @click="router.push({ name: 'knowledge-bases' })">知识库</button>
-          <button class="nav-item active">专家 Agent</button>
-        </nav>
+        <p class="eyebrow">MVP 第四阶段</p>
+        <h1>专家 Agent</h1>
+        <p>绑定对话模型和知识库，形成可问答的知识消费入口。</p>
       </div>
-
-      <footer>
-        <strong>{{ user?.displayName || user?.username || '当前用户' }}</strong>
-        <button class="button secondary" @click="logout">退出</button>
-      </footer>
-    </aside>
-
-    <section class="content">
-      <header class="page-head">
-        <div>
-          <p class="eyebrow">MVP 第四阶段</p>
-          <h1>专家 Agent</h1>
-          <p>绑定对话模型和知识库，形成可问答的知识消费入口。</p>
-        </div>
-        <button class="button" @click="openCreate">创建 Agent</button>
-      </header>
+      <button class="button" @click="openCreate">创建 Agent</button>
+    </header>
 
       <p v-if="error" class="message">{{ error }}</p>
 
@@ -268,7 +243,7 @@ onMounted(load)
               <td class="actions">
                 <button
                   class="button secondary"
-                  @click="router.push({ name: 'agent-chat', params: { id: agent.id } })"
+                  @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
                 >
                   聊天
                 </button>
@@ -279,8 +254,6 @@ onMounted(load)
           </tbody>
         </table>
       </section>
-    </section>
-
     <div v-if="formOpen" class="dialog-backdrop" @click.self="formOpen = false">
       <form class="dialog" @submit.prevent="save">
         <header>
@@ -357,67 +330,13 @@ onMounted(load)
         </footer>
       </form>
     </div>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.workspace {
-  min-height: 100vh;
+.page-shell {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--zeta-line);
-  padding: 28px 18px;
-  background: #fff;
-}
-
-.brand {
-  margin: 0 0 34px;
-  color: var(--zeta-blue);
-  font-size: 28px;
-  font-weight: 800;
-}
-
-nav {
-  display: grid;
-  gap: 8px;
-}
-
-.nav-item {
-  min-height: 44px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 14px;
-  background: transparent;
-  color: var(--zeta-muted);
-  text-align: left;
-}
-
-.nav-item.active {
-  background: var(--zeta-blue-soft);
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-.sidebar footer {
-  display: grid;
-  gap: 12px;
-}
-
-.content {
-  min-width: 0;
-  display: grid;
-  align-content: start;
   gap: 20px;
-  padding: clamp(20px, 4vw, 44px);
-  background:
-    linear-gradient(180deg, rgba(36, 107, 253, 0.1), transparent 210px),
-    var(--zeta-bg);
 }
 
 .page-head {
@@ -608,21 +527,6 @@ tr:last-child td {
 }
 
 @media (max-width: 820px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    gap: 18px;
-    border-right: 0;
-    border-bottom: 1px solid var(--zeta-line);
-  }
-
-  .brand {
-    margin-bottom: 16px;
-  }
-
-  nav,
   .summary-strip,
   .form-grid {
     grid-template-columns: 1fr;

@@ -2,22 +2,22 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  getAgent,
-  getCurrentUser,
   listChatMessages,
   listChatSessions,
   sendAgentMessage,
-  type Agent,
   type ChatMessage,
   type ChatSession,
-} from '@/api'
-import { clearAuth, getStoredUser, type AuthUser } from '@/auth'
+} from '@/apis/chat'
+import { getAgent, type Agent } from '@/apis/agents'
+
+defineOptions({
+  name: 'AgentChatView',
+})
 
 const route = useRoute()
 const router = useRouter()
-const agentId = computed(() => String(route.params.id ?? ''))
+const agentId = computed(() => String(route.params.agentId ?? ''))
 
-const user = ref<AuthUser | null>(getStoredUser())
 const agent = ref<Agent | null>(null)
 const sessions = ref<ChatSession[]>([])
 const messages = ref<ChatMessage[]>([])
@@ -40,12 +40,10 @@ const load = async () => {
   error.value = ''
 
   try {
-    const [currentUser, agentDetail, sessionList] = await Promise.all([
-      getCurrentUser(),
+    const [agentDetail, sessionList] = await Promise.all([
       getAgent(agentId.value),
       listChatSessions(),
     ])
-    user.value = currentUser
     agent.value = agentDetail
     sessions.value = sessionList
   } catch (cause) {
@@ -109,11 +107,6 @@ const upsertSession = (session: ChatSession) => {
   }
 }
 
-const logout = async () => {
-  clearAuth()
-  await router.replace({ name: 'login' })
-}
-
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -126,35 +119,18 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="workspace">
-    <aside class="sidebar">
+  <div class="page-shell">
+    <header class="page-head">
       <div>
-        <p class="brand">Zeta</p>
-        <nav>
-          <button class="nav-item" @click="router.push({ name: 'models' })">模型管理</button>
-          <button class="nav-item" @click="router.push({ name: 'knowledge-bases' })">知识库</button>
-          <button class="nav-item active" @click="router.push({ name: 'agents' })">专家 Agent</button>
-        </nav>
+        <p class="eyebrow">Agent 问答</p>
+        <h1>{{ agent?.name || 'Agent 聊天' }}</h1>
+        <p>{{ agent?.description || '基于绑定知识库召回内容并生成回答。' }}</p>
       </div>
-
-      <footer>
-        <strong>{{ user?.displayName || user?.username || '当前用户' }}</strong>
-        <button class="button secondary" @click="logout">退出</button>
-      </footer>
-    </aside>
-
-    <section class="content">
-      <header class="page-head">
-        <div>
-          <p class="eyebrow">Agent 问答</p>
-          <h1>{{ agent?.name || 'Agent 聊天' }}</h1>
-          <p>{{ agent?.description || '基于绑定知识库召回内容并生成回答。' }}</p>
-        </div>
-        <div class="head-actions">
-          <button class="button secondary" @click="router.push({ name: 'agents' })">返回</button>
-          <button class="button" @click="startNewSession">新会话</button>
-        </div>
-      </header>
+      <div class="head-actions">
+        <button class="button secondary" @click="router.push({ name: 'agents' })">返回</button>
+        <button class="button" @click="startNewSession">新会话</button>
+      </div>
+    </header>
 
       <p v-if="error" class="message">{{ error }}</p>
 
@@ -229,68 +205,13 @@ onMounted(load)
           </form>
         </section>
       </section>
-    </section>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.workspace {
-  min-height: 100vh;
+.page-shell {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--zeta-line);
-  padding: 28px 18px;
-  background: #fff;
-}
-
-.brand {
-  margin: 0 0 34px;
-  color: var(--zeta-blue);
-  font-size: 28px;
-  font-weight: 800;
-}
-
-nav {
-  display: grid;
-  gap: 8px;
-}
-
-.nav-item {
-  min-height: 44px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 14px;
-  background: transparent;
-  color: var(--zeta-muted);
-  text-align: left;
-}
-
-.nav-item.active {
-  background: var(--zeta-blue-soft);
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-.sidebar footer {
-  display: grid;
-  gap: 12px;
-}
-
-.content {
-  min-width: 0;
-  display: grid;
-  align-content: start;
   gap: 20px;
-  padding: clamp(20px, 4vw, 44px);
-  background:
-    linear-gradient(180deg, rgba(36, 107, 253, 0.1), transparent 210px),
-    var(--zeta-bg);
 }
 
 .page-head,
@@ -488,21 +409,6 @@ h2 {
 }
 
 @media (max-width: 820px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    gap: 18px;
-    border-right: 0;
-    border-bottom: 1px solid var(--zeta-line);
-  }
-
-  .brand {
-    margin-bottom: 16px;
-  }
-
-  nav,
   .composer {
     grid-template-columns: 1fr;
   }

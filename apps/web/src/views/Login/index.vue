@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { login } from '@/api'
-import { saveAuth } from '@/auth'
+import { login } from '@/apis/user'
+import { useUserStore } from '@/stores/user'
+
+defineOptions({
+  name: 'LoginView',
+})
 
 const router = useRouter()
+const userStore = useUserStore()
 const username = ref('admin')
 const password = ref('zeta-admin')
 const error = ref('')
@@ -16,7 +21,7 @@ const submit = async () => {
 
   try {
     const result = await login(username.value, password.value)
-    saveAuth(result.user, result.token)
+    userStore.setAuth(result.user, result.token)
     await router.replace({ name: 'models' })
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '登录失败'

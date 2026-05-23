@@ -1,53 +1,34 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasAccessToken } from '@/auth'
+import { useUserStore } from '@/stores/user'
+import userRoutes from './modules/user'
+import modelRoutes from './modules/models'
+import knowledgeBaseRoutes from './modules/knowledge-bases'
+import agentRoutes from './modules/agents'
+import chatRoutes from './modules/chat'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      path: '/login',
-      name: 'login',
-      component: () => import('../views/LoginView.vue'),
-    },
-    {
       path: '/',
-      name: 'models',
-      component: () => import('../views/ModelsView.vue'),
-      meta: { requiresAuth: true },
+      redirect: { name: 'models' },
     },
-    {
-      path: '/knowledge-bases',
-      name: 'knowledge-bases',
-      component: () => import('../views/KnowledgeBasesView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/knowledge-bases/:id',
-      name: 'knowledge-base-detail',
-      component: () => import('../views/KnowledgeBaseDetailView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/agents',
-      name: 'agents',
-      component: () => import('../views/AgentsView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/agents/:id/chat',
-      name: 'agent-chat',
-      component: () => import('../views/AgentChatView.vue'),
-      meta: { requiresAuth: true },
-    },
+    ...userRoutes,
+    ...modelRoutes,
+    ...knowledgeBaseRoutes,
+    ...agentRoutes,
+    ...chatRoutes,
   ],
 })
 
 router.beforeEach((to) => {
-  if (to.meta.requiresAuth && !hasAccessToken()) {
+  const userStore = useUserStore()
+
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     return { name: 'login' }
   }
 
-  if (to.name === 'login' && hasAccessToken()) {
+  if (to.name === 'login' && userStore.isLoggedIn) {
     return { name: 'models' }
   }
 })

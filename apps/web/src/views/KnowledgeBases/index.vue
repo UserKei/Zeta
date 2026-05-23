@@ -4,19 +4,19 @@ import { useRouter } from 'vue-router'
 import {
   createKnowledgeBase,
   deleteKnowledgeBase,
-  getCurrentUser,
   listKnowledgeBases,
-  listModels,
   updateKnowledgeBase,
-  type AiModel,
   type KnowledgeBase,
   type KnowledgeBasePayload,
   type KnowledgeBaseStatus,
-} from '@/api'
-import { clearAuth, getStoredUser, type AuthUser } from '@/auth'
+} from '@/apis/knowledge-bases'
+import { listModels, type AiModel } from '@/apis/models'
+
+defineOptions({
+  name: 'KnowledgeBasesView',
+})
 
 const router = useRouter()
-const user = ref<AuthUser | null>(getStoredUser())
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const models = ref<AiModel[]>([])
 const error = ref('')
@@ -45,12 +45,10 @@ const load = async () => {
   error.value = ''
 
   try {
-    const [currentUser, knowledgeBaseList, modelList] = await Promise.all([
-      getCurrentUser(),
+    const [knowledgeBaseList, modelList] = await Promise.all([
       listKnowledgeBases(),
       listModels(),
     ])
-    user.value = currentUser
     knowledgeBases.value = knowledgeBaseList
     models.value = modelList
   } catch (cause) {
@@ -125,11 +123,6 @@ const remove = async (knowledgeBase: KnowledgeBase) => {
   }
 }
 
-const logout = async () => {
-  clearAuth()
-  await router.replace({ name: 'login' })
-}
-
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -142,32 +135,15 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="workspace">
-    <aside class="sidebar">
+  <div class="page-shell">
+    <header class="page-head">
       <div>
-        <p class="brand">Zeta</p>
-        <nav>
-          <button class="nav-item" @click="router.push({ name: 'models' })">模型管理</button>
-          <button class="nav-item active">知识库</button>
-          <button class="nav-item" @click="router.push({ name: 'agents' })">专家 Agent</button>
-        </nav>
+        <p class="eyebrow">MVP 第二阶段</p>
+        <h1>知识库</h1>
+        <p>管理知识域、分块配置和后续文档入库入口。</p>
       </div>
-
-      <footer>
-        <strong>{{ user?.displayName || user?.username || '当前用户' }}</strong>
-        <button class="button secondary" @click="logout">退出</button>
-      </footer>
-    </aside>
-
-    <section class="content">
-      <header class="page-head">
-        <div>
-          <p class="eyebrow">MVP 第二阶段</p>
-          <h1>知识库</h1>
-          <p>管理知识域、分块配置和后续文档入库入口。</p>
-        </div>
-        <button class="button" @click="openCreate">创建知识库</button>
-      </header>
+      <button class="button" @click="openCreate">创建知识库</button>
+    </header>
 
       <p v-if="error" class="message">{{ error }}</p>
 
@@ -242,8 +218,6 @@ onMounted(load)
           </tbody>
         </table>
       </section>
-    </section>
-
     <div v-if="formOpen" class="dialog-backdrop" @click.self="formOpen = false">
       <form class="dialog" @submit.prevent="save">
         <header>
@@ -298,67 +272,13 @@ onMounted(load)
         </footer>
       </form>
     </div>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.workspace {
-  min-height: 100vh;
+.page-shell {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--zeta-line);
-  padding: 28px 18px;
-  background: #fff;
-}
-
-.brand {
-  margin: 0 0 34px;
-  color: var(--zeta-blue);
-  font-size: 28px;
-  font-weight: 800;
-}
-
-nav {
-  display: grid;
-  gap: 8px;
-}
-
-.nav-item {
-  min-height: 44px;
-  border: 0;
-  border-radius: 8px;
-  padding: 0 14px;
-  background: transparent;
-  color: var(--zeta-muted);
-  text-align: left;
-}
-
-.nav-item.active {
-  background: var(--zeta-blue-soft);
-  color: var(--zeta-blue);
-  font-weight: 700;
-}
-
-.sidebar footer {
-  display: grid;
-  gap: 12px;
-}
-
-.content {
-  min-width: 0;
-  display: grid;
-  align-content: start;
   gap: 20px;
-  padding: clamp(20px, 4vw, 44px);
-  background:
-    linear-gradient(180deg, rgba(36, 107, 253, 0.1), transparent 210px),
-    var(--zeta-bg);
 }
 
 .page-head {
@@ -542,21 +462,6 @@ tr:last-child td {
 }
 
 @media (max-width: 820px) {
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    gap: 18px;
-    border-right: 0;
-    border-bottom: 1px solid var(--zeta-line);
-  }
-
-  .brand {
-    margin-bottom: 16px;
-  }
-
-  nav,
   .summary-strip,
   .form-grid {
     grid-template-columns: 1fr;
