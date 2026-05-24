@@ -18,20 +18,23 @@ async function main() {
   const username = process.env.SEED_ADMIN_USERNAME ?? 'admin';
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'zeta-admin';
   const displayName = process.env.SEED_ADMIN_DISPLAY_NAME ?? 'Zeta Admin';
-  const passwordHash = await hashPassword(password);
 
-  await prisma.user.upsert({
+  const existingUser = await prisma.user.findUnique({
     where: { username },
-    update: {
-      displayName,
-      passwordHash,
-    },
-    create: {
-      username,
-      passwordHash,
-      displayName,
-    },
+    select: { id: true },
   });
+
+  if (!existingUser) {
+    const passwordHash = await hashPassword(password);
+
+    await prisma.user.create({
+      data: {
+        username,
+        passwordHash,
+        displayName,
+      },
+    });
+  }
 
   const dashScopeApiKey = process.env.DASHSCOPE_API_KEY?.trim() || null;
 
