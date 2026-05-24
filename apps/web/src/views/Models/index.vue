@@ -22,10 +22,10 @@ const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
 
-const modelTypes: { value: AiModelType; label: string; hint: string }[] = [
-  { value: 'CHAT', label: '对话模型', hint: 'Agent 生成回答' },
-  { value: 'EMBEDDING', label: 'Embedding', hint: '文档与问题向量化' },
-  { value: 'RERANKER', label: 'Reranker', hint: '召回结果重排' },
+const modelTypes: { value: AiModelType; label: string }[] = [
+  { value: 'CHAT', label: '对话模型' },
+  { value: 'EMBEDDING', label: 'Embedding' },
+  { value: 'RERANKER', label: 'Reranker' },
 ]
 
 const form = reactive<ModelPayload>({
@@ -139,25 +139,12 @@ onMounted(load)
   <div class="grid gap-5">
     <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第一阶段</p>
         <h1 class="m-0 text-[34px] font-bold">模型管理</h1>
-        <p class="mt-2.5 text-(--zeta-muted)">先把对话、向量化和重排能力接进平台。</p>
       </div>
       <el-button type="primary" @click="openCreate">添加模型</el-button>
     </header>
 
     <el-alert v-if="error" :closable="false" :title="error" type="error" />
-
-    <section class="grid grid-cols-1 gap-3.5 lg:grid-cols-3" aria-label="模型用途">
-      <article
-        v-for="type in modelTypes"
-        :key="type.value"
-        class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5"
-      >
-        <strong>{{ type.label }}</strong>
-        <span class="text-(--zeta-muted)">{{ type.hint }}</span>
-      </article>
-    </section>
 
     <section
       class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"

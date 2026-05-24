@@ -41,7 +41,7 @@ const submit = async () => {
       </p>
       <h1 class="m-0 text-[40px] leading-[1.08] font-bold lg:text-[64px]">AI 知识库管理平台</h1>
       <p class="mt-5.5 max-w-120 text-lg text-(--zeta-muted)">
-        先登录，再把模型能力接进知识库主链路。
+        登录后管理模型、知识库和专家 Agent。
       </p>
     </section>
 
@@ -50,7 +50,7 @@ const submit = async () => {
       label-position="top" @submit.prevent="submit">
       <header>
         <h2 class="m-0 mb-2 text-[28px] font-bold">登录</h2>
-        <p class="m-0 text-(--zeta-muted)">首版账号由 seed 初始化。</p>
+        <p class="m-0 text-(--zeta-muted)">使用平台账号继续。</p>
       </header>
 
       <el-form-item label="用户名">

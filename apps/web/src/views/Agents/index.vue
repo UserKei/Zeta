@@ -195,9 +195,7 @@ onMounted(load)
   <div class="grid gap-5">
     <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第四阶段</p>
         <h1 class="m-0 text-[34px] font-bold">专家 Agent</h1>
-        <p class="mt-2.5 text-(--zeta-muted)">绑定对话模型和知识库，形成可问答的知识消费入口。</p>
       </div>
       <el-button type="primary" @click="openCreate">创建 Agent</el-button>
     </header>
@@ -207,21 +205,6 @@ onMounted(load)
     <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
       class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)">
       创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
-    </section>
-
-    <section class="grid grid-cols-1 gap-3.5 lg:grid-cols-3" aria-label="Agent 配置说明">
-      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
-        <strong>对话模型</strong>
-        <span class="text-(--zeta-muted)">负责最终回答生成</span>
-      </article>
-      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
-        <strong>绑定知识库</strong>
-        <span class="text-(--zeta-muted)">限定 Agent 可检索的知识范围</span>
-      </article>
-      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
-        <strong>引用来源</strong>
-        <span class="text-(--zeta-muted)">聊天结果会保存命中的 Chunk 证据</span>
-      </article>
     </section>
 
     <section class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">

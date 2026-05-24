@@ -125,7 +125,7 @@ onMounted(load)
         <p class="mb-2.5 font-bold text-(--zeta-blue)">Agent 问答</p>
         <h1 class="m-0 text-[34px] font-bold">{{ agent?.name || 'Agent 聊天' }}</h1>
         <p class="mt-2.5 text-(--zeta-muted)">
-          {{ agent?.description || '基于绑定知识库召回内容并生成回答。' }}
+          {{ agent?.description || '向 Agent 提问，获取知识库中的答案。' }}
         </p>
       </div>
       <div class="flex flex-col items-start gap-4.5 sm:flex-row sm:items-center">
@@ -169,7 +169,7 @@ onMounted(load)
         <div class="grid content-start gap-4 overflow-auto p-5">
           <article v-if="messages.length === 0"
             class="grid min-h-65 place-items-center rounded-lg border border-dashed border-(--zeta-line) bg-(--zeta-panel) p-6 text-center text-(--zeta-muted)">
-            {{ agent?.openingMessage || '开始提问后，Agent 会基于绑定知识库回答并展示引用来源。' }}
+            {{ agent?.openingMessage || '开始提问吧。' }}
           </article>
 
           <article v-for="message in messages" :key="message.id" :class="[
