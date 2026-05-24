@@ -10,7 +10,12 @@
     "infra:up": "docker compose -f docker-compose.infra.yml up -d",
     "infra:down": "docker compose -f docker-compose.infra.yml down",
     "infra:logs": "docker compose -f docker-compose.infra.yml logs -f",
-    "infra:ps": "docker compose -f docker-compose.infra.yml ps"
+    "infra:ps": "docker compose -f docker-compose.infra.yml ps",
+    "docker:prod:build": "docker compose -f docker-compose.prod.yml --env-file .env.production build",
+    "docker:prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.production up -d",
+    "docker:prod:migrate": "docker compose -f docker-compose.prod.yml --env-file .env.production run --rm api pnpm --dir server exec prisma migrate deploy",
+    "docker:prod:seed": "docker compose -f docker-compose.prod.yml --env-file .env.production run --rm api pnpm --dir server exec prisma db seed",
+    "docker:prod:ps": "docker compose -f docker-compose.prod.yml --env-file .env.production ps"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

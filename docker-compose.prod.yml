@@ -1,0 +1,65 @@
+name: zeta-prod
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg16
+    container_name: zeta-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TZ: Asia/Shanghai
+    volumes:
+      - zeta-postgres-data:/var/lib/postgresql/data
+      - ./docker-infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    image: zeta-api:prod
+    container_name: zeta-prod-api
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+      args:
+        NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:24-bookworm-slim}
+    environment:
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET is required}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:?SEED_ADMIN_USERNAME is required}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required}
+      SEED_ADMIN_DISPLAY_NAME: ${SEED_ADMIN_DISPLAY_NAME:-Zeta Admin}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "3000"
+
+  web:
+    image: zeta-web:prod
+    container_name: zeta-prod-web
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      args:
+        NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:24-bookworm-slim}
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  zeta-postgres-data:
