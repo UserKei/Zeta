@@ -7,6 +7,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthGuard } from './auth/auth.guard';
 import { EmbeddingModule } from './embedding/embedding.module';
 import { RetrievalModule } from './retrieval/retrieval.module';
+import { ParserModule } from './parser/parser.module';
+import { TextSplitterModule } from './text-splitter/text-splitter.module';
 
 @Global()
 @Module({
@@ -19,12 +21,16 @@ import { RetrievalModule } from './retrieval/retrieval.module';
     JwtModule,
     EmbeddingModule,
     RetrievalModule,
+    ParserModule,
+    TextSplitterModule,
   ],
   imports: [
     PrismaModule,
     ResponseModule,
     EmbeddingModule,
     RetrievalModule,
+    ParserModule,
+    TextSplitterModule,
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
