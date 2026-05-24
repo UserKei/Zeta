@@ -1,8 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import {
-  ChunkStatus,
-  type ChunkDraftPayload,
-} from '@zeta/common/knowledge-docs';
+import type { ChunkDraftPayload } from '@zeta/common/knowledge-docs';
 import { TextSplitterService } from '../text-splitter/text-splitter.service';
 import type { MarkdownParseOptions } from './parser.types';
 
@@ -47,7 +44,7 @@ export class MarkdownParserService {
           chunks.push({
             title,
             content: contentPart,
-            status: ChunkStatus.ACTIVE,
+            status: 'ACTIVE',
           });
         }
       }
