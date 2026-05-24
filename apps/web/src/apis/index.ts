@@ -22,7 +22,8 @@ type PendingRequest = {
   reject: (reason?: unknown) => void
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
+export const apiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
 const timeout = 50000
 
 export const serverApi = axios.create({

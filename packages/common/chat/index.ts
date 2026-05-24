@@ -58,3 +58,18 @@ export type ChatResponse = {
   assistantMessage: ChatMessage;
   hits: RetrievalHit[];
 };
+
+export type ChatStreamEvent =
+  | {
+      type: 'delta';
+      role: 'assistant';
+      content: string;
+    }
+  | {
+      type: 'done';
+      response: ChatResponse;
+    }
+  | {
+      type: 'error';
+      message: string;
+    };

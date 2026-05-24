@@ -16,6 +16,7 @@ import type {
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatStreamEvent,
 } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
@@ -36,6 +37,17 @@ type ChatCompletionResponse = {
   usage?: unknown;
 };
 
+type ChatCompletionStreamChunk = {
+  choices?: Array<{
+    delta?: {
+      content?: unknown;
+    };
+  }>;
+  error?: {
+    message?: unknown;
+  };
+};
+
 const DEFAULT_CHAT_TOP_K = 5;
 const MAX_CHAT_TOP_K = 20;
 const DEFAULT_TEMPERATURE = 0.2;
@@ -52,77 +64,70 @@ export class ChatService {
     userId: string,
     input: ChatPayload,
   ): Promise<ChatResponse> {
-    const message = this.normalizeMessage(input.message);
-    const topK = this.parseTopK(input.topK);
-    const agent = await this.requireChatAgent(agentId);
-
-    if (input.sessionId) {
-      await this.requireOwnedSession(input.sessionId, userId, agent.id);
-    }
-
-    const retrieval = await this.retrievalService.retrieveFromKnowledgeBases(
-      agent.agentKnowledgeBases.map((item) => item.knowledgeBaseId),
-      message,
-      topK,
+    const { message, agent, retrieval } = await this.prepareChat(
+      agentId,
+      userId,
+      input,
     );
     const answer = await this.callChatModel(agent, message, retrieval.hits);
 
-    const result = await this.prisma.$transaction(async (prisma) => {
-      const session = input.sessionId
-        ? await prisma.chatSession.update({
-            where: { id: input.sessionId },
-            data: { updatedAt: new Date() },
-            select: chatSessionSelect,
-          })
-        : await prisma.chatSession.create({
-            data: {
-              user: { connect: { id: userId } },
-              agent: { connect: { id: agent.id } },
-              title: this.createSessionTitle(message),
-            },
-            select: chatSessionSelect,
-          });
+    return this.saveChatResult(
+      agent,
+      userId,
+      input.sessionId,
+      message,
+      answer,
+      retrieval.hits,
+    );
+  }
 
-      const userMessage = await prisma.chatMessage.create({
-        data: {
-          session: { connect: { id: session.id } },
-          role: ChatMessageRole.USER,
-          content: message,
-        },
-        select: chatMessageSelect,
-      });
+  async *streamChat(
+    agentId: string,
+    userId: string,
+    input: ChatPayload,
+    signal?: AbortSignal,
+  ): AsyncGenerator<ChatStreamEvent> {
+    const { message, agent, retrieval } = await this.prepareChat(
+      agentId,
+      userId,
+      input,
+    );
+    let content = '';
 
-      const assistantMessage = await prisma.chatMessage.create({
-        data: {
-          session: { connect: { id: session.id } },
-          role: ChatMessageRole.ASSISTANT,
-          content: answer.content,
-          model: { connect: { id: agent.model.id } },
-          tokenUsage: answer.usage ?? {},
-          citations: {
-            create: retrieval.hits.map((hit) => ({
-              chunk: { connect: { id: hit.chunkId } },
-              document: { connect: { id: hit.documentId } },
-              score: Number(hit.score.toFixed(6)),
-              quote: hit.content,
-            })),
-          },
-        },
-        select: chatMessageSelect,
-      });
+    for await (const delta of this.callChatModelStream(
+      agent,
+      message,
+      retrieval.hits,
+      signal,
+    )) {
+      content += delta;
 
-      return {
-        session,
-        userMessage,
-        assistantMessage,
+      yield {
+        type: 'delta',
+        role: 'assistant',
+        content: delta,
       };
-    });
+    }
 
-    return {
-      session: this.toSessionResponse(result.session),
-      userMessage: this.toMessageResponse(result.userMessage),
-      assistantMessage: this.toMessageResponse(result.assistantMessage),
-      hits: retrieval.hits,
+    if (!content.trim()) {
+      throw new BadGatewayException('chat provider returned empty answer');
+    }
+
+    const response = await this.saveChatResult(
+      agent,
+      userId,
+      input.sessionId,
+      message,
+      {
+        content: content.trim(),
+        usage: {},
+      },
+      retrieval.hits,
+    );
+
+    yield {
+      type: 'done',
+      response,
     };
   }
 
@@ -149,6 +154,32 @@ export class ChatService {
     });
 
     return messages.map((message) => this.toMessageResponse(message));
+  }
+
+  private async prepareChat(
+    agentId: string,
+    userId: string,
+    input: ChatPayload,
+  ) {
+    const message = this.normalizeMessage(input.message);
+    const topK = this.parseTopK(input.topK);
+    const agent = await this.requireChatAgent(agentId);
+
+    if (input.sessionId) {
+      await this.requireOwnedSession(input.sessionId, userId, agent.id);
+    }
+
+    const retrieval = await this.retrievalService.retrieveFromKnowledgeBases(
+      agent.agentKnowledgeBases.map((item) => item.knowledgeBaseId),
+      message,
+      topK,
+    );
+
+    return {
+      message,
+      agent,
+      retrieval,
+    };
   }
 
   private async requireChatAgent(id: string) {
@@ -239,24 +270,9 @@ export class ChatService {
           Authorization: `Bearer ${agent.model.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: agent.model.modelName,
-          messages: [
-            {
-              role: 'system',
-              content: this.buildSystemPrompt(agent.systemPrompt, hits),
-            },
-            {
-              role: 'user',
-              content: message,
-            },
-          ],
-          temperature:
-            agent.temperature === null
-              ? DEFAULT_TEMPERATURE
-              : Number(agent.temperature),
-          top_p: agent.topP === null ? undefined : Number(agent.topP),
-        }),
+        body: JSON.stringify(
+          this.createChatCompletionBody(agent, message, hits, false),
+        ),
       },
     );
 
@@ -278,6 +294,216 @@ export class ChatService {
     return {
       content: content.trim(),
       usage: payload.usage ?? {},
+    };
+  }
+
+  private async *callChatModelStream(
+    agent: Awaited<ReturnType<ChatService['requireChatAgent']>>,
+    message: string,
+    hits: RetrievalHit[],
+    signal?: AbortSignal,
+  ): AsyncGenerator<string> {
+    const response = await fetch(
+      `${this.trimBaseUrl(agent.model.baseUrl ?? '')}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${agent.model.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(
+          this.createChatCompletionBody(agent, message, hits, true),
+        ),
+        signal,
+      },
+    );
+
+    if (!response.ok) {
+      const detail = await response.text();
+
+      throw new BadGatewayException(
+        `chat provider request failed: ${detail || response.statusText}`,
+      );
+    }
+
+    if (!response.body) {
+      throw new BadGatewayException('chat provider did not return stream');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split(/\r?\n\r?\n/);
+        buffer = blocks.pop() ?? '';
+
+        for (const block of blocks) {
+          for (const delta of this.parseChatStreamBlock(block)) {
+            yield delta;
+          }
+        }
+      }
+
+      buffer += decoder.decode();
+
+      if (buffer.trim()) {
+        for (const delta of this.parseChatStreamBlock(buffer)) {
+          yield delta;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  private parseChatStreamBlock(block: string) {
+    const deltas: string[] = [];
+
+    for (const line of block.split(/\r?\n/)) {
+      const trimmedLine = line.trim();
+
+      if (!trimmedLine.startsWith('data:')) {
+        continue;
+      }
+
+      const data = trimmedLine.slice('data:'.length).trim();
+
+      if (!data || data === '[DONE]') {
+        continue;
+      }
+
+      let payload: ChatCompletionStreamChunk;
+
+      try {
+        payload = JSON.parse(data) as ChatCompletionStreamChunk;
+      } catch {
+        throw new BadGatewayException(
+          'chat provider returned invalid stream chunk',
+        );
+      }
+
+      const providerError = payload.error?.message;
+
+      if (typeof providerError === 'string' && providerError) {
+        throw new BadGatewayException(
+          `chat provider request failed: ${providerError}`,
+        );
+      }
+
+      const content = payload.choices?.[0]?.delta?.content;
+
+      if (typeof content === 'string' && content) {
+        deltas.push(content);
+      }
+    }
+
+    return deltas;
+  }
+
+  private createChatCompletionBody(
+    agent: Awaited<ReturnType<ChatService['requireChatAgent']>>,
+    message: string,
+    hits: RetrievalHit[],
+    stream: boolean,
+  ) {
+    const body = {
+      model: agent.model.modelName,
+      messages: [
+        {
+          role: 'system',
+          content: this.buildSystemPrompt(agent.systemPrompt, hits),
+        },
+        {
+          role: 'user',
+          content: message,
+        },
+      ],
+      temperature:
+        agent.temperature === null
+          ? DEFAULT_TEMPERATURE
+          : Number(agent.temperature),
+      top_p: agent.topP === null ? undefined : Number(agent.topP),
+    };
+
+    return stream ? { ...body, stream: true } : body;
+  }
+
+  private async saveChatResult(
+    agent: Awaited<ReturnType<ChatService['requireChatAgent']>>,
+    userId: string,
+    sessionId: string | undefined,
+    message: string,
+    answer: {
+      content: string;
+      usage: unknown;
+    },
+    hits: RetrievalHit[],
+  ): Promise<ChatResponse> {
+    const result = await this.prisma.$transaction(async (prisma) => {
+      const session = sessionId
+        ? await prisma.chatSession.update({
+            where: { id: sessionId },
+            data: { updatedAt: new Date() },
+            select: chatSessionSelect,
+          })
+        : await prisma.chatSession.create({
+            data: {
+              user: { connect: { id: userId } },
+              agent: { connect: { id: agent.id } },
+              title: this.createSessionTitle(message),
+            },
+            select: chatSessionSelect,
+          });
+
+      const userMessage = await prisma.chatMessage.create({
+        data: {
+          session: { connect: { id: session.id } },
+          role: ChatMessageRole.USER,
+          content: message,
+        },
+        select: chatMessageSelect,
+      });
+
+      const assistantMessage = await prisma.chatMessage.create({
+        data: {
+          session: { connect: { id: session.id } },
+          role: ChatMessageRole.ASSISTANT,
+          content: answer.content,
+          model: { connect: { id: agent.model.id } },
+          tokenUsage: answer.usage ?? {},
+          citations: {
+            create: hits.map((hit) => ({
+              chunk: { connect: { id: hit.chunkId } },
+              document: { connect: { id: hit.documentId } },
+              score: Number(hit.score.toFixed(6)),
+              quote: hit.content,
+            })),
+          },
+        },
+        select: chatMessageSelect,
+      });
+
+      return {
+        session,
+        userMessage,
+        assistantMessage,
+      };
+    });
+
+    return {
+      session: this.toSessionResponse(result.session),
+      userMessage: this.toMessageResponse(result.userMessage),
+      assistantMessage: this.toMessageResponse(result.assistantMessage),
+      hits,
     };
   }
 
