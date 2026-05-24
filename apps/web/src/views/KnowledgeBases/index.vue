@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   createKnowledgeBase,
   deleteKnowledgeBase,
@@ -25,6 +26,8 @@ const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
+const keyword = ref('')
+const statusFilter = ref<KnowledgeBaseStatus | ''>('')
 
 const form = reactive<KnowledgeBasePayload>({
   name: '',
@@ -40,6 +43,30 @@ const embeddingModels = computed(() =>
 )
 
 const title = computed(() => (editingId.value ? '编辑知识库' : '创建知识库'))
+
+const filteredKnowledgeBases = computed(() => {
+  const query = keyword.value.trim().toLowerCase()
+
+  return knowledgeBases.value.filter((knowledgeBase) => {
+    const matchedStatus =
+      statusFilter.value === '' || knowledgeBase.status === statusFilter.value
+    const searchableText = [
+      knowledgeBase.name,
+      knowledgeBase.description ?? '',
+      knowledgeBase.embeddingModel.name,
+      knowledgeBase.embeddingModel.provider,
+      knowledgeBase.embeddingModel.modelName,
+    ]
+      .join(' ')
+      .toLowerCase()
+
+    return matchedStatus && (!query || searchableText.includes(query))
+  })
+})
+
+const activeCount = computed(
+  () => knowledgeBases.value.filter((item) => item.status === 'ACTIVE').length,
+)
 
 const load = async () => {
   loading.value = true
@@ -141,18 +168,22 @@ const formatTime = (value: string) =>
     minute: '2-digit',
   }).format(new Date(value))
 
+const statusText = (status: KnowledgeBaseStatus) =>
+  status === 'ACTIVE' ? '启用' : '停用'
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="grid gap-5">
-    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
+  <div class="grid gap-4">
+    <header class="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-end">
       <div>
-        <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第二阶段</p>
-        <h1 class="m-0 text-[34px] font-bold">知识库</h1>
-        <p class="mt-2.5 text-(--zeta-muted)">管理知识域、分块配置和后续文档入库入口。</p>
+        <h1 class="m-0 text-2xl font-semibold text-(--zeta-ink)">知识库</h1>
+        <p class="mt-1.5 text-sm text-(--zeta-muted)">
+          共 {{ knowledgeBases.length }} 个知识库，{{ activeCount }} 个启用
+        </p>
       </div>
-      <el-button type="primary" @click="openCreate">创建知识库</el-button>
+      <el-button :icon="Plus" type="primary" @click="openCreate">创建知识库</el-button>
     </header>
 
     <el-alert v-if="error" :closable="false" :title="error" type="error" />
@@ -162,27 +193,52 @@ onMounted(load)
       还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
     </section>
 
-    <section class="grid grid-cols-1 gap-3.5 lg:grid-cols-3" aria-label="知识库配置说明">
-      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
-        <strong>一级分类</strong>
-        <span class="text-(--zeta-muted)">知识库就是首版知识分类单位</span>
-      </article>
-      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
-        <strong>Embedding 模型</strong>
-        <span class="text-(--zeta-muted)">决定后续文档和问题的向量空间</span>
-      </article>
-      <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
-        <strong>分块参数</strong>
-        <span class="text-(--zeta-muted)">控制文档切分大小与上下文重叠</span>
-      </article>
-    </section>
+    <section class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+      <div
+        class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 lg:flex-row lg:items-center"
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <el-button :icon="Plus" type="primary" @click="openCreate">创建</el-button>
+          <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+          <span class="text-sm text-(--zeta-muted)">
+            当前 {{ filteredKnowledgeBases.length }} / {{ knowledgeBases.length }}
+          </span>
+        </div>
+        <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+          <el-select
+            v-model="statusFilter"
+            clearable
+            placeholder="状态"
+            class="w-full sm:w-32"
+          >
+            <el-option label="启用" value="ACTIVE" />
+            <el-option label="停用" value="DISABLED" />
+          </el-select>
+          <el-input
+            v-model="keyword"
+            :prefix-icon="Search"
+            clearable
+            placeholder="搜索知识库"
+            class="w-full sm:w-64"
+          />
+        </div>
+      </div>
 
-    <section class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
-      <el-table v-loading="loading" :data="knowledgeBases" empty-text="还没有知识库">
+      <el-table v-loading="loading" :data="filteredKnowledgeBases" empty-text="还没有知识库">
         <el-table-column label="名称" min-width="220">
           <template #default="{ row }: { row: KnowledgeBase }">
             <div class="grid gap-1">
-              <strong>{{ row.name }}</strong>
+              <el-link
+                type="primary"
+                @click="
+                  router.push({
+                    name: 'knowledge-documents',
+                    params: { knowledgeBaseId: row.id },
+                  })
+                "
+              >
+                {{ row.name }}
+              </el-link>
               <small class="text-(--zeta-muted)">{{ row.description || '暂无描述' }}</small>
             </div>
           </template>
@@ -202,14 +258,14 @@ onMounted(load)
           <template #default="{ row }: { row: KnowledgeBase }">
             <div class="grid gap-1">
               <strong>{{ row.chunkSize }}</strong>
-              <small class="text-(--zeta-muted)">重叠 {{ row.chunkOverlap }}</small>
+              <small class="text-(--zeta-muted)">重叠长度 {{ row.chunkOverlap }}</small>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" min-width="100">
           <template #default="{ row }: { row: KnowledgeBase }">
             <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" effect="light">
-              {{ row.status === 'ACTIVE' ? '启用' : '停用' }}
+              {{ statusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -220,7 +276,15 @@ onMounted(load)
         </el-table-column>
         <el-table-column align="right" fixed="right" label="操作" min-width="210">
           <template #default="{ row }: { row: KnowledgeBase }">
-            <el-button size="small" @click="router.push({ name: 'knowledge-base-detail', params: { id: row.id } })">
+            <el-button
+              size="small"
+              @click="
+                router.push({
+                  name: 'knowledge-documents',
+                  params: { knowledgeBaseId: row.id },
+                })
+              "
+            >
               进入
             </el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
@@ -229,9 +293,15 @@ onMounted(load)
         </el-table-column>
       </el-table>
     </section>
-    <el-dialog v-model="formOpen" :title="title" width="680px">
-      <el-alert v-if="embeddingModels.length === 0" :closable="false" title="创建知识库前需要先配置一个启用状态的 Embedding 模型。"
-        type="warning" />
+
+    <el-dialog v-model="formOpen" :title="title" width="720px">
+      <el-alert
+        v-if="embeddingModels.length === 0"
+        :closable="false"
+        class="mb-4"
+        title="创建知识库前需要先配置一个启用状态的 Embedding 模型。"
+        type="warning"
+      />
 
       <el-form label-position="top" @submit.prevent="save">
         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
@@ -248,10 +318,17 @@ onMounted(load)
             <el-input v-model="form.description" placeholder="例如：人事制度、采购流程、IT 支持" />
           </el-form-item>
           <el-form-item class="md:col-span-2" label="Embedding 模型">
-            <el-select v-model="form.embeddingModelId" :disabled="embeddingModels.length === 0"
-              placeholder="请选择 Embedding 模型">
-              <el-option v-for="model in embeddingModels" :key="model.id"
-                :label="`${model.name} - ${model.provider} / ${model.modelName}`" :value="model.id" />
+            <el-select
+              v-model="form.embeddingModelId"
+              :disabled="embeddingModels.length === 0"
+              placeholder="请选择 Embedding 模型"
+            >
+              <el-option
+                v-for="model in embeddingModels"
+                :key="model.id"
+                :label="`${model.name} - ${model.provider} / ${model.modelName}`"
+                :value="model.id"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="分块大小">

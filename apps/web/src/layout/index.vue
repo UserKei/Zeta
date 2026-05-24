@@ -19,7 +19,7 @@ const navItems = [
 ]
 
 const activeMenu = computed(() => {
-  if (route.name === 'knowledge-base-detail') {
+  if (route.name === 'knowledge-documents' || route.name === 'paragraph') {
     return 'knowledge-bases'
   }
 

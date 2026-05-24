@@ -12,9 +12,21 @@ export default [
         component: () => import('@/views/KnowledgeBases/index.vue'),
       },
       {
-        path: 'detail/:id',
-        name: 'knowledge-base-detail',
-        component: () => import('@/views/KnowledgeBases/components/Detail.vue'),
+        path: ':knowledgeBaseId/document',
+        name: 'knowledge-documents',
+        component: () => import('@/views/KnowledgeDocuments/index.vue'),
+      },
+    ],
+  },
+  {
+    path: '/paragraph',
+    component: Layout,
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: ':knowledgeBaseId/:documentId',
+        name: 'paragraph',
+        component: () => import('@/views/Paragraph/index.vue'),
       },
     ],
   },
