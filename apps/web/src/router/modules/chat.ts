@@ -9,6 +9,11 @@ export default [
       {
         path: 'index/:agentId',
         name: 'agent-chat',
+        meta: {
+          requiresAuth: true,
+          activeMenu: 'agents',
+          title: 'Agent 聊天',
+        },
         component: () => import('@/views/Chat/index.vue'),
       },
     ],

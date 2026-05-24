@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import { Box, ChatDotRound, Collection } from '@element-plus/icons-vue'
+import {
+  Box,
+  ChatDotRound,
+  Collection,
+  SwitchButton,
+  UserFilled,
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 defineOptions({
@@ -19,12 +25,10 @@ const navItems = [
 ]
 
 const activeMenu = computed(() => {
-  if (route.name === 'knowledge-documents' || route.name === 'paragraph') {
-    return 'knowledge-bases'
-  }
+  const activeMenu = route.meta.activeMenu
 
-  if (route.name === 'agent-chat') {
-    return 'agents'
+  if (typeof activeMenu === 'string') {
+    return activeMenu
   }
 
   return typeof route.name === 'string' ? route.name : ''
@@ -41,42 +45,64 @@ const logout = async () => {
 </script>
 
 <template>
-  <main class="grid min-h-screen grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)]">
-    <aside
-      class="flex flex-col justify-between gap-4.5 border-b border-(--zeta-line) bg-(--zeta-panel) px-4.5 py-7 lg:border-r lg:border-b-0">
-      <div>
-        <p class="mb-4 text-[28px] font-extrabold text-(--zeta-blue) lg:mb-8.5">Zeta</p>
-        <el-menu
-          :default-active="activeMenu"
-          active-text-color="var(--zeta-blue)"
-          background-color="transparent"
-          class="zeta-sidebar-menu"
-          text-color="var(--zeta-muted)"
-          @select="openMenu"
-        >
-          <el-menu-item v-for="item in navItems" :key="item.name" :index="item.name">
+  <main class="flex min-h-screen flex-col bg-(image:--zeta-workspace-bg)">
+    <header class="sticky top-0 z-20 border-b border-(--zeta-line) bg-(--zeta-panel-glass) shadow-sm backdrop-blur">
+      <div
+        class="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(120px,1fr)_auto_minmax(180px,1fr)] lg:items-center lg:px-8">
+        <div class="flex min-w-0 items-center">
+          <button class="border-0 bg-transparent p-0 text-[26px] font-extrabold text-(--zeta-blue)" type="button"
+            @click="router.push({ name: 'models' })">
+            Zeta
+          </button>
+        </div>
+
+        <div class="min-w-0 justify-self-center overflow-x-auto">
+          <el-menu :default-active="activeMenu" active-text-color="var(--zeta-blue)" background-color="transparent"
+            class="zeta-top-menu" :ellipsis="false" mode="horizontal" text-color="var(--zeta-muted)" @select="openMenu">
+            <el-menu-item v-for="item in navItems" :key="item.name" :index="item.name">
+              <el-icon>
+                <component :is="item.icon" />
+              </el-icon>
+              <span>{{ item.label }}</span>
+            </el-menu-item>
+          </el-menu>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 lg:justify-self-end">
+          <div class="flex min-w-0 items-center gap-2 text-sm text-(--zeta-muted)">
             <el-icon>
-              <component :is="item.icon" />
+              <UserFilled />
             </el-icon>
-            <span>{{ item.label }}</span>
-          </el-menu-item>
-        </el-menu>
+            <strong class="truncate font-semibold text-(--zeta-content)">
+              {{ userStore.displayName }}
+            </strong>
+          </div>
+          <el-button :icon="SwitchButton" @click="logout">退出</el-button>
+        </div>
       </div>
+    </header>
 
-      <footer class="grid gap-3">
-        <strong>{{ userStore.displayName }}</strong>
-        <el-button @click="logout">退出</el-button>
-      </footer>
-    </aside>
-
-    <section class="grid min-w-0 content-start gap-5 bg-(image:--zeta-workspace-bg) p-5 lg:p-11">
+    <section class="grid min-w-0 flex-1 content-start gap-5 p-5 lg:p-8">
       <RouterView />
     </section>
   </main>
 </template>
 
 <style scoped>
-.zeta-sidebar-menu {
-  border-right: 0;
+.zeta-top-menu {
+  border-bottom: 0;
+  width: max-content;
+  min-width: max-content;
+}
+
+.zeta-top-menu :deep(.el-menu-item) {
+  flex-shrink: 0;
+  max-width: none;
+}
+
+.zeta-top-menu :deep(.el-menu-item span) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 </style>
