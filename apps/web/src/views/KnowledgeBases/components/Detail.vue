@@ -3,11 +3,17 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
+  createDocumentChunk,
   createManualDocument,
   deleteDocument,
+  deleteDocumentChunk,
   listDocumentChunks,
   listDocuments,
+  parseMarkdownDocument,
   testKnowledgeBaseRetrieval,
+  updateDocumentChunk,
+  type ChunkDraftPayload,
+  type ChunkStatus,
   type DocumentStatus,
   type KnowledgeChunk,
   type KnowledgeDocument,
@@ -19,6 +25,18 @@ import { getKnowledgeBase, type KnowledgeBase } from '@/apis/knowledge-bases'
 defineOptions({
   name: 'KnowledgeBaseDetail',
 })
+
+type ChunkForm = {
+  title: string
+  content: string
+  status: ChunkStatus
+}
+
+type DocumentForm = {
+  name: string
+  description: string
+  chunks: ChunkForm[]
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -35,12 +53,25 @@ const saving = ref(false)
 const chunksLoading = ref(false)
 const retrieving = ref(false)
 const formOpen = ref(false)
+const markdownContent = ref('')
+const parsingMarkdown = ref(false)
+const chunkDialogOpen = ref(false)
+const chunkEditingId = ref<string | null>(null)
+const chunkSaving = ref(false)
 
-const form = reactive<ManualDocumentPayload>({
+const createEmptyChunk = (content = ''): ChunkForm => ({
+  title: '',
+  content,
+  status: 'ACTIVE',
+})
+
+const form = reactive<DocumentForm>({
   name: '',
   description: '',
-  content: '',
+  chunks: [createEmptyChunk()],
 })
+
+const chunkForm = reactive<ChunkForm>(createEmptyChunk())
 
 const retrievalForm = reactive({
   question: '',
@@ -77,9 +108,39 @@ const openCreate = () => {
   Object.assign(form, {
     name: '',
     description: '',
-    content: '',
+    chunks: [createEmptyChunk()],
   })
+  markdownContent.value = ''
   formOpen.value = true
+}
+
+const addFormChunk = () => {
+  form.chunks.push(createEmptyChunk())
+}
+
+const removeFormChunk = (index: number) => {
+  if (form.chunks.length === 1) {
+    form.chunks[0] = createEmptyChunk()
+    return
+  }
+
+  form.chunks.splice(index, 1)
+}
+
+const applyMarkdown = async () => {
+  parsingMarkdown.value = true
+  error.value = ''
+
+  try {
+    const result = await parseMarkdownDocument(knowledgeBaseId.value, {
+      content: markdownContent.value,
+    })
+    form.chunks = result.chunks.map(toChunkForm)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Markdown 解析失败'
+  } finally {
+    parsingMarkdown.value = false
+  }
 }
 
 const saveDocument = async () => {
@@ -87,10 +148,12 @@ const saveDocument = async () => {
   error.value = ''
 
   try {
-    const saved = await createManualDocument(knowledgeBaseId.value, {
-      ...form,
+    const payload: ManualDocumentPayload = {
+      name: form.name,
       description: form.description || undefined,
-    })
+      chunks: form.chunks.map(toChunkPayload),
+    }
+    const saved = await createManualDocument(knowledgeBaseId.value, payload)
     documents.value.unshift(saved)
     formOpen.value = false
   } catch (cause) {
@@ -108,9 +171,96 @@ const showChunks = async (document: KnowledgeDocument) => {
   try {
     chunks.value = await listDocumentChunks(document.id)
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载分块失败'
+    error.value = cause instanceof Error ? cause.message : '加载分段失败'
   } finally {
     chunksLoading.value = false
+  }
+}
+
+const syncSelectedDocument = async (documentId: string) => {
+  const [documentList, chunkList] = await Promise.all([
+    listDocuments(knowledgeBaseId.value),
+    listDocumentChunks(documentId),
+  ])
+  documents.value = documentList
+  selectedDocument.value = documentList.find((document) => document.id === documentId) ?? null
+  chunks.value = selectedDocument.value ? chunkList : []
+}
+
+const openCreateChunk = () => {
+  if (!selectedDocument.value) {
+    return
+  }
+
+  Object.assign(chunkForm, createEmptyChunk())
+  chunkEditingId.value = null
+  chunkDialogOpen.value = true
+}
+
+const openEditChunk = (chunk: KnowledgeChunk) => {
+  Object.assign(chunkForm, {
+    title: chunk.title ?? '',
+    content: chunk.content,
+    status: chunk.status,
+  })
+  chunkEditingId.value = chunk.id
+  chunkDialogOpen.value = true
+}
+
+const saveChunk = async () => {
+  if (!selectedDocument.value) {
+    return
+  }
+
+  chunkSaving.value = true
+  error.value = ''
+
+  try {
+    if (chunkEditingId.value) {
+      await updateDocumentChunk(chunkEditingId.value, toChunkPayload(chunkForm))
+    } else {
+      await createDocumentChunk(selectedDocument.value.id, toChunkPayload(chunkForm))
+    }
+
+    await syncSelectedDocument(selectedDocument.value.id)
+    chunkDialogOpen.value = false
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '保存分段失败'
+  } finally {
+    chunkSaving.value = false
+  }
+}
+
+const toggleChunk = async (chunk: KnowledgeChunk) => {
+  error.value = ''
+
+  try {
+    await updateDocumentChunk(chunk.id, {
+      status: chunk.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE',
+    })
+    await syncSelectedDocument(chunk.documentId)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '更新分段状态失败'
+  }
+}
+
+const removeChunk = async (chunk: KnowledgeChunk) => {
+  error.value = ''
+
+  try {
+    await ElMessageBox.confirm(`删除分段 #${chunk.position + 1}？`, '删除分段', {
+      cancelButtonText: '取消',
+      confirmButtonText: '删除',
+      type: 'warning',
+    })
+    await deleteDocumentChunk(chunk.id)
+    await syncSelectedDocument(chunk.documentId)
+  } catch (cause) {
+    if (cause === 'cancel' || cause === 'close') {
+      return
+    }
+
+    error.value = cause instanceof Error ? cause.message : '删除分段失败'
   }
 }
 
@@ -155,6 +305,18 @@ const runRetrieval = async () => {
   }
 }
 
+const toChunkPayload = (chunk: ChunkForm): ChunkDraftPayload => ({
+  title: chunk.title || undefined,
+  content: chunk.content,
+  status: chunk.status,
+})
+
+const toChunkForm = (chunk: ChunkDraftPayload): ChunkForm => ({
+  title: chunk.title ?? '',
+  content: chunk.content,
+  status: chunk.status ?? 'ACTIVE',
+})
+
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -169,7 +331,7 @@ const statusText = (status: DocumentStatus) =>
   ({
     UPLOADED: '已上传',
     PARSING: '解析中',
-    CHUNKING: '分块中',
+    CHUNKING: '分段中',
     EMBEDDING: '向量化',
     INDEXED: '已索引',
     FAILED: '失败',
@@ -188,6 +350,22 @@ const statusClass = (status: DocumentStatus) => {
   return 'warning'
 }
 
+const chunkStatusText = (status: ChunkStatus) =>
+  ({
+    ACTIVE: '启用',
+    DISABLED: '停用',
+  })[status]
+
+const chunkStatusClass = (status: ChunkStatus) => (status === 'ACTIVE' ? 'success' : 'info')
+
+const sourceText = (document: KnowledgeDocument) =>
+  ({
+    MANUAL: '手动分段',
+    FILE_UPLOAD: '文件上传',
+    AI_EXTRACTED: 'AI 提炼',
+    WEB_IMPORT: '网页导入',
+  })[document.sourceType]
+
 onMounted(load)
 </script>
 
@@ -198,14 +376,14 @@ onMounted(load)
         <p class="mb-2.5 font-bold text-(--zeta-blue)">MVP 第三阶段</p>
         <h1 class="m-0 text-[34px] font-bold">{{ knowledgeBase?.name || '知识库详情' }}</h1>
         <p class="mt-2.5 text-(--zeta-muted)">
-          {{ knowledgeBase?.description || '维护文档、分块和检索测试。' }}
+          {{ knowledgeBase?.description || '维护文档、分段和检索测试。' }}
         </p>
       </div>
       <div class="flex flex-col items-start gap-4.5 sm:flex-row sm:items-center">
-        <el-button @click="router.push({ name: 'knowledge-bases' })">
-          返回
+        <el-button @click="router.push({ name: 'knowledge-bases' })">返回</el-button>
+        <el-button :disabled="loading" type="primary" @click="openCreate">
+          新增文本知识
         </el-button>
-        <el-button :disabled="loading" type="primary" @click="openCreate">新增文本知识</el-button>
       </div>
     </header>
 
@@ -220,11 +398,11 @@ onMounted(load)
       </article>
       <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
         <strong>{{ knowledgeBase?.chunkSize || 0 }} / {{ knowledgeBase?.chunkOverlap || 0 }}</strong>
-        <span class="text-(--zeta-muted)">分块大小 / 重叠长度</span>
+        <span class="text-(--zeta-muted)">文件解析默认分块大小 / 重叠长度</span>
       </article>
       <article class="grid gap-2 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4.5">
         <strong>{{ indexedCount }} / {{ documents.length }}</strong>
-        <span class="text-(--zeta-muted)">已索引文档 / 全部文档，分块 {{ totalChunks }}</span>
+        <span class="text-(--zeta-muted)">已索引文档 / 全部文档，分段 {{ totalChunks }}</span>
       </article>
     </section>
 
@@ -234,7 +412,7 @@ onMounted(load)
           class="flex flex-col items-start justify-between gap-4.5 border-b border-(--zeta-line) p-4.5 lg:flex-row lg:items-end">
           <div>
             <h2 class="m-0 text-xl font-bold">文档</h2>
-            <p class="mt-2.5 text-(--zeta-muted)">手动文本会立即分块并写入向量索引。</p>
+            <p class="mt-2.5 text-(--zeta-muted)">手动知识由用户维护分段，Markdown 可先解析为分段草稿。</p>
           </div>
         </header>
 
@@ -243,9 +421,7 @@ onMounted(load)
             <template #default="{ row }: { row: KnowledgeDocument }">
               <div class="grid gap-1">
                 <strong>{{ row.name }}</strong>
-                <small class="text-(--zeta-muted)">
-                  {{ row.sourceType === 'MANUAL' ? '手动录入' : row.sourceType }}
-                </small>
+                <small class="text-(--zeta-muted)">{{ sourceText(row) }}</small>
               </div>
             </template>
           </el-table-column>
@@ -261,11 +437,11 @@ onMounted(load)
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="字符 / 分块" min-width="130">
+          <el-table-column label="字符 / 分段" min-width="130">
             <template #default="{ row }: { row: KnowledgeDocument }">
               <div class="grid gap-1">
                 <strong>{{ row.charCount }}</strong>
-                <small class="text-(--zeta-muted)">分块 {{ row.chunkCount }}</small>
+                <small class="text-(--zeta-muted)">分段 {{ row.chunkCount }}</small>
               </div>
             </template>
           </el-table-column>
@@ -276,7 +452,7 @@ onMounted(load)
           </el-table-column>
           <el-table-column align="right" fixed="right" label="操作" min-width="140">
             <template #default="{ row }: { row: KnowledgeDocument }">
-              <el-button size="small" @click="showChunks(row)">分块</el-button>
+              <el-button size="small" @click="showChunks(row)">分段</el-button>
               <el-button size="small" type="danger" @click="removeDocument(row)">删除</el-button>
             </template>
           </el-table-column>
@@ -289,7 +465,7 @@ onMounted(load)
           class="flex flex-col items-start justify-between gap-4.5 border-b border-(--zeta-line) p-4.5 lg:flex-row lg:items-end">
           <div>
             <h2 class="m-0 text-xl font-bold">检索测试</h2>
-            <p class="mt-2.5 text-(--zeta-muted)">在当前知识库的已索引分块里召回内容。</p>
+            <p class="mt-2.5 text-(--zeta-muted)">在当前知识库的已索引分段里召回内容。</p>
           </div>
         </header>
 
@@ -319,7 +495,7 @@ onMounted(load)
               </header>
               <p class="m-0 whitespace-pre-wrap text-(--zeta-content) leading-7">{{ hit.content }}</p>
               <small class="text-(--zeta-muted)">
-                分块 #{{ hit.position + 1 }}，{{ hit.charCount }} 字符
+                分段 #{{ hit.position + 1 }}，{{ hit.charCount }} 字符
               </small>
             </article>
           </template>
@@ -332,25 +508,41 @@ onMounted(load)
       <header
         class="flex flex-col items-start justify-between gap-4.5 border-b border-(--zeta-line) p-4.5 lg:flex-row lg:items-end">
         <div>
-          <h2 class="m-0 text-xl font-bold">{{ selectedDocument.name }} 的分块</h2>
-          <p class="mt-2.5 text-(--zeta-muted)">{{ selectedDocument.chunkCount }} 个分块</p>
+          <h2 class="m-0 text-xl font-bold">{{ selectedDocument.name }} 的分段</h2>
+          <p class="mt-2.5 text-(--zeta-muted)">{{ selectedDocument.chunkCount }} 个分段</p>
         </div>
-        <el-button @click="selectedDocument = null">收起</el-button>
+        <div class="flex gap-3">
+          <el-button type="primary" @click="openCreateChunk">新增分段</el-button>
+          <el-button @click="selectedDocument = null">收起</el-button>
+        </div>
       </header>
 
-      <div v-if="chunksLoading" class="grid min-h-24 place-items-center text-(--zeta-muted)">分块加载中</div>
+      <div v-if="chunksLoading" class="grid min-h-24 place-items-center text-(--zeta-muted)">分段加载中</div>
       <div v-else class="grid max-h-130 gap-3.5 overflow-auto p-4.5">
         <article v-for="chunk in chunks" :key="chunk.id"
-          class="grid gap-2.5 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-3.5">
-          <header class="flex justify-between gap-3">
-            <strong>#{{ chunk.position + 1 }}</strong>
-            <span class="text-(--zeta-muted)">{{ chunk.charCount }} 字符</span>
+          class="grid gap-3 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-3.5">
+          <header class="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
+            <div class="grid gap-1">
+              <strong>{{ chunk.title || `分段 #${chunk.position + 1}` }}</strong>
+              <span class="text-(--zeta-muted)">{{ chunk.charCount }} 字符</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <el-tag :type="chunkStatusClass(chunk.status)" effect="light">
+                {{ chunkStatusText(chunk.status) }}
+              </el-tag>
+              <el-button size="small" @click="openEditChunk(chunk)">编辑</el-button>
+              <el-button size="small" @click="toggleChunk(chunk)">
+                {{ chunk.status === 'ACTIVE' ? '停用' : '启用' }}
+              </el-button>
+              <el-button size="small" type="danger" @click="removeChunk(chunk)">删除</el-button>
+            </div>
           </header>
           <p class="m-0 whitespace-pre-wrap text-(--zeta-content) leading-7">{{ chunk.content }}</p>
         </article>
       </div>
     </section>
-    <el-dialog v-model="formOpen" title="新增文本知识" width="760px">
+
+    <el-dialog v-model="formOpen" title="新增文本知识" width="920px">
       <el-form label-position="top" @submit.prevent="saveDocument">
         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
           <el-form-item label="文档名称">
@@ -359,15 +551,76 @@ onMounted(load)
           <el-form-item label="描述">
             <el-input v-model="form.description" />
           </el-form-item>
-          <el-form-item class="md:col-span-2" label="正文">
-            <el-input v-model="form.content" :rows="12" type="textarea" />
-          </el-form-item>
         </div>
+
+        <section class="mb-4 grid gap-3 rounded-lg border border-(--zeta-line) bg-(--zeta-surface-soft) p-3.5">
+          <div class="flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
+            <div>
+              <strong>Markdown 解析</strong>
+              <p class="mt-2 text-(--zeta-muted)">粘贴 Markdown 后按标题生成分段草稿，可再手动调整。</p>
+            </div>
+            <el-button :loading="parsingMarkdown" @click="applyMarkdown">解析为分段</el-button>
+          </div>
+          <el-input v-model="markdownContent" :rows="5" placeholder="# 标题&#10;正文内容" type="textarea" />
+        </section>
+
+        <section class="grid gap-3.5">
+          <header class="flex items-center justify-between gap-3">
+            <strong>分段列表</strong>
+            <el-button @click="addFormChunk">添加分段</el-button>
+          </header>
+
+          <article v-for="(chunk, index) in form.chunks" :key="index"
+            class="grid gap-3 rounded-lg border border-(--zeta-line) p-3.5">
+            <header class="flex items-center justify-between gap-3">
+              <strong>分段 #{{ index + 1 }}</strong>
+              <el-button size="small" type="danger" @click="removeFormChunk(index)">删除</el-button>
+            </header>
+            <div class="grid grid-cols-1 gap-3.5 md:grid-cols-[minmax(0,1fr)_140px]">
+              <el-form-item label="标题">
+                <el-input v-model="chunk.title" />
+              </el-form-item>
+              <el-form-item label="状态">
+                <el-select v-model="chunk.status">
+                  <el-option label="启用" value="ACTIVE" />
+                  <el-option label="停用" value="DISABLED" />
+                </el-select>
+              </el-form-item>
+              <el-form-item class="md:col-span-2" label="内容">
+                <el-input v-model="chunk.content" :rows="6" type="textarea" />
+              </el-form-item>
+            </div>
+          </article>
+        </section>
       </el-form>
 
       <template #footer>
         <el-button @click="formOpen = false">取消</el-button>
         <el-button :loading="saving" type="primary" @click="saveDocument">保存并索引</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="chunkDialogOpen" :title="chunkEditingId ? '编辑分段' : '新增分段'" width="760px">
+      <el-form label-position="top" @submit.prevent="saveChunk">
+        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-[minmax(0,1fr)_140px]">
+          <el-form-item label="标题">
+            <el-input v-model="chunkForm.title" />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="chunkForm.status">
+              <el-option label="启用" value="ACTIVE" />
+              <el-option label="停用" value="DISABLED" />
+            </el-select>
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="内容">
+            <el-input v-model="chunkForm.content" :rows="10" type="textarea" />
+          </el-form-item>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="chunkDialogOpen = false">取消</el-button>
+        <el-button :loading="chunkSaving" type="primary" @click="saveChunk">保存并重建索引</el-button>
       </template>
     </el-dialog>
   </div>

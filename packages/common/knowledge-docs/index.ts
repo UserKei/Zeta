@@ -56,10 +56,36 @@ export type KnowledgeChunk = {
   updatedAt: string;
 };
 
+export type ChunkDraftPayload = {
+  title?: string | null;
+  content: string;
+  status?: ChunkStatus;
+};
+
 export type ManualDocumentPayload = {
   name: string;
-  content: string;
   description?: string;
+  chunks: ChunkDraftPayload[];
+};
+
+export type MarkdownParsePayload = {
+  content: string;
+};
+
+export type MarkdownParseResult = {
+  chunks: ChunkDraftPayload[];
+};
+
+export type ChunkPayload = {
+  title?: string | null;
+  content: string;
+  status?: ChunkStatus;
+};
+
+export type ChunkUpdatePayload = {
+  title?: string | null;
+  content?: string;
+  status?: ChunkStatus;
 };
 
 export type RetrievalTestPayload = {
