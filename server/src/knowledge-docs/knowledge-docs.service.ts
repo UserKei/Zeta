@@ -6,6 +6,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import {
   EmbeddingService,
+  MarkdownParserService,
   PrismaService,
   RetrievalService,
 } from '@libs/shared';
@@ -18,14 +19,20 @@ import {
 } from '@libs/shared/generated/prisma/enums';
 import type { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
+  ChunkReorderPayload,
   ChunkDraftPayload,
   ChunkPayload,
   ChunkUpdatePayload,
+  DocumentUpdatePayload,
   MarkdownParsePayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
+
+type DocumentRecord = Prisma.DocumentGetPayload<{
+  select: typeof documentSelect;
+}>;
 
 type ChunkDraft = {
   id: string;
@@ -51,17 +58,75 @@ export class KnowledgeDocsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    private readonly markdownParser: MarkdownParserService,
     private readonly retrievalService: RetrievalService,
   ) {}
 
   async listByKnowledgeBase(knowledgeBaseId: string) {
     await this.requireKnowledgeBase(knowledgeBaseId);
 
-    return this.prisma.document.findMany({
+    const documents = await this.prisma.document.findMany({
       where: { knowledgeBaseId },
       orderBy: { updatedAt: 'desc' },
       select: documentSelect,
     });
+
+    return documents.map((document) => this.toDocumentResponse(document));
+  }
+
+  async getDocument(id: string) {
+    const document = await this.prisma.document.findUnique({
+      where: { id },
+      select: documentSelect,
+    });
+
+    if (!document) {
+      throw new NotFoundException('document does not exist');
+    }
+
+    return this.toDocumentResponse(document);
+  }
+
+  async updateDocument(id: string, input: DocumentUpdatePayload) {
+    const document = await this.prisma.document.findUnique({
+      where: { id },
+      select: documentSelect,
+    });
+
+    if (!document) {
+      throw new NotFoundException('document does not exist');
+    }
+
+    const data: Prisma.DocumentUpdateInput = {};
+
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+
+      if (!name) {
+        throw new BadRequestException('name is required');
+      }
+
+      data.name = name;
+    }
+
+    if (input.description !== undefined) {
+      data.metadata = {
+        ...this.toMetadataObject(document.metadata),
+        description: input.description?.trim() || null,
+      };
+    }
+
+    if (Object.keys(data).length === 0) {
+      return this.toDocumentResponse(document);
+    }
+
+    const updated = await this.prisma.document.update({
+      where: { id },
+      data,
+      select: documentSelect,
+    });
+
+    return this.toDocumentResponse(updated);
   }
 
   async createManual(knowledgeBaseId: string, input: ManualDocumentPayload) {
@@ -105,11 +170,13 @@ export class KnowledgeDocsService {
         knowledgeBase.embeddingModel,
       );
 
-      return this.prisma.document.update({
+      const indexedDocument = await this.prisma.document.update({
         where: { id: document.id },
         data: { status: DocumentStatus.INDEXED, errorMessage: null },
         select: documentSelect,
       });
+
+      return this.toDocumentResponse(indexedDocument);
     } catch (cause) {
       await this.prisma.document.update({
         where: { id: document.id },
@@ -140,7 +207,10 @@ export class KnowledgeDocsService {
     }
 
     return {
-      chunks: this.parseMarkdownChunks(content),
+      chunks: this.markdownParser.parse(content, {
+        maxChunkLength: MAX_CHUNK_CONTENT_LENGTH,
+        maxChunkCount: MAX_CHUNK_COUNT,
+      }),
     };
   }
 
@@ -163,19 +233,48 @@ export class KnowledgeDocsService {
       throw new BadRequestException('document must have active chunks');
     }
 
-    const position = await this.prisma.chunk.count({ where: { documentId } });
-    const created = await this.prisma.chunk.create({
-      data: {
-        id: randomUUID(),
-        knowledgeBaseId: document.knowledgeBaseId,
-        documentId,
-        title: chunk.title,
-        content: chunk.content,
-        position,
-        charCount: chunk.charCount,
-        status: chunk.status,
-      },
-      select: chunkSelect,
+    const created = await this.prisma.$transaction(async (tx) => {
+      let position = await tx.chunk.count({ where: { documentId } });
+
+      if (input.afterChunkId) {
+        const previousChunk = await tx.chunk.findFirst({
+          where: { id: input.afterChunkId, documentId },
+          select: { position: true },
+        });
+
+        if (!previousChunk) {
+          throw new NotFoundException('after chunk does not exist');
+        }
+
+        position = previousChunk.position + 1;
+
+        const movingChunks = await tx.chunk.findMany({
+          where: { documentId, position: { gte: position } },
+          orderBy: { position: 'desc' },
+          select: { id: true, position: true },
+        });
+
+        for (const movingChunk of movingChunks) {
+          await tx.chunk.update({
+            where: { id: movingChunk.id },
+            data: { position: movingChunk.position + 1 },
+          });
+        }
+      }
+
+      return tx.chunk.create({
+        data: {
+          id: randomUUID(),
+          knowledgeBaseId: document.knowledgeBaseId,
+          documentId,
+          title: chunk.title,
+          content: chunk.content,
+          position,
+          charCount: chunk.charCount,
+          status: chunk.status,
+        },
+        select: chunkSelect,
+      });
     });
 
     await this.refreshChunkSearchVector(created.id);
@@ -261,6 +360,51 @@ export class KnowledgeDocsService {
     await this.refreshDocumentStats(chunk.documentId);
 
     return { id };
+  }
+
+  async reorderChunks(documentId: string, input: ChunkReorderPayload) {
+    await this.requireDocument(documentId);
+
+    if (!Array.isArray(input.chunkIds)) {
+      throw new BadRequestException('chunkIds are required');
+    }
+
+    const chunks = await this.prisma.chunk.findMany({
+      where: { documentId },
+      select: { id: true },
+    });
+    const existingChunkIds = new Set(chunks.map((chunk) => chunk.id));
+    const nextChunkIds = new Set(input.chunkIds);
+
+    if (
+      chunks.length !== input.chunkIds.length ||
+      existingChunkIds.size !== nextChunkIds.size ||
+      input.chunkIds.some((chunkId) => !existingChunkIds.has(chunkId))
+    ) {
+      throw new BadRequestException(
+        'chunkIds must include all document chunks',
+      );
+    }
+
+    const temporaryPositionOffset = 100_000;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const [position, chunkId] of input.chunkIds.entries()) {
+        await tx.chunk.update({
+          where: { id: chunkId },
+          data: { position: position + temporaryPositionOffset },
+        });
+      }
+
+      for (const [position, chunkId] of input.chunkIds.entries()) {
+        await tx.chunk.update({
+          where: { id: chunkId },
+          data: { position },
+        });
+      }
+    });
+
+    return this.listChunks(documentId);
   }
 
   async remove(documentId: string) {
@@ -441,71 +585,6 @@ export class KnowledgeDocsService {
     }
   }
 
-  private parseMarkdownChunks(content: string) {
-    const chunks: ChunkDraftPayload[] = [];
-    const lines = content.split('\n');
-    let title: string | null = null;
-    let buffer: string[] = [];
-
-    const flush = () => {
-      const body = buffer.join('\n').trim();
-      const chunkContent = body || title || '';
-
-      if (chunkContent) {
-        for (const contentPart of this.splitLongChunk(chunkContent)) {
-          chunks.push({
-            title,
-            content: contentPart,
-            status: ChunkStatus.ACTIVE,
-          });
-        }
-      }
-
-      buffer = [];
-    };
-
-    for (const line of lines) {
-      const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
-
-      if (heading) {
-        flush();
-        title = heading[2].trim();
-      } else {
-        buffer.push(line);
-      }
-    }
-
-    flush();
-
-    if (chunks.length === 0) {
-      throw new BadRequestException('markdown content cannot be parsed');
-    }
-
-    if (chunks.length > MAX_CHUNK_COUNT) {
-      throw new BadRequestException(
-        `chunk count cannot exceed ${MAX_CHUNK_COUNT}`,
-      );
-    }
-
-    return chunks;
-  }
-
-  private splitLongChunk(content: string) {
-    if (content.length <= MAX_CHUNK_CONTENT_LENGTH) {
-      return [content];
-    }
-
-    const chunks: string[] = [];
-    let start = 0;
-
-    while (start < content.length) {
-      chunks.push(content.slice(start, start + MAX_CHUNK_CONTENT_LENGTH));
-      start += MAX_CHUNK_CONTENT_LENGTH;
-    }
-
-    return chunks;
-  }
-
   private toChunkDrafts(chunks: ChunkDraftPayload[] | undefined) {
     if (!Array.isArray(chunks)) {
       throw new BadRequestException('chunks are required');
@@ -561,6 +640,27 @@ export class KnowledgeDocsService {
 
   private countChars(chunks: Array<{ charCount: number }>) {
     return chunks.reduce((total, chunk) => total + chunk.charCount, 0);
+  }
+
+  private toDocumentResponse(document: DocumentRecord) {
+    const { metadata, ...documentData } = document;
+    const metadataObject = this.toMetadataObject(metadata);
+
+    return {
+      ...documentData,
+      description:
+        typeof metadataObject.description === 'string'
+          ? metadataObject.description
+          : null,
+    };
+  }
+
+  private toMetadataObject(metadata: Prisma.JsonValue) {
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      return metadata as Record<string, Prisma.JsonValue>;
+    }
+
+    return {};
   }
 
   private normalizeText(content: string | undefined) {

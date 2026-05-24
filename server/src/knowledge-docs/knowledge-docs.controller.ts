@@ -10,8 +10,10 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@libs/shared';
 import type {
+  ChunkReorderPayload,
   ChunkPayload,
   ChunkUpdatePayload,
+  DocumentUpdatePayload,
   MarkdownParsePayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
@@ -41,6 +43,7 @@ export class KnowledgeDocsController {
     @Param('knowledgeBaseId') knowledgeBaseId: string,
     @Body() body: MarkdownParsePayload,
   ) {
+    // 临时预解析入口；后续会替换为 .md 文件上传预览。
     return this.knowledgeDocsService.parseMarkdown(knowledgeBaseId, body);
   }
 
@@ -57,9 +60,24 @@ export class KnowledgeDocsController {
     return this.knowledgeDocsService.listChunks(id);
   }
 
+  @Get('documents/:id')
+  getDocument(@Param('id') id: string) {
+    return this.knowledgeDocsService.getDocument(id);
+  }
+
+  @Patch('documents/:id')
+  updateDocument(@Param('id') id: string, @Body() body: DocumentUpdatePayload) {
+    return this.knowledgeDocsService.updateDocument(id, body);
+  }
+
   @Post('documents/:id/chunks')
   createChunk(@Param('id') id: string, @Body() body: ChunkPayload) {
     return this.knowledgeDocsService.createChunk(id, body);
+  }
+
+  @Patch('documents/:id/chunks/reorder')
+  reorderChunks(@Param('id') id: string, @Body() body: ChunkReorderPayload) {
+    return this.knowledgeDocsService.reorderChunks(id, body);
   }
 
   @Patch('chunks/:id')

@@ -1,7 +1,9 @@
 import { responseData, serverApi, type Response } from '..'
 import type {
+  ChunkReorderPayload,
   ChunkPayload,
   ChunkUpdatePayload,
+  DocumentUpdatePayload,
   KnowledgeChunk,
   KnowledgeDocument,
   MarkdownParsePayload,
@@ -13,9 +15,11 @@ import type {
 
 export type {
   ChunkDraftPayload,
+  ChunkReorderPayload,
   ChunkPayload,
   ChunkStatus,
   ChunkUpdatePayload,
+  DocumentUpdatePayload,
   DocumentSourceType,
   DocumentStatus,
   KnowledgeChunk,
@@ -64,6 +68,23 @@ export const listDocumentChunks = (documentId: string) =>
     >,
   )
 
+export const getDocument = (documentId: string) =>
+  responseData(
+    serverApi.get(`/documents/${documentId}`) as Promise<
+      Response<KnowledgeDocument>
+    >,
+  )
+
+export const updateDocument = (
+  documentId: string,
+  payload: DocumentUpdatePayload,
+) =>
+  responseData(
+    serverApi.patch(`/documents/${documentId}`, payload) as Promise<
+      Response<KnowledgeDocument>
+    >,
+  )
+
 export const createDocumentChunk = (documentId: string, payload: ChunkPayload) =>
   responseData(
     serverApi.post(`/documents/${documentId}/chunks`, payload) as Promise<
@@ -84,6 +105,17 @@ export const updateDocumentChunk = (
 export const deleteDocumentChunk = (chunkId: string) =>
   responseData(
     serverApi.delete(`/chunks/${chunkId}`) as Promise<Response<{ id: string }>>,
+  )
+
+export const reorderDocumentChunks = (
+  documentId: string,
+  payload: ChunkReorderPayload,
+) =>
+  responseData(
+    serverApi.patch(
+      `/documents/${documentId}/chunks/reorder`,
+      payload,
+    ) as Promise<Response<KnowledgeChunk[]>>,
   )
 
 export const deleteDocument = (documentId: string) =>

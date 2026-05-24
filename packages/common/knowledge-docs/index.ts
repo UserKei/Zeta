@@ -33,6 +33,7 @@ export type KnowledgeDocument = {
   knowledgeBaseId: string;
   sourceFileId: string | null;
   name: string;
+  description: string | null;
   sourceType: DocumentSourceType;
   status: DocumentStatus;
   charCount: number;
@@ -68,6 +69,11 @@ export type ManualDocumentPayload = {
   chunks: ChunkDraftPayload[];
 };
 
+export type DocumentUpdatePayload = {
+  name?: string;
+  description?: string | null;
+};
+
 export type MarkdownParsePayload = {
   content: string;
 };
@@ -80,12 +86,17 @@ export type ChunkPayload = {
   title?: string | null;
   content: string;
   status?: ChunkStatus;
+  afterChunkId?: string | null;
 };
 
 export type ChunkUpdatePayload = {
   title?: string | null;
   content?: string;
   status?: ChunkStatus;
+};
+
+export type ChunkReorderPayload = {
+  chunkIds: string[];
 };
 
 export type RetrievalTestPayload = {
