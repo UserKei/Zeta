@@ -59,7 +59,7 @@ export class AuthService {
     try {
       decoded = this.jwtService.verify<AuthTokenPayload>(token);
     } catch {
-      throw new UnauthorizedException('token is expired or invalid');
+      throw new UnauthorizedException('登录状态已过期，请重新登录');
     }
 
     if (
@@ -67,7 +67,7 @@ export class AuthService {
       typeof decoded.sub !== 'string' ||
       typeof decoded.username !== 'string'
     ) {
-      throw new UnauthorizedException('token is expired or invalid');
+      throw new UnauthorizedException('登录状态已过期，请重新登录');
     }
 
     return decoded;

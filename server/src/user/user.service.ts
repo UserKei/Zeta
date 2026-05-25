@@ -16,7 +16,7 @@ export class UserService {
 
   async login(username: string, password: string) {
     if (!username?.trim() || !password) {
-      throw new BadRequestException('username and password are required');
+      throw new BadRequestException('请输入用户名和密码');
     }
 
     const user = await this.prisma.user.findUnique({
@@ -27,7 +27,7 @@ export class UserService {
       !user ||
       !(await this.authService.verifyPassword(password, user.passwordHash))
     ) {
-      throw new UnauthorizedException('username or password is incorrect');
+      throw new UnauthorizedException('用户名或密码错误');
     }
 
     const authUser = this.toAuthUser(user);
@@ -40,7 +40,7 @@ export class UserService {
 
   async refreshToken(refreshToken: string) {
     if (!refreshToken) {
-      throw new BadRequestException('refresh token is required');
+      throw new BadRequestException('请重新登录');
     }
 
     const payload = this.authService.verifyToken(refreshToken, 'refresh');
@@ -60,7 +60,7 @@ export class UserService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('user does not exist');
+      throw new UnauthorizedException('登录状态已失效，请重新登录');
     }
 
     return user;
@@ -72,7 +72,7 @@ export class UserService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('user does not exist');
+      throw new UnauthorizedException('登录状态已失效，请重新登录');
     }
 
     return user;
