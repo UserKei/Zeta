@@ -7,7 +7,7 @@ export type KnowledgeBase = {
   name: string
   description: string | null
   status: KnowledgeBaseStatus
-  embeddingModelId: string
+  embeddingModelId: string | null
   chunkSize: number
   chunkOverlap: number
   createdAt: string
@@ -18,7 +18,7 @@ export type KnowledgeBase = {
     provider: string
     modelName: string
     isEnabled: boolean
-  }
+  } | null
 }
 
 export type KnowledgeBasePayload = {

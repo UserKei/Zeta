@@ -218,11 +218,17 @@ export class ChatService {
       throw new BadRequestException('agent is disabled');
     }
 
+    const model = agent.model;
+
+    if (!model) {
+      throw new BadRequestException('agent chat model is not configured');
+    }
+
     if (
-      agent.model.type !== AiModelType.CHAT ||
-      !agent.model.isEnabled ||
-      !agent.model.baseUrl ||
-      !agent.model.apiKey
+      model.type !== AiModelType.CHAT ||
+      !model.isEnabled ||
+      !model.baseUrl ||
+      !model.apiKey
     ) {
       throw new BadRequestException(
         'agent chat model must be enabled and configured',
@@ -235,7 +241,7 @@ export class ChatService {
       );
     }
 
-    return agent;
+    return { ...agent, model };
   }
 
   private async requireOwnedSession(

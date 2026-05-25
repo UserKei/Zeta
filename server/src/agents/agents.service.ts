@@ -92,18 +92,37 @@ export class AgentsService {
   async remove(id: string) {
     await this.requireAgent(id);
 
-    const sessionCount = await this.prisma.chatSession.count({
-      where: { agentId: id },
+    await this.prisma.$transaction(async (prisma) => {
+      const sessions = await prisma.chatSession.findMany({
+        where: { agentId: id },
+        select: { id: true },
+      });
+      const sessionIds = sessions.map((session) => session.id);
+
+      if (sessionIds.length > 0) {
+        const messages = await prisma.chatMessage.findMany({
+          where: { sessionId: { in: sessionIds } },
+          select: { id: true },
+        });
+        const messageIds = messages.map((message) => message.id);
+
+        if (messageIds.length > 0) {
+          await prisma.chatCitation.deleteMany({
+            where: { messageId: { in: messageIds } },
+          });
+        }
+
+        await prisma.chatMessage.deleteMany({
+          where: { sessionId: { in: sessionIds } },
+        });
+        await prisma.chatSession.deleteMany({
+          where: { id: { in: sessionIds } },
+        });
+      }
+
+      await prisma.agentKnowledgeBase.deleteMany({ where: { agentId: id } });
+      await prisma.agent.delete({ where: { id } });
     });
-
-    if (sessionCount > 0) {
-      throw new BadRequestException('agent has chat sessions');
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.agentKnowledgeBase.deleteMany({ where: { agentId: id } }),
-      this.prisma.agent.delete({ where: { id } }),
-    ]);
 
     return { id };
   }

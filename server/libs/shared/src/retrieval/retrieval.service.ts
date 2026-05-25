@@ -41,9 +41,10 @@ export class RetrievalService {
     const limit = this.parseTopK(topK);
     const knowledgeBase =
       await this.requireRetrievableKnowledgeBase(knowledgeBaseId);
+    const embeddingModel = this.getRetrievableEmbeddingModel(knowledgeBase);
     const hits = await this.retrieveWithKnowledgeBase(
       knowledgeBase.id,
-      knowledgeBase.embeddingModel,
+      embeddingModel,
       normalizedQuestion,
       limit,
     );
@@ -75,10 +76,12 @@ export class RetrievalService {
         uniqueKnowledgeBaseIds.map(async (knowledgeBaseId) => {
           const knowledgeBase =
             await this.requireRetrievableKnowledgeBase(knowledgeBaseId);
+          const embeddingModel =
+            this.getRetrievableEmbeddingModel(knowledgeBase);
 
           return this.retrieveWithKnowledgeBase(
             knowledgeBase.id,
-            knowledgeBase.embeddingModel,
+            embeddingModel,
             normalizedQuestion,
             limit,
           );
@@ -213,8 +216,22 @@ export class RetrievalService {
       throw new NotFoundException('knowledge base does not exist');
     }
 
+    return knowledgeBase;
+  }
+
+  private getRetrievableEmbeddingModel(
+    knowledgeBase: Awaited<
+      ReturnType<RetrievalService['requireRetrievableKnowledgeBase']>
+    >,
+  ) {
     if (knowledgeBase.status !== KnowledgeBaseStatus.ACTIVE) {
       throw new BadRequestException('knowledge base is disabled');
+    }
+
+    if (!knowledgeBase.embeddingModel) {
+      throw new BadRequestException(
+        'knowledge base embedding model is not configured',
+      );
     }
 
     if (
@@ -226,6 +243,6 @@ export class RetrievalService {
       );
     }
 
-    return knowledgeBase;
+    return knowledgeBase.embeddingModel;
   }
 }

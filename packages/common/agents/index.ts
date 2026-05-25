@@ -24,7 +24,7 @@ export type Agent = {
   id: string;
   name: string;
   description: string | null;
-  modelId: string;
+  modelId: string | null;
   systemPrompt: string;
   openingMessage: string | null;
   status: AgentStatus;
@@ -32,7 +32,7 @@ export type Agent = {
   topP: number | null;
   createdAt: string;
   updatedAt: string;
-  model: AgentModelSummary;
+  model: AgentModelSummary | null;
   knowledgeBases: AgentKnowledgeBaseSummary[];
 };
 

@@ -69,21 +69,62 @@ export class KnowledgeBasesService {
   async remove(id: string) {
     await this.requireKnowledgeBase(id);
 
-    const [documentCount, chunkCount, agentBindingCount] = await Promise.all([
-      this.prisma.document.count({ where: { knowledgeBaseId: id } }),
-      this.prisma.chunk.count({ where: { knowledgeBaseId: id } }),
-      this.prisma.agentKnowledgeBase.count({
+    await this.prisma.$transaction(async (prisma) => {
+      const [documents, chunks] = await Promise.all([
+        prisma.document.findMany({
+          where: { knowledgeBaseId: id },
+          select: { id: true, sourceFileId: true },
+        }),
+        prisma.chunk.findMany({
+          where: { knowledgeBaseId: id },
+          select: { id: true },
+        }),
+      ]);
+      const documentIds = documents.map((document) => document.id);
+      const chunkIds = chunks.map((chunk) => chunk.id);
+      const sourceFileIds = [
+        ...new Set(
+          documents
+            .map((document) => document.sourceFileId)
+            .filter((fileId): fileId is string => Boolean(fileId)),
+        ),
+      ];
+
+      if (documentIds.length > 0 || chunkIds.length > 0) {
+        await prisma.chatCitation.deleteMany({
+          where: {
+            OR: [
+              ...(documentIds.length > 0
+                ? [{ documentId: { in: documentIds } }]
+                : []),
+              ...(chunkIds.length > 0 ? [{ chunkId: { in: chunkIds } }] : []),
+            ],
+          },
+        });
+      }
+
+      if (chunkIds.length > 0) {
+        await prisma.chunkEmbedding.deleteMany({
+          where: { chunkId: { in: chunkIds } },
+        });
+      }
+
+      await prisma.chunk.deleteMany({ where: { knowledgeBaseId: id } });
+      await prisma.document.deleteMany({ where: { knowledgeBaseId: id } });
+      await prisma.agentKnowledgeBase.deleteMany({
         where: { knowledgeBaseId: id },
-      }),
-    ]);
+      });
+      await prisma.knowledgeBase.delete({ where: { id } });
 
-    if (documentCount > 0 || chunkCount > 0 || agentBindingCount > 0) {
-      throw new BadRequestException(
-        'knowledge base has documents, chunks or agent bindings',
-      );
-    }
-
-    await this.prisma.knowledgeBase.delete({ where: { id } });
+      if (sourceFileIds.length > 0) {
+        await prisma.file.deleteMany({
+          where: {
+            id: { in: sourceFileIds },
+            documents: { none: {} },
+          },
+        });
+      }
+    });
 
     return { id };
   }

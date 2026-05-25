@@ -758,9 +758,17 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    this.assertIndexableKnowledgeBase(document.knowledgeBase);
+    const embeddingModel = this.getIndexableEmbeddingModel(
+      document.knowledgeBase,
+    );
 
-    return document;
+    return {
+      ...document,
+      knowledgeBase: {
+        ...document.knowledgeBase,
+        embeddingModel,
+      },
+    };
   }
 
   private async requireIndexableChunk(id: string) {
@@ -786,9 +794,20 @@ export class KnowledgeDocsService {
       throw new NotFoundException('chunk does not exist');
     }
 
-    this.assertIndexableKnowledgeBase(chunk.document.knowledgeBase);
+    const embeddingModel = this.getIndexableEmbeddingModel(
+      chunk.document.knowledgeBase,
+    );
 
-    return chunk;
+    return {
+      ...chunk,
+      document: {
+        ...chunk.document,
+        knowledgeBase: {
+          ...chunk.document.knowledgeBase,
+          embeddingModel,
+        },
+      },
+    };
   }
 
   private async requireIndexableKnowledgeBase(id: string) {
@@ -801,14 +820,23 @@ export class KnowledgeDocsService {
       throw new NotFoundException('knowledge base does not exist');
     }
 
-    this.assertIndexableKnowledgeBase(knowledgeBase);
+    const embeddingModel = this.getIndexableEmbeddingModel(knowledgeBase);
 
-    return knowledgeBase;
+    return {
+      ...knowledgeBase,
+      embeddingModel,
+    };
   }
 
-  private assertIndexableKnowledgeBase(knowledgeBase: IndexableKnowledgeBase) {
+  private getIndexableEmbeddingModel(knowledgeBase: IndexableKnowledgeBase) {
     if (knowledgeBase.status !== KnowledgeBaseStatus.ACTIVE) {
       throw new BadRequestException('knowledge base is disabled');
+    }
+
+    if (!knowledgeBase.embeddingModel) {
+      throw new BadRequestException(
+        'knowledge base embedding model is not configured',
+      );
     }
 
     if (
@@ -819,6 +847,8 @@ export class KnowledgeDocsService {
         'knowledge base embedding model must be enabled',
       );
     }
+
+    return knowledgeBase.embeddingModel;
   }
 
   private readonly indexableKnowledgeBaseSelect = {
@@ -841,10 +871,12 @@ export class KnowledgeDocsService {
 type IndexableKnowledgeBase = {
   id: string;
   status: KnowledgeBaseStatus;
-  embeddingModel: EmbeddingModelConfig & {
-    type: AiModelType;
-    isEnabled: boolean;
-  };
+  embeddingModel:
+    | (EmbeddingModelConfig & {
+        type: AiModelType;
+        isEnabled: boolean;
+      })
+    | null;
 };
 
 type EmbeddingModelConfig = {

@@ -71,7 +71,13 @@ export class ModelsService {
 
   async remove(id: string) {
     await this.requireModel(id);
-    await this.prisma.aiModel.delete({ where: { id } });
+
+    await this.prisma.$transaction([
+      this.prisma.chunkEmbedding.deleteMany({
+        where: { embeddingModelId: id },
+      }),
+      this.prisma.aiModel.delete({ where: { id } }),
+    ]);
 
     return { id };
   }
