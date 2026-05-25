@@ -16,25 +16,22 @@ const prisma = new PrismaClient({
 
 async function main() {
   const username = process.env.SEED_ADMIN_USERNAME ?? 'admin';
-  const password = process.env.SEED_ADMIN_PASSWORD ?? 'zeta-admin';
+  const password = process.env.SEED_ADMIN_PASSWORD ?? '123456';
   const displayName = process.env.SEED_ADMIN_DISPLAY_NAME ?? 'Zeta Admin';
+  const passwordHash = await hashPassword(password);
 
-  const existingUser = await prisma.user.findUnique({
+  await prisma.user.upsert({
     where: { username },
-    select: { id: true },
+    update: {
+      passwordHash,
+      displayName,
+    },
+    create: {
+      username,
+      passwordHash,
+      displayName,
+    },
   });
-
-  if (!existingUser) {
-    const passwordHash = await hashPassword(password);
-
-    await prisma.user.create({
-      data: {
-        username,
-        passwordHash,
-        displayName,
-      },
-    });
-  }
 
   const dashScopeApiKey = process.env.DASHSCOPE_API_KEY?.trim() || null;
 
