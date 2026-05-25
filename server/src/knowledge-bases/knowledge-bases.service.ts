@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '@libs/shared';
+import { FileStorageService, PrismaService } from '@libs/shared';
 import {
   AiModelType,
   KnowledgeBaseStatus,
@@ -22,7 +22,10 @@ type KnowledgeBaseInput = {
 
 @Injectable()
 export class KnowledgeBasesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fileStorageService: FileStorageService,
+  ) {}
 
   async list() {
     return this.prisma.knowledgeBase.findMany({
@@ -68,6 +71,7 @@ export class KnowledgeBasesService {
 
   async remove(id: string) {
     await this.requireKnowledgeBase(id);
+    let sourceFileIds: string[] = [];
 
     await this.prisma.$transaction(async (prisma) => {
       const [documents, chunks] = await Promise.all([
@@ -82,7 +86,7 @@ export class KnowledgeBasesService {
       ]);
       const documentIds = documents.map((document) => document.id);
       const chunkIds = chunks.map((chunk) => chunk.id);
-      const sourceFileIds = [
+      sourceFileIds = [
         ...new Set(
           documents
             .map((document) => document.sourceFileId)
@@ -115,16 +119,9 @@ export class KnowledgeBasesService {
         where: { knowledgeBaseId: id },
       });
       await prisma.knowledgeBase.delete({ where: { id } });
-
-      if (sourceFileIds.length > 0) {
-        await prisma.file.deleteMany({
-          where: {
-            id: { in: sourceFileIds },
-            documents: { none: {} },
-          },
-        });
-      }
     });
+
+    await this.fileStorageService.removeFilesIfUnreferenced(sourceFileIds);
 
     return { id };
   }

@@ -69,16 +69,20 @@ export type ManualDocumentPayload = {
   chunks: ChunkDraftPayload[];
 };
 
+export type MarkdownImportPayload = {
+  name: string;
+  description?: string;
+  chunks: ChunkDraftPayload[];
+};
+
 export type DocumentUpdatePayload = {
   name?: string;
   description?: string | null;
 };
 
-export type MarkdownParsePayload = {
-  content: string;
-};
-
-export type MarkdownParseResult = {
+export type MarkdownPreviewResult = {
+  fileName: string;
+  documentName: string;
   chunks: ChunkDraftPayload[];
 };
 

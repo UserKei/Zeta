@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import type { UploadFile, UploadFiles, UploadUserFile } from 'element-plus'
 import {
   ArrowLeft,
   Delete,
@@ -10,12 +11,15 @@ import {
   Plus,
   Refresh,
   Search,
+  Upload,
 } from '@element-plus/icons-vue'
 import { getKnowledgeBase, type KnowledgeBase } from '@/apis/knowledge-bases'
 import {
+  createMarkdownDocument,
   createManualDocument,
   deleteDocument,
   listDocuments,
+  previewMarkdownDocument,
   testKnowledgeBaseRetrieval,
   updateDocument,
   type ChunkDraftPayload,
@@ -60,6 +64,13 @@ const editSaving = ref(false)
 const retrievalOpen = ref(false)
 const retrieving = ref(false)
 const retrievalResult = ref<RetrievalResult | null>(null)
+const markdownOpen = ref(false)
+const markdownPreviewing = ref(false)
+const markdownSaving = ref(false)
+const markdownFile = ref<File | null>(null)
+const markdownUploadFiles = ref<UploadUserFile[]>([])
+
+const MAX_MARKDOWN_FILE_SIZE = 2 * 1024 * 1024
 
 const createEmptyChunk = (content = ''): ChunkForm => ({
   title: '',
@@ -71,6 +82,12 @@ const form = reactive<DocumentForm>({
   name: '',
   description: '',
   chunks: [createEmptyChunk()],
+})
+
+const markdownForm = reactive<DocumentForm>({
+  name: '',
+  description: '',
+  chunks: [],
 })
 
 const editForm = reactive({
@@ -127,6 +144,15 @@ const canSaveDocument = computed(
     form.chunks.some((chunk) => chunk.status === 'ACTIVE' && chunk.content.trim().length > 0),
 )
 
+const canSaveMarkdownDocument = computed(
+  () =>
+    Boolean(markdownFile.value) &&
+    markdownForm.name.trim().length > 0 &&
+    markdownForm.chunks.some(
+      (chunk) => chunk.status === 'ACTIVE' && chunk.content.trim().length > 0,
+    ),
+)
+
 const load = async () => {
   loading.value = true
 
@@ -153,8 +179,27 @@ const openCreate = () => {
   formOpen.value = true
 }
 
+const openMarkdownUpload = () => {
+  resetMarkdownForm()
+  markdownOpen.value = true
+}
+
+const resetMarkdownForm = () => {
+  markdownFile.value = null
+  markdownUploadFiles.value = []
+  Object.assign(markdownForm, {
+    name: '',
+    description: '',
+    chunks: [],
+  })
+}
+
 const addFormChunk = () => {
   form.chunks.push(createEmptyChunk())
+}
+
+const addMarkdownChunk = () => {
+  markdownForm.chunks.push(createEmptyChunk())
 }
 
 const removeFormChunk = (index: number) => {
@@ -164,6 +209,15 @@ const removeFormChunk = (index: number) => {
   }
 
   form.chunks.splice(index, 1)
+}
+
+const removeMarkdownChunk = (index: number) => {
+  if (markdownForm.chunks.length === 1) {
+    markdownForm.chunks[0] = createEmptyChunk()
+    return
+  }
+
+  markdownForm.chunks.splice(index, 1)
 }
 
 const saveDocument = async () => {
@@ -182,6 +236,83 @@ const saveDocument = async () => {
     showErrorMessage(cause, '保存文档失败')
   } finally {
     saving.value = false
+  }
+}
+
+const handleMarkdownFileChange = async (uploadFile: UploadFile, uploadFiles: UploadFiles) => {
+  const rawFile = uploadFile.raw
+
+  if (!rawFile) {
+    return
+  }
+
+  markdownUploadFiles.value = uploadFiles.slice(-1) as UploadUserFile[]
+
+  if (!isMarkdownFile(rawFile)) {
+    showErrorMessage(new Error('仅支持 .md 或 .markdown 文件'), '文件格式不支持')
+    resetMarkdownForm()
+    return
+  }
+
+  if (rawFile.size === 0) {
+    showErrorMessage(new Error('Markdown 文件不能为空'), '文件不能为空')
+    resetMarkdownForm()
+    return
+  }
+
+  if (rawFile.size > MAX_MARKDOWN_FILE_SIZE) {
+    showErrorMessage(new Error('Markdown 文件不能超过 2MB'), '文件过大')
+    resetMarkdownForm()
+    return
+  }
+
+  markdownFile.value = rawFile
+  markdownPreviewing.value = true
+
+  try {
+    const preview = await previewMarkdownDocument(knowledgeBaseId.value, rawFile)
+    Object.assign(markdownForm, {
+      name: preview.documentName,
+      description: '',
+      chunks: preview.chunks.map(toChunkForm),
+    })
+  } catch (cause) {
+    showErrorMessage(cause, '解析 Markdown 失败')
+    resetMarkdownForm()
+  } finally {
+    markdownPreviewing.value = false
+  }
+}
+
+const clearMarkdownFile = () => {
+  resetMarkdownForm()
+}
+
+const handleMarkdownExceed = () => {
+  showErrorMessage(new Error('一次只能上传一个 Markdown 文件'), '文件数量超出限制')
+}
+
+const saveMarkdownDocument = async () => {
+  if (!markdownFile.value) {
+    showErrorMessage(new Error('请先上传 Markdown 文件'), '缺少文件')
+    return
+  }
+
+  markdownSaving.value = true
+
+  try {
+    const saved = await createMarkdownDocument(knowledgeBaseId.value, markdownFile.value, {
+      name: markdownForm.name,
+      description: markdownForm.description || undefined,
+      chunks: markdownForm.chunks.map(toChunkPayload),
+    })
+    documents.value.unshift(saved)
+    markdownOpen.value = false
+    resetMarkdownForm()
+  } catch (cause) {
+    showErrorMessage(cause, '保存 Markdown 文档失败')
+  } finally {
+    markdownSaving.value = false
   }
 }
 
@@ -269,6 +400,18 @@ const toChunkPayload = (chunk: ChunkForm): ChunkDraftPayload => ({
   status: chunk.status,
 })
 
+const toChunkForm = (chunk: ChunkDraftPayload): ChunkForm => ({
+  title: chunk.title ?? '',
+  content: chunk.content,
+  status: chunk.status ?? 'ACTIVE',
+})
+
+const isMarkdownFile = (file: File) => {
+  const fileName = file.name.toLowerCase()
+
+  return fileName.endsWith('.md') || fileName.endsWith('.markdown')
+}
+
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -305,7 +448,7 @@ const statusClass = (status: DocumentStatus) => {
 const sourceText = (document: KnowledgeDocument) =>
   ({
     MANUAL: '手动录入',
-    FILE_UPLOAD: '文件上传',
+    FILE_UPLOAD: 'Markdown 导入',
     AI_EXTRACTED: 'AI 提炼',
     WEB_IMPORT: '网页导入',
   })[document.sourceType]
@@ -330,9 +473,14 @@ onMounted(load)
           </div>
         </div>
       </div>
-      <el-button :icon="DocumentAdd" :disabled="loading" type="primary" @click="openCreate">
-        新增文本知识
-      </el-button>
+      <div class="flex flex-wrap gap-2">
+        <el-button :icon="Upload" :disabled="loading" @click="openMarkdownUpload">
+          上传 Markdown
+        </el-button>
+        <el-button :icon="DocumentAdd" :disabled="loading" type="primary" @click="openCreate">
+          新增文本知识
+        </el-button>
+      </div>
     </header>
 
     <el-card :body-style="{ padding: '0' }" shadow="never" class="overflow-hidden">
@@ -341,6 +489,7 @@ onMounted(load)
       >
         <div class="flex flex-wrap items-center gap-2">
           <el-button :icon="DocumentAdd" type="primary" @click="openCreate">新增文本知识</el-button>
+          <el-button :icon="Upload" @click="openMarkdownUpload">上传 Markdown</el-button>
           <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
           <el-button @click="retrievalOpen = true">检索测试</el-button>
           <span class="text-sm text-(--zeta-muted)">
@@ -491,6 +640,131 @@ onMounted(load)
       <template #footer>
         <el-button @click="formOpen = false">取消</el-button>
         <el-button :disabled="!canSaveDocument" :loading="saving" type="primary" @click="saveDocument">
+          保存并索引
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="markdownOpen"
+      title="上传 Markdown"
+      width="min(1120px, calc(100vw - 32px))"
+      @closed="resetMarkdownForm"
+    >
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside class="grid content-start gap-4">
+          <section class="rounded-lg border border-(--zeta-line) p-4">
+            <h3 class="m-0 mb-4 text-base font-semibold">源文件</h3>
+            <el-upload
+              v-model:file-list="markdownUploadFiles"
+              accept=".md,.markdown"
+              action="#"
+              drag
+              :auto-upload="false"
+              :limit="1"
+              :on-change="handleMarkdownFileChange"
+              :on-exceed="handleMarkdownExceed"
+              :on-remove="clearMarkdownFile"
+            >
+              <div class="grid justify-items-center gap-2 py-4">
+                <el-icon class="text-3xl text-(--zeta-muted)">
+                  <Upload />
+                </el-icon>
+                <div class="text-sm text-(--zeta-muted)">
+                  拖入 Markdown 文件，或点击选择
+                </div>
+                <small class="text-(--zeta-subtle)">仅支持 .md / .markdown，最大 2MB</small>
+              </div>
+            </el-upload>
+          </section>
+
+          <section class="rounded-lg border border-(--zeta-line) p-4">
+            <h3 class="m-0 mb-4 text-base font-semibold">文档信息</h3>
+            <el-form label-position="top">
+              <el-form-item label="文档名称">
+                <el-input v-model="markdownForm.name" :disabled="!markdownFile" />
+              </el-form-item>
+              <el-form-item label="描述">
+                <el-input
+                  v-model="markdownForm.description"
+                  :disabled="!markdownFile"
+                  :rows="3"
+                  type="textarea"
+                />
+              </el-form-item>
+            </el-form>
+          </section>
+        </aside>
+
+        <section class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line)">
+          <header
+            class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center"
+          >
+            <div>
+              <h3 class="m-0 text-base font-semibold">分段草稿</h3>
+              <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
+                {{
+                  markdownPreviewing
+                    ? '正在解析 Markdown...'
+                    : `${markdownForm.chunks.length} 个分段`
+                }}
+              </p>
+            </div>
+            <el-button :disabled="!markdownFile" :icon="Plus" @click="addMarkdownChunk">
+              添加分段
+            </el-button>
+          </header>
+
+          <div v-loading="markdownPreviewing">
+            <el-empty
+              v-if="markdownForm.chunks.length === 0"
+              description="上传 Markdown 后会在这里预览分段"
+            />
+            <el-scrollbar v-else height="560px">
+              <div class="grid gap-3 p-4">
+                <article
+                  v-for="(chunk, index) in markdownForm.chunks"
+                  :key="index"
+                  class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3"
+                >
+                  <header class="mb-3 flex items-center justify-between gap-3">
+                    <strong>分段 #{{ index + 1 }}</strong>
+                    <el-button
+                      :icon="Delete"
+                      size="small"
+                      type="danger"
+                      @click="removeMarkdownChunk(index)"
+                    />
+                  </header>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+                    <el-form-item label="标题">
+                      <el-input v-model="chunk.title" />
+                    </el-form-item>
+                    <el-form-item label="状态">
+                      <el-select v-model="chunk.status">
+                        <el-option label="启用" value="ACTIVE" />
+                        <el-option label="停用" value="DISABLED" />
+                      </el-select>
+                    </el-form-item>
+                    <el-form-item class="md:col-span-2" label="内容">
+                      <el-input v-model="chunk.content" :rows="7" type="textarea" />
+                    </el-form-item>
+                  </div>
+                </article>
+              </div>
+            </el-scrollbar>
+          </div>
+        </section>
+      </div>
+
+      <template #footer>
+        <el-button @click="markdownOpen = false">取消</el-button>
+        <el-button
+          :disabled="!canSaveMarkdownDocument"
+          :loading="markdownSaving"
+          type="primary"
+          @click="saveMarkdownDocument"
+        >
           保存并索引
         </el-button>
       </template>

@@ -6,8 +6,8 @@ import type {
   DocumentUpdatePayload,
   KnowledgeChunk,
   KnowledgeDocument,
-  MarkdownParsePayload,
-  MarkdownParseResult,
+  MarkdownImportPayload,
+  MarkdownPreviewResult,
   ManualDocumentPayload,
   RetrievalResult,
   RetrievalTestPayload,
@@ -24,8 +24,8 @@ export type {
   DocumentStatus,
   KnowledgeChunk,
   KnowledgeDocument,
-  MarkdownParsePayload,
-  MarkdownParseResult,
+  MarkdownImportPayload,
+  MarkdownPreviewResult,
   ManualDocumentPayload,
   RetrievalHit,
   RetrievalResult,
@@ -50,16 +50,39 @@ export const createManualDocument = (
     ) as Promise<Response<KnowledgeDocument>>,
   )
 
-export const parseMarkdownDocument = (
-  knowledgeBaseId: string,
-  payload: MarkdownParsePayload,
-) =>
-  responseData(
+export const previewMarkdownDocument = (knowledgeBaseId: string, file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return responseData(
     serverApi.post(
-      `/knowledge-bases/${knowledgeBaseId}/documents/parse-markdown`,
-      payload,
-    ) as Promise<Response<MarkdownParseResult>>,
+      `/knowledge-bases/${knowledgeBaseId}/documents/markdown/preview`,
+      formData,
+    ) as Promise<Response<MarkdownPreviewResult>>,
   )
+}
+
+export const createMarkdownDocument = (
+  knowledgeBaseId: string,
+  file: File,
+  payload: MarkdownImportPayload,
+) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('name', payload.name)
+  formData.append('chunks', JSON.stringify(payload.chunks))
+
+  if (payload.description) {
+    formData.append('description', payload.description)
+  }
+
+  return responseData(
+    serverApi.post(
+      `/knowledge-bases/${knowledgeBaseId}/documents/markdown`,
+      formData,
+    ) as Promise<Response<KnowledgeDocument>>,
+  )
+}
 
 export const listDocumentChunks = (documentId: string) =>
   responseData(

@@ -3,9 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   EmbeddingService,
+  FileStorageService,
   MarkdownParserService,
   PrismaService,
   RetrievalService,
@@ -24,7 +26,7 @@ import type {
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
-  MarkdownParsePayload,
+  MarkdownImportPayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
@@ -49,15 +51,30 @@ type EmbeddableChunk = {
   content: string;
 };
 
+export type UploadedMarkdownFile = {
+  originalname: string;
+  mimetype?: string;
+  size: number;
+  buffer: Buffer;
+};
+
+type MarkdownImportFields = {
+  name?: string;
+  description?: string;
+  chunks?: string | ChunkDraftPayload[];
+};
+
 const MAX_DOCUMENT_CONTENT_LENGTH = 200_000;
 const MAX_CHUNK_CONTENT_LENGTH = 102_400;
 const MAX_CHUNK_COUNT = 200;
+export const MARKDOWN_FILE_SIZE_LIMIT = 2 * 1024 * 1024;
 
 @Injectable()
 export class KnowledgeDocsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    private readonly fileStorageService: FileStorageService,
     private readonly markdownParser: MarkdownParserService,
     private readonly retrievalService: RetrievalService,
   ) {}
@@ -191,27 +208,110 @@ export class KnowledgeDocsService {
     }
   }
 
-  async parseMarkdown(knowledgeBaseId: string, input: MarkdownParsePayload) {
+  async previewMarkdownFile(
+    knowledgeBaseId: string,
+    file: UploadedMarkdownFile | undefined,
+  ) {
     await this.requireKnowledgeBase(knowledgeBaseId);
 
-    const content = this.normalizeText(input.content);
-
-    if (!content) {
-      throw new BadRequestException('content is required');
-    }
-
-    if (content.length > MAX_DOCUMENT_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `content cannot exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`,
-      );
-    }
+    const content = this.getMarkdownContent(file);
 
     return {
-      chunks: this.markdownParser.parse(content, {
-        maxChunkLength: MAX_CHUNK_CONTENT_LENGTH,
-        maxChunkCount: MAX_CHUNK_COUNT,
-      }),
+      fileName: this.getUploadFileName(file),
+      documentName: this.getDefaultDocumentName(file),
+      chunks: this.parseMarkdownContent(content),
     };
+  }
+
+  async createMarkdownDocument(
+    knowledgeBaseId: string,
+    file: UploadedMarkdownFile | undefined,
+    fields: MarkdownImportFields,
+  ) {
+    const knowledgeBase =
+      await this.requireIndexableKnowledgeBase(knowledgeBaseId);
+    const content = this.getMarkdownContent(file);
+    const importPayload = this.parseMarkdownImportPayload(fields);
+    const name =
+      importPayload.name?.trim() || this.getDefaultDocumentName(file);
+    const chunks = this.toChunkDrafts(importPayload.chunks);
+
+    if (!name) {
+      throw new BadRequestException('name is required');
+    }
+
+    this.assertDocumentChunks(chunks);
+
+    const sourceFile = await this.fileStorageService.saveBuffer({
+      fileName: this.getUploadFileName(file),
+      mimeType: file?.mimetype || 'text/markdown',
+      buffer: file!.buffer,
+      metadata: {
+        sourceFormat: 'MARKDOWN',
+      },
+    });
+    let document: DocumentRecord | null = null;
+
+    try {
+      document = await this.prisma.document.create({
+        data: {
+          knowledgeBase: { connect: { id: knowledgeBase.id } },
+          sourceFile: { connect: { id: sourceFile.id } },
+          name,
+          sourceType: DocumentSourceType.FILE_UPLOAD,
+          status: DocumentStatus.CHUNKING,
+          charCount: this.countChars(chunks),
+          chunkCount: chunks.length,
+          metadata: {
+            description: importPayload.description?.trim() || null,
+            sourceFormat: 'MARKDOWN',
+            originalFileName: sourceFile.fileName,
+            originalFileSize: Number(sourceFile.fileSize),
+            sha256Hash: sourceFile.sha256Hash,
+            originalCharCount: content.length,
+          },
+        },
+        select: documentSelect,
+      });
+
+      await this.createChunks(knowledgeBase.id, document.id, chunks);
+      await this.refreshDocumentSearchVector(document.id);
+
+      await this.prisma.document.update({
+        where: { id: document.id },
+        data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
+      });
+
+      await this.rebuildDocumentEmbeddings(
+        document.id,
+        knowledgeBase.embeddingModel,
+      );
+
+      const indexedDocument = await this.prisma.document.update({
+        where: { id: document.id },
+        data: { status: DocumentStatus.INDEXED, errorMessage: null },
+        select: documentSelect,
+      });
+
+      return this.toDocumentResponse(indexedDocument);
+    } catch (cause) {
+      if (document) {
+        await this.prisma.document.update({
+          where: { id: document.id },
+          data: {
+            status: DocumentStatus.FAILED,
+            errorMessage:
+              cause instanceof Error
+                ? cause.message
+                : 'document indexing failed',
+          },
+        });
+      } else {
+        await this.fileStorageService.removeFileIfUnreferenced(sourceFile.id);
+      }
+
+      throw cause;
+    }
   }
 
   async listChunks(documentId: string) {
@@ -408,7 +508,14 @@ export class KnowledgeDocsService {
   }
 
   async remove(documentId: string) {
-    await this.requireDocument(documentId);
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      select: { id: true, sourceFileId: true },
+    });
+
+    if (!document) {
+      throw new NotFoundException('document does not exist');
+    }
 
     const chunks = await this.prisma.chunk.findMany({
       where: { documentId },
@@ -429,6 +536,9 @@ export class KnowledgeDocsService {
     }
 
     await this.prisma.document.delete({ where: { id: documentId } });
+    await this.fileStorageService.removeFileIfUnreferenced(
+      document.sourceFileId,
+    );
 
     return { id: documentId };
   }
@@ -661,6 +771,99 @@ export class KnowledgeDocsService {
     }
 
     return {};
+  }
+
+  private parseMarkdownContent(content: string) {
+    return this.markdownParser.parse(content, {
+      maxChunkLength: MAX_CHUNK_CONTENT_LENGTH,
+      maxChunkCount: MAX_CHUNK_COUNT,
+    });
+  }
+
+  private getMarkdownContent(file: UploadedMarkdownFile | undefined) {
+    this.assertMarkdownFile(file);
+
+    const content = this.normalizeText(
+      file.buffer.toString('utf8').replace(/^\uFEFF/, ''),
+    );
+
+    if (!content) {
+      throw new BadRequestException('Markdown 文件不能为空');
+    }
+
+    if (content.length > MAX_DOCUMENT_CONTENT_LENGTH) {
+      throw new BadRequestException(
+        `Markdown 内容不能超过 ${MAX_DOCUMENT_CONTENT_LENGTH} 个字符`,
+      );
+    }
+
+    return content;
+  }
+
+  private assertMarkdownFile(
+    file: UploadedMarkdownFile | undefined,
+  ): asserts file is UploadedMarkdownFile {
+    if (!file?.buffer) {
+      throw new BadRequestException('请上传 Markdown 文件');
+    }
+
+    const fileName = this.getUploadFileName(file);
+    const normalizedFileName = fileName.toLowerCase();
+
+    if (
+      !normalizedFileName.endsWith('.md') &&
+      !normalizedFileName.endsWith('.markdown')
+    ) {
+      throw new BadRequestException('仅支持 .md 或 .markdown 文件');
+    }
+
+    if (file.size <= 0 || file.buffer.byteLength <= 0) {
+      throw new BadRequestException('Markdown 文件不能为空');
+    }
+
+    if (
+      file.size > MARKDOWN_FILE_SIZE_LIMIT ||
+      file.buffer.byteLength > MARKDOWN_FILE_SIZE_LIMIT
+    ) {
+      throw new BadRequestException('Markdown 文件不能超过 2MB');
+    }
+  }
+
+  private parseMarkdownImportPayload(fields: MarkdownImportFields) {
+    const chunks = this.parseChunksField(fields.chunks);
+
+    return {
+      name: fields.name ?? '',
+      description: fields.description,
+      chunks,
+    } satisfies MarkdownImportPayload;
+  }
+
+  private parseChunksField(chunks: MarkdownImportFields['chunks']) {
+    if (Array.isArray(chunks)) {
+      return chunks;
+    }
+
+    if (typeof chunks !== 'string' || !chunks.trim()) {
+      throw new BadRequestException('chunks are required');
+    }
+
+    try {
+      return JSON.parse(chunks) as ChunkDraftPayload[];
+    } catch {
+      throw new BadRequestException('chunks must be valid JSON');
+    }
+  }
+
+  private getUploadFileName(file: UploadedMarkdownFile | undefined) {
+    return basename(file?.originalname?.trim() || 'document.md');
+  }
+
+  private getDefaultDocumentName(file: UploadedMarkdownFile | undefined) {
+    const fileName = this.getUploadFileName(file);
+    const documentName = fileName.replace(/\.(md|markdown)$/i, '').trim();
+
+    return documentName || 'Markdown 文档';
   }
 
   private normalizeText(content: string | undefined) {

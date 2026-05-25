@@ -9,6 +9,7 @@ import { EmbeddingModule } from './embedding/embedding.module';
 import { RetrievalModule } from './retrieval/retrieval.module';
 import { ParserModule } from './parser/parser.module';
 import { TextSplitterModule } from './text-splitter/text-splitter.module';
+import { FileStorageModule } from './file-storage/file-storage.module';
 
 @Global()
 @Module({
@@ -23,6 +24,7 @@ import { TextSplitterModule } from './text-splitter/text-splitter.module';
     RetrievalModule,
     ParserModule,
     TextSplitterModule,
+    FileStorageModule,
   ],
   imports: [
     PrismaModule,
@@ -31,6 +33,7 @@ import { TextSplitterModule } from './text-splitter/text-splitter.module';
     RetrievalModule,
     ParserModule,
     TextSplitterModule,
+    FileStorageModule,
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -6,19 +6,31 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@libs/shared';
 import type {
   ChunkReorderPayload,
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
-  MarkdownParsePayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
-import { KnowledgeDocsService } from './knowledge-docs.service';
+import {
+  KnowledgeDocsService,
+  MARKDOWN_FILE_SIZE_LIMIT,
+  type UploadedMarkdownFile,
+} from './knowledge-docs.service';
+
+type MarkdownImportRequestBody = {
+  name?: string;
+  description?: string;
+  chunks?: string;
+};
 
 @UseGuards(AuthGuard)
 @Controller()
@@ -38,13 +50,31 @@ export class KnowledgeDocsController {
     return this.knowledgeDocsService.createManual(knowledgeBaseId, body);
   }
 
-  @Post('knowledge-bases/:knowledgeBaseId/documents/parse-markdown')
-  parseMarkdown(
+  @Post('knowledge-bases/:knowledgeBaseId/documents/markdown/preview')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MARKDOWN_FILE_SIZE_LIMIT } }),
+  )
+  previewMarkdown(
     @Param('knowledgeBaseId') knowledgeBaseId: string,
-    @Body() body: MarkdownParsePayload,
+    @UploadedFile() file?: UploadedMarkdownFile,
   ) {
-    // 临时预解析入口；后续会替换为 .md 文件上传预览。
-    return this.knowledgeDocsService.parseMarkdown(knowledgeBaseId, body);
+    return this.knowledgeDocsService.previewMarkdownFile(knowledgeBaseId, file);
+  }
+
+  @Post('knowledge-bases/:knowledgeBaseId/documents/markdown')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: MARKDOWN_FILE_SIZE_LIMIT } }),
+  )
+  createMarkdownDocument(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @UploadedFile() file: UploadedMarkdownFile | undefined,
+    @Body() body: MarkdownImportRequestBody,
+  ) {
+    return this.knowledgeDocsService.createMarkdownDocument(
+      knowledgeBaseId,
+      file,
+      body,
+    );
   }
 
   @Post('knowledge-bases/:knowledgeBaseId/retrieval-test')
