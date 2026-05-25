@@ -45,7 +45,10 @@ const chatModels = computed(() =>
 )
 
 const activeKnowledgeBases = computed(() =>
-  knowledgeBases.value.filter((knowledgeBase) => knowledgeBase.status === 'ACTIVE'),
+  knowledgeBases.value.filter(
+    (knowledgeBase) =>
+      knowledgeBase.status === 'ACTIVE' && knowledgeBase.embeddingModel,
+  ),
 )
 
 const title = computed(() => (editingId.value ? '编辑 Agent' : '创建 Agent'))
@@ -90,7 +93,7 @@ const openEdit = (agent: Agent) => {
   Object.assign(form, {
     name: agent.name,
     description: agent.description ?? '',
-    modelId: agent.modelId,
+    modelId: agent.modelId ?? '',
     knowledgeBaseIds: agent.knowledgeBases.map((knowledgeBase) => knowledgeBase.id),
     systemPrompt: agent.systemPrompt,
     openingMessage: agent.openingMessage ?? '',
@@ -215,11 +218,15 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="模型" min-width="220">
           <template #default="{ row }: { row: Agent }">
-            <div class="grid gap-1">
+            <div v-if="row.model" class="grid gap-1">
               <strong>{{ row.model.name }}</strong>
               <small class="text-(--zeta-muted)">
                 {{ row.model.provider }} / {{ row.model.modelName }}
               </small>
+            </div>
+            <div v-else class="grid gap-1">
+              <el-tag type="warning" effect="light">未配置对话模型</el-tag>
+              <small class="text-(--zeta-muted)">请编辑 Agent 重新选择模型</small>
             </div>
           </template>
         </el-table-column>
@@ -247,7 +254,11 @@ onMounted(load)
         </el-table-column>
         <el-table-column align="right" fixed="right" label="操作" min-width="210">
           <template #default="{ row }: { row: Agent }">
-            <el-button size="small" @click="router.push({ name: 'agent-chat', params: { agentId: row.id } })">
+            <el-button
+              :disabled="!row.model"
+              size="small"
+              @click="router.push({ name: 'agent-chat', params: { agentId: row.id } })"
+            >
               聊天
             </el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>

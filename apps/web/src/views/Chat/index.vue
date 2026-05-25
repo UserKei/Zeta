@@ -45,6 +45,7 @@ const form = reactive({
 const agentSessions = computed(() =>
   sessions.value.filter((session) => session.agentId === agentId.value),
 )
+const chatUnavailable = computed(() => agent.value !== null && !agent.value.model)
 
 const load = async () => {
   loading.value = true
@@ -295,6 +296,8 @@ onMounted(load)
       <ChatComposer
         v-model:message="form.message"
         v-model:top-k="form.topK"
+        :disabled="chatUnavailable"
+        disabled-reason="当前 Agent 未配置对话模型，请返回 Agent 页面重新选择模型。"
         :sending="sending"
         @stop="stopStreaming"
         @submit="send"

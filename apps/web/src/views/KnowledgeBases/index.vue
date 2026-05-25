@@ -53,9 +53,9 @@ const filteredKnowledgeBases = computed(() => {
     const searchableText = [
       knowledgeBase.name,
       knowledgeBase.description ?? '',
-      knowledgeBase.embeddingModel.name,
-      knowledgeBase.embeddingModel.provider,
-      knowledgeBase.embeddingModel.modelName,
+      knowledgeBase.embeddingModel?.name ?? '未配置 Embedding 模型',
+      knowledgeBase.embeddingModel?.provider ?? '',
+      knowledgeBase.embeddingModel?.modelName ?? '',
     ]
       .join(' ')
       .toLowerCase()
@@ -104,7 +104,7 @@ const openEdit = (knowledgeBase: KnowledgeBase) => {
     name: knowledgeBase.name,
     description: knowledgeBase.description ?? '',
     status: knowledgeBase.status,
-    embeddingModelId: knowledgeBase.embeddingModelId,
+    embeddingModelId: knowledgeBase.embeddingModelId ?? '',
     chunkSize: knowledgeBase.chunkSize,
     chunkOverlap: knowledgeBase.chunkOverlap,
   })
@@ -239,12 +239,16 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="Embedding 模型" min-width="240">
           <template #default="{ row }: { row: KnowledgeBase }">
-            <div class="grid gap-1">
+            <div v-if="row.embeddingModel" class="grid gap-1">
               <strong>{{ row.embeddingModel.name }}</strong>
               <small class="text-(--zeta-muted)">
                 {{ row.embeddingModel.provider }} /
                 {{ row.embeddingModel.modelName }}
               </small>
+            </div>
+            <div v-else class="grid gap-1">
+              <el-tag type="warning" effect="light">未配置 Embedding 模型</el-tag>
+              <small class="text-(--zeta-muted)">请编辑知识库重新选择模型</small>
             </div>
           </template>
         </el-table-column>

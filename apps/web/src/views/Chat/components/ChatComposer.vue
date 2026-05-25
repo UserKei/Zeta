@@ -6,6 +6,8 @@ const props = defineProps<{
   message: string
   topK: number
   sending: boolean
+  disabled?: boolean
+  disabledReason?: string
 }>()
 
 const emit = defineEmits<{
@@ -58,7 +60,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 
   event.preventDefault()
 
-  if (!props.sending && props.message.trim()) {
+  if (!props.sending && !props.disabled && props.message.trim()) {
     emit('submit')
   }
 }
@@ -81,13 +83,17 @@ watch(
         <textarea
           ref="textareaRef"
           class="max-h-45 min-h-13 w-full resize-none border-0 bg-transparent py-2 text-sm leading-7 text-(--zeta-ink) outline-none placeholder:text-(--zeta-subtle)"
-          :disabled="sending"
+          :disabled="sending || disabled"
           placeholder="输入问题"
           :value="messageValue"
           rows="1"
           @input="handleInput"
           @keydown="handleKeydown"
         ></textarea>
+
+        <p v-if="disabled && disabledReason" class="m-0 text-xs text-(--zeta-warning)">
+          {{ disabledReason }}
+        </p>
 
         <div class="flex flex-wrap items-center justify-between gap-3 pt-3">
           <label
@@ -117,7 +123,7 @@ watch(
             v-else
             class="grid size-10 place-items-center rounded-full border-0 bg-(--zeta-blue) text-white shadow-sm transition hover:bg-(--zeta-blue-hover) disabled:cursor-not-allowed disabled:bg-(--zeta-subtle)"
             type="button"
-            :disabled="!message.trim()"
+            :disabled="disabled || !message.trim()"
             aria-label="发送"
             @click="$emit('submit')"
           >
