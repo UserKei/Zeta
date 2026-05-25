@@ -10,13 +10,13 @@ import {
   type AiModelType,
   type ModelPayload,
 } from '@/apis/models'
+import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'ModelsView',
 })
 
 const models = ref<AiModel[]>([])
-const error = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
@@ -42,12 +42,11 @@ const title = computed(() => (editingId.value ? '编辑模型' : '添加模型')
 
 const load = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     models.value = await listModels()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载模型失败'
+    showErrorMessage(cause, '加载模型失败')
   } finally {
     loading.value = false
   }
@@ -83,7 +82,6 @@ const openEdit = (model: AiModel) => {
 
 const save = async () => {
   saving.value = true
-  error.value = ''
 
   try {
     const payload = {
@@ -106,15 +104,13 @@ const save = async () => {
 
     formOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存模型失败'
+    showErrorMessage(cause, '保存模型失败')
   } finally {
     saving.value = false
   }
 }
 
 const remove = async (model: AiModel) => {
-  error.value = ''
-
   try {
     await ElMessageBox.confirm(`删除模型「${model.name}」？`, '删除模型', {
       cancelButtonText: '取消',
@@ -124,11 +120,11 @@ const remove = async (model: AiModel) => {
     await deleteModel(model.id)
     models.value = models.value.filter((item) => item.id !== model.id)
   } catch (cause) {
-    if (cause === 'cancel' || cause === 'close') {
+    if (isCancelAction(cause)) {
       return
     }
 
-    error.value = cause instanceof Error ? cause.message : '删除模型失败'
+    showErrorMessage(cause, '删除模型失败')
   }
 }
 
@@ -143,8 +139,6 @@ onMounted(load)
       </div>
       <el-button type="primary" @click="openCreate">添加模型</el-button>
     </header>
-
-    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
     <section
       class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"

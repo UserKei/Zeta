@@ -25,6 +25,7 @@ import {
   type ManualDocumentPayload,
   type RetrievalResult,
 } from '@/apis/knowledge-docs'
+import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeDocumentsView',
@@ -48,7 +49,6 @@ const knowledgeBaseId = computed(() => String(route.params.knowledgeBaseId ?? ''
 
 const knowledgeBase = ref<KnowledgeBase | null>(null)
 const documents = ref<KnowledgeDocument[]>([])
-const error = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const formOpen = ref(false)
@@ -129,7 +129,6 @@ const canSaveDocument = computed(
 
 const load = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     const [knowledgeBaseDetail, documentList] = await Promise.all([
@@ -139,7 +138,7 @@ const load = async () => {
     knowledgeBase.value = knowledgeBaseDetail
     documents.value = documentList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载文档失败'
+    showErrorMessage(cause, '加载文档失败')
   } finally {
     loading.value = false
   }
@@ -169,7 +168,6 @@ const removeFormChunk = (index: number) => {
 
 const saveDocument = async () => {
   saving.value = true
-  error.value = ''
 
   try {
     const payload: ManualDocumentPayload = {
@@ -181,7 +179,7 @@ const saveDocument = async () => {
     documents.value.unshift(saved)
     formOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存文档失败'
+    showErrorMessage(cause, '保存文档失败')
   } finally {
     saving.value = false
   }
@@ -202,7 +200,6 @@ const saveDocumentMeta = async () => {
   }
 
   editSaving.value = true
-  error.value = ''
 
   try {
     const updated = await updateDocument(editingDocumentId.value, {
@@ -217,15 +214,13 @@ const saveDocumentMeta = async () => {
 
     editOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存文档信息失败'
+    showErrorMessage(cause, '保存文档信息失败')
   } finally {
     editSaving.value = false
   }
 }
 
 const removeDocument = async (document: KnowledgeDocument) => {
-  error.value = ''
-
   try {
     await ElMessageBox.confirm(`删除文档「${document.name}」？`, '删除文档', {
       cancelButtonText: '取消',
@@ -235,11 +230,11 @@ const removeDocument = async (document: KnowledgeDocument) => {
     await deleteDocument(document.id)
     documents.value = documents.value.filter((item) => item.id !== document.id)
   } catch (cause) {
-    if (cause === 'cancel' || cause === 'close') {
+    if (isCancelAction(cause)) {
       return
     }
 
-    error.value = cause instanceof Error ? cause.message : '删除文档失败'
+    showErrorMessage(cause, '删除文档失败')
   }
 }
 
@@ -255,7 +250,6 @@ const openParagraph = (document: KnowledgeDocument) => {
 
 const runRetrieval = async () => {
   retrieving.value = true
-  error.value = ''
 
   try {
     retrievalResult.value = await testKnowledgeBaseRetrieval(knowledgeBaseId.value, {
@@ -263,7 +257,7 @@ const runRetrieval = async () => {
       topK: retrievalForm.topK,
     })
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '检索测试失败'
+    showErrorMessage(cause, '检索测试失败')
   } finally {
     retrieving.value = false
   }
@@ -340,8 +334,6 @@ onMounted(load)
         新增文本知识
       </el-button>
     </header>
-
-    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
     <el-card :body-style="{ padding: '0' }" shadow="never" class="overflow-hidden">
       <div

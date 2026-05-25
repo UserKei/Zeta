@@ -13,6 +13,7 @@ import {
   type KnowledgeBaseStatus,
 } from '@/apis/knowledge-bases'
 import { listModels, type AiModel } from '@/apis/models'
+import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeBasesView',
@@ -21,7 +22,6 @@ defineOptions({
 const router = useRouter()
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const models = ref<AiModel[]>([])
-const error = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
@@ -70,7 +70,6 @@ const activeCount = computed(
 
 const load = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     const [knowledgeBaseList, modelList] = await Promise.all([
@@ -80,7 +79,7 @@ const load = async () => {
     knowledgeBases.value = knowledgeBaseList
     models.value = modelList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载知识库失败'
+    showErrorMessage(cause, '加载知识库失败')
   } finally {
     loading.value = false
   }
@@ -114,7 +113,6 @@ const openEdit = (knowledgeBase: KnowledgeBase) => {
 
 const save = async () => {
   saving.value = true
-  error.value = ''
 
   try {
     const payload = {
@@ -134,15 +132,13 @@ const save = async () => {
 
     formOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存知识库失败'
+    showErrorMessage(cause, '保存知识库失败')
   } finally {
     saving.value = false
   }
 }
 
 const remove = async (knowledgeBase: KnowledgeBase) => {
-  error.value = ''
-
   try {
     await ElMessageBox.confirm(`删除知识库「${knowledgeBase.name}」？`, '删除知识库', {
       cancelButtonText: '取消',
@@ -152,11 +148,11 @@ const remove = async (knowledgeBase: KnowledgeBase) => {
     await deleteKnowledgeBase(knowledgeBase.id)
     knowledgeBases.value = knowledgeBases.value.filter((item) => item.id !== knowledgeBase.id)
   } catch (cause) {
-    if (cause === 'cancel' || cause === 'close') {
+    if (isCancelAction(cause)) {
       return
     }
 
-    error.value = cause instanceof Error ? cause.message : '删除知识库失败'
+    showErrorMessage(cause, '删除知识库失败')
   }
 }
 
@@ -185,8 +181,6 @@ onMounted(load)
       </div>
       <el-button :icon="Plus" type="primary" @click="openCreate">创建知识库</el-button>
     </header>
-
-    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
     <section v-if="embeddingModels.length === 0"
       class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)">

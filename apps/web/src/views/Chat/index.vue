@@ -16,6 +16,7 @@ import SessionSidebar from './components/SessionSidebar.vue'
 import MessageList from './components/MessageList.vue'
 import ChatComposer from './components/ChatComposer.vue'
 import CitationDialog from './components/CitationDialog.vue'
+import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'AgentChatView',
@@ -29,7 +30,6 @@ const agent = ref<Agent | null>(null)
 const sessions = ref<ChatSession[]>([])
 const messages = ref<ChatMessage[]>([])
 const sessionId = ref<string | null>(null)
-const error = ref('')
 const loading = ref(false)
 const sending = ref(false)
 const streamingMessageId = ref('')
@@ -48,7 +48,6 @@ const agentSessions = computed(() =>
 
 const load = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     const [agentDetail, sessionList] = await Promise.all([
@@ -58,20 +57,19 @@ const load = async () => {
     agent.value = agentDetail
     sessions.value = sessionList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载聊天页失败'
+    showErrorMessage(cause, '加载聊天页失败')
   } finally {
     loading.value = false
   }
 }
 
 const loadSession = async (session: ChatSession) => {
-  error.value = ''
   sessionId.value = session.id
 
   try {
     messages.value = await listChatMessages(session.id)
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载会话失败'
+    showErrorMessage(cause, '加载会话失败')
   }
 }
 
@@ -93,7 +91,6 @@ const send = async () => {
   }
 
   sending.value = true
-  error.value = ''
   const userTempId = createLocalId('user')
   const assistantTempId = createLocalId('assistant')
   const localSessionId = sessionId.value ?? createLocalId('session')
@@ -138,9 +135,8 @@ const send = async () => {
     if (controller.signal.aborted) {
       stopLocalAssistantMessage(assistantTempId)
     } else {
-      const message = cause instanceof Error ? cause.message : '发送消息失败'
-      error.value = message
-      failLocalAssistantMessage(assistantTempId, message)
+      showErrorMessage(cause, '发送消息失败')
+      removeLocalAssistantMessage(assistantTempId)
     }
   } finally {
     sending.value = false
@@ -168,7 +164,7 @@ const handleStreamEvent = (
     return
   }
 
-  error.value = event.message
+  // The stream client throws after an error event, so the catch block owns the toast.
 }
 
 const appendAssistantDelta = (messageId: string, content: string) => {
@@ -208,12 +204,8 @@ const stopLocalAssistantMessage = (messageId: string) => {
   }
 }
 
-const failLocalAssistantMessage = (messageId: string, reason: string) => {
-  const message = messages.value.find((item) => item.id === messageId)
-
-  if (message && !message.content.trim()) {
-    message.content = `请求失败：${reason}`
-  }
+const removeLocalAssistantMessage = (messageId: string) => {
+  messages.value = messages.value.filter((message) => message.id !== messageId)
 }
 
 const openCitationDialog = (citations: ChatCitation[]) => {
@@ -290,8 +282,6 @@ onMounted(load)
           </span>
         </div>
       </header>
-
-      <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
       <MessageList
         :agent-name="agent?.name || 'Agent'"

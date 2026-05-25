@@ -63,7 +63,12 @@ serverApi.interceptors.response.use(
     const status = error.response?.status
     const originalRequest = error.config as RetryRequest | undefined
 
-    if (status !== 401 || !originalRequest || originalRequest._retry) {
+    if (
+      status !== 401 ||
+      !originalRequest ||
+      originalRequest._retry ||
+      isAuthRequest(originalRequest)
+    ) {
       return Promise.reject(toApiError(error))
     }
 
@@ -104,10 +109,14 @@ serverApi.interceptors.response.use(
 
       return serverApi(originalRequest)
     } catch (cause) {
-      rejectQueuedRequests(cause)
+      const refreshError = axios.isAxiosError<Response>(cause)
+        ? toApiError(cause)
+        : cause
+
+      rejectQueuedRequests(refreshError)
       await logoutToLogin(userStore)
 
-      return Promise.reject(cause)
+      return Promise.reject(refreshError)
     } finally {
       requestQueue = []
       isRefreshing = false
@@ -132,6 +141,12 @@ const replayQueuedRequests = (accessToken: string) => {
 
 const rejectQueuedRequests = (cause: unknown) => {
   requestQueue.forEach((pending) => pending.reject(cause))
+}
+
+const isAuthRequest = (request: RetryRequest) => {
+  const url = request.url ?? ''
+
+  return url.includes('/user/login') || url.includes('/user/refresh-token')
 }
 
 const logoutToLogin = async (userStore: ReturnType<typeof useUserStore>) => {

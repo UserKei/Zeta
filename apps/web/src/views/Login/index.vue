@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login } from '@/apis/user'
 import { useUserStore } from '@/stores/user'
+import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'LoginView',
@@ -11,20 +12,18 @@ defineOptions({
 const router = useRouter()
 const userStore = useUserStore()
 const username = ref('admin')
-const password = ref('zeta-admin')
-const error = ref('')
+const password = ref('123456')
 const loading = ref(false)
 
 const submit = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     const result = await login(username.value, password.value)
     userStore.setAuth(result.user, result.token)
     await router.replace({ name: 'models' })
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '登录失败'
+    showErrorMessage(cause, '登录失败')
   } finally {
     loading.value = false
   }
@@ -60,8 +59,6 @@ const submit = async () => {
       <el-form-item label="密码">
         <el-input v-model="password" autocomplete="current-password" show-password type="password" />
       </el-form-item>
-
-      <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
       <el-button class="mt-1 w-full" :loading="loading" native-type="submit" type="primary">
         {{ loading ? '登录中' : '进入平台' }}

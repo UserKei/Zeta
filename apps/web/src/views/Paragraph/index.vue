@@ -24,6 +24,7 @@ import {
   type KnowledgeChunk,
   type KnowledgeDocument,
 } from '@/apis/knowledge-docs'
+import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'ParagraphView',
@@ -46,7 +47,6 @@ const documentDetail = ref<KnowledgeDocument | null>(null)
 const chunks = ref<KnowledgeChunk[]>([])
 const loading = ref(false)
 const ordering = ref(false)
-const error = ref('')
 const searchText = ref('')
 const searchType = ref<'title' | 'content'>('title')
 const hoveredChunkId = ref<string | null>(null)
@@ -80,7 +80,6 @@ const dialogTitle = computed(() => {
 
 const load = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     const [documentResult, chunkList] = await Promise.all([
@@ -90,7 +89,7 @@ const load = async () => {
     documentDetail.value = documentResult
     chunks.value = chunkList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载分段失败'
+    showErrorMessage(cause, '加载分段失败')
   } finally {
     loading.value = false
   }
@@ -138,7 +137,6 @@ const openCreateChunk = (previousChunk?: KnowledgeChunk) => {
 
 const saveChunk = async () => {
   chunkSaving.value = true
-  error.value = ''
 
   try {
     if (dialogMode.value === 'edit' && chunkEditingId.value) {
@@ -161,15 +159,13 @@ const saveChunk = async () => {
     await refreshDocument()
     dialogOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存分段失败'
+    showErrorMessage(cause, '保存分段失败')
   } finally {
     chunkSaving.value = false
   }
 }
 
 const toggleChunk = async (chunk: KnowledgeChunk, isActive: boolean) => {
-  error.value = ''
-
   try {
     const updated = await updateDocumentChunk(chunk.id, {
       status: isActive ? 'ACTIVE' : 'DISABLED',
@@ -177,13 +173,11 @@ const toggleChunk = async (chunk: KnowledgeChunk, isActive: boolean) => {
     replaceChunk(updated)
     await refreshDocument()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '更新分段状态失败'
+    showErrorMessage(cause, '更新分段状态失败')
   }
 }
 
 const removeChunk = async (chunk: KnowledgeChunk) => {
-  error.value = ''
-
   try {
     await ElMessageBox.confirm(`删除分段「${chunk.title || `#${chunk.position + 1}`}」？`, '删除分段', {
       cancelButtonText: '取消',
@@ -194,11 +188,11 @@ const removeChunk = async (chunk: KnowledgeChunk) => {
     chunks.value = await listDocumentChunks(documentId.value)
     await refreshDocument()
   } catch (cause) {
-    if (cause === 'cancel' || cause === 'close') {
+    if (isCancelAction(cause)) {
       return
     }
 
-    error.value = cause instanceof Error ? cause.message : '删除分段失败'
+    showErrorMessage(cause, '删除分段失败')
   }
 }
 
@@ -208,14 +202,13 @@ const saveOrder = async () => {
   }
 
   ordering.value = true
-  error.value = ''
 
   try {
     chunks.value = await reorderDocumentChunks(documentId.value, {
       chunkIds: chunks.value.map((chunk) => chunk.id),
     })
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存分段顺序失败'
+    showErrorMessage(cause, '保存分段顺序失败')
     chunks.value = await listDocumentChunks(documentId.value)
   } finally {
     ordering.value = false
@@ -298,8 +291,6 @@ onMounted(load)
         新增分段
       </el-button>
     </header>
-
-    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
     <el-card
       v-loading="loading || ordering"

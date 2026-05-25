@@ -13,6 +13,7 @@ import {
 } from '@/apis/agents'
 import { listModels, type AiModel } from '@/apis/models'
 import { listKnowledgeBases, type KnowledgeBase } from '@/apis/knowledge-bases'
+import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'AgentsView',
@@ -22,7 +23,6 @@ const router = useRouter()
 const agents = ref<Agent[]>([])
 const models = ref<AiModel[]>([])
 const knowledgeBases = ref<KnowledgeBase[]>([])
-const error = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
@@ -52,7 +52,6 @@ const title = computed(() => (editingId.value ? '编辑 Agent' : '创建 Agent')
 
 const load = async () => {
   loading.value = true
-  error.value = ''
 
   try {
     const [agentList, modelList, knowledgeBaseList] = await Promise.all([
@@ -64,7 +63,7 @@ const load = async () => {
     models.value = modelList
     knowledgeBases.value = knowledgeBaseList
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '加载 Agent 失败'
+    showErrorMessage(cause, '加载 Agent 失败')
   } finally {
     loading.value = false
   }
@@ -104,7 +103,6 @@ const openEdit = (agent: Agent) => {
 
 const save = async () => {
   saving.value = true
-  error.value = ''
 
   try {
     const payload = {
@@ -127,15 +125,13 @@ const save = async () => {
 
     formOpen.value = false
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存 Agent 失败'
+    showErrorMessage(cause, '保存 Agent 失败')
   } finally {
     saving.value = false
   }
 }
 
 const remove = async (agent: Agent) => {
-  error.value = ''
-
   try {
     await ElMessageBox.confirm(`删除 Agent「${agent.name}」？`, '删除 Agent', {
       cancelButtonText: '取消',
@@ -145,11 +141,11 @@ const remove = async (agent: Agent) => {
     await deleteAgent(agent.id)
     agents.value = agents.value.filter((item) => item.id !== agent.id)
   } catch (cause) {
-    if (cause === 'cancel' || cause === 'close') {
+    if (isCancelAction(cause)) {
       return
     }
 
-    error.value = cause instanceof Error ? cause.message : '删除 Agent 失败'
+    showErrorMessage(cause, '删除 Agent 失败')
   }
 }
 
@@ -199,8 +195,6 @@ onMounted(load)
       </div>
       <el-button type="primary" @click="openCreate">创建 Agent</el-button>
     </header>
-
-    <el-alert v-if="error" :closable="false" :title="error" type="error" />
 
     <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
       class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)">
