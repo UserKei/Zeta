@@ -67,6 +67,7 @@ type MarkdownImportFields = {
 const MAX_DOCUMENT_CONTENT_LENGTH = 200_000;
 const MAX_CHUNK_CONTENT_LENGTH = 102_400;
 const MAX_CHUNK_COUNT = 200;
+const LATIN1_MOJIBAKE_PATTERN = /[\u0080-\u009f]/;
 export const MARKDOWN_FILE_SIZE_LIMIT = 2 * 1024 * 1024;
 
 @Injectable()
@@ -856,7 +857,25 @@ export class KnowledgeDocsService {
   }
 
   private getUploadFileName(file: UploadedMarkdownFile | undefined) {
-    return basename(file?.originalname?.trim() || 'document.md');
+    return this.decodeUploadFileName(file?.originalname);
+  }
+
+  private decodeUploadFileName(originalName: string | undefined) {
+    const fileName = basename(originalName?.trim() || 'document.md');
+
+    if (!LATIN1_MOJIBAKE_PATTERN.test(fileName)) {
+      return fileName;
+    }
+
+    const decodedFileName = basename(
+      Buffer.from(fileName, 'latin1').toString('utf8').trim(),
+    );
+
+    if (!decodedFileName || decodedFileName.includes('�')) {
+      return fileName;
+    }
+
+    return decodedFileName;
   }
 
   private getDefaultDocumentName(file: UploadedMarkdownFile | undefined) {
