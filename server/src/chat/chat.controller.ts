@@ -8,10 +8,12 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthGuard, AuthRequestUser } from '@libs/shared';
-import type { ChatPayload, ChatStreamEvent } from '@zeta/common/chat';
+import type { ChatStreamEvent } from '@zeta/common/chat';
 import { ChatService } from './chat.service';
+import { ChatDto } from './dto/chat.dto';
 
 type AuthenticatedRequest = Request & {
   user: AuthRequestUser;
@@ -19,6 +21,8 @@ type AuthenticatedRequest = Request & {
 
 @UseGuards(AuthGuard)
 @Controller()
+@ApiTags('Chat')
+@ApiBearerAuth('access-token')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
@@ -26,7 +30,7 @@ export class ChatController {
   chat(
     @Param('agentId') agentId: string,
     @Req() request: AuthenticatedRequest,
-    @Body() body: ChatPayload,
+    @Body() body: ChatDto,
   ) {
     return this.chatService.chat(agentId, request.user.id, body);
   }
@@ -36,7 +40,7 @@ export class ChatController {
     @Param('agentId') agentId: string,
     @Req() request: AuthenticatedRequest,
     @Res() response: Response,
-    @Body() body: ChatPayload,
+    @Body() body: ChatDto,
   ) {
     const abortController = new AbortController();
 
