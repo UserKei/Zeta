@@ -8,12 +8,15 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@libs/shared';
-import type { AgentPayload } from '@zeta/common/agents';
 import { AgentsService } from './agents.service';
+import { AgentDto, AgentUpdateDto } from './dto/agent.dto';
 
 @UseGuards(AuthGuard)
 @Controller('agents')
+@ApiTags('Agents')
+@ApiBearerAuth('access-token')
 export class AgentsController {
   constructor(private readonly agentsService: AgentsService) {}
 
@@ -28,12 +31,12 @@ export class AgentsController {
   }
 
   @Post()
-  create(@Body() body: AgentPayload) {
+  create(@Body() body: AgentDto) {
     return this.agentsService.create(body);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: Partial<AgentPayload>) {
+  update(@Param('id') id: string, @Body() body: AgentUpdateDto) {
     return this.agentsService.update(id, body);
   }
 
