@@ -8,21 +8,18 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@libs/shared';
-import { KnowledgeBaseStatus } from '@libs/shared/generated/prisma/enums';
 import { KnowledgeBasesService } from './knowledge-bases.service';
-
-type KnowledgeBaseBody = {
-  name?: string;
-  description?: string | null;
-  status?: KnowledgeBaseStatus;
-  embeddingModelId?: string;
-  chunkSize?: number;
-  chunkOverlap?: number;
-};
+import {
+  KnowledgeBaseDto,
+  KnowledgeBaseUpdateDto,
+} from './dto/knowledge-base.dto';
 
 @UseGuards(AuthGuard)
 @Controller('knowledge-bases')
+@ApiTags('Knowledge Bases')
+@ApiBearerAuth('access-token')
 export class KnowledgeBasesController {
   constructor(private readonly knowledgeBasesService: KnowledgeBasesService) {}
 
@@ -37,12 +34,12 @@ export class KnowledgeBasesController {
   }
 
   @Post()
-  create(@Body() body: KnowledgeBaseBody) {
+  create(@Body() body: KnowledgeBaseDto) {
     return this.knowledgeBasesService.create(body);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: KnowledgeBaseBody) {
+  update(@Param('id') id: string, @Body() body: KnowledgeBaseUpdateDto) {
     return this.knowledgeBasesService.update(id, body);
   }
 
