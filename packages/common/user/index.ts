@@ -4,6 +4,15 @@ export type AuthUser = {
   displayName: string | null;
 };
 
+export type LoginPayload = {
+  username: string;
+  password: string;
+};
+
+export type RefreshTokenPayload = {
+  refreshToken: string;
+};
+
 export type TokenPair = {
   accessToken: string;
   refreshToken: string;
