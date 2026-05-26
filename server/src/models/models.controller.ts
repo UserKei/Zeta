@@ -8,22 +8,15 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AiModelType } from '@libs/shared/generated/prisma/enums';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@libs/shared';
 import { ModelsService } from './models.service';
-
-type ModelBody = {
-  name?: string;
-  provider?: string;
-  type?: AiModelType;
-  modelName?: string;
-  baseUrl?: string | null;
-  apiKey?: string | null;
-  isEnabled?: boolean;
-};
+import { ModelDto, ModelUpdateDto } from './dto/model.dto';
 
 @UseGuards(AuthGuard)
 @Controller('models')
+@ApiTags('Models')
+@ApiBearerAuth('access-token')
 export class ModelsController {
   constructor(private readonly modelsService: ModelsService) {}
 
@@ -33,12 +26,12 @@ export class ModelsController {
   }
 
   @Post()
-  create(@Body() body: ModelBody) {
+  create(@Body() body: ModelDto) {
     return this.modelsService.create(body);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: ModelBody) {
+  update(@Param('id') id: string, @Body() body: ModelUpdateDto) {
     return this.modelsService.update(id, body);
   }
 
