@@ -9,21 +9,46 @@ import { AiModelType, KnowledgeBaseStatus } from '../generated/prisma/enums';
 import { Prisma } from '../generated/prisma/client';
 import type {
   RetrievalHit,
+  RetrievalMatchReason,
   RetrievalResult,
 } from '@zeta/common/knowledge-docs';
 
-type RetrievalRow = {
+type VectorRetrievalRow = {
   chunk_id: string;
   document_id: string;
   document_name: string;
   content: string;
   position: number;
   char_count: number;
-  score: number | string;
+  vector_score: number | string;
+};
+
+type KeywordRetrievalRow = {
+  chunk_id: string;
+  document_id: string;
+  document_name: string;
+  content: string;
+  position: number;
+  char_count: number;
+  keyword_score: number | string;
+};
+
+type RetrievalCandidate = {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  content: string;
+  position: number;
+  charCount: number;
+  vectorScore: number | null;
+  keywordScore: number | null;
 };
 
 const DEFAULT_RETRIEVAL_TOP_K = 5;
 const MAX_RETRIEVAL_TOP_K = 20;
+const RETRIEVAL_CANDIDATE_MULTIPLIER = 2;
+const VECTOR_SCORE_WEIGHT = 0.7;
+const KEYWORD_SCORE_WEIGHT = 0.3;
 
 @Injectable()
 export class RetrievalService {
@@ -115,14 +140,18 @@ export class RetrievalService {
       embeddingModel,
       [question],
     );
-    const rows = await this.searchByVector(
-      knowledgeBaseId,
-      embeddingModel.id,
-      queryEmbedding,
-      topK,
-    );
+    const candidateLimit = topK * RETRIEVAL_CANDIDATE_MULTIPLIER;
+    const [vectorRows, keywordRows] = await Promise.all([
+      this.searchByVector(
+        knowledgeBaseId,
+        embeddingModel.id,
+        queryEmbedding,
+        candidateLimit,
+      ),
+      this.searchByKeyword(knowledgeBaseId, question, candidateLimit),
+    ]);
 
-    return rows.map((row) => this.toHit(row));
+    return this.mergeRetrievalRows(vectorRows, keywordRows, topK);
   }
 
   private async searchByVector(
@@ -133,7 +162,7 @@ export class RetrievalService {
   ) {
     const vector = this.toVectorLiteral(embedding);
 
-    return this.prisma.$queryRaw<RetrievalRow[]>`
+    return this.prisma.$queryRaw<VectorRetrievalRow[]>`
       SELECT
         c."id" AS chunk_id,
         d."id" AS document_id,
@@ -141,7 +170,7 @@ export class RetrievalService {
         c."content",
         c."position",
         c."char_count",
-        1 - (ce."embedding" <=> ${vector}::vector) AS score
+        1 - (ce."embedding" <=> ${vector}::vector) AS vector_score
       FROM "chunk_embeddings" ce
       INNER JOIN "chunks" c ON c."id" = ce."chunk_id"
       INNER JOIN "documents" d ON d."id" = c."document_id"
@@ -154,16 +183,137 @@ export class RetrievalService {
     `;
   }
 
-  private toHit(row: RetrievalRow): RetrievalHit {
+  private async searchByKeyword(
+    knowledgeBaseId: string,
+    question: string,
+    topK: number,
+  ) {
+    return this.prisma.$queryRaw<KeywordRetrievalRow[]>`
+      WITH query AS (
+        SELECT websearch_to_tsquery('simple', ${question}) AS value
+      )
+      SELECT
+        c."id" AS chunk_id,
+        d."id" AS document_id,
+        d."name" AS document_name,
+        c."content",
+        c."position",
+        c."char_count",
+        ts_rank_cd(c."search_vector", query.value, 32) AS keyword_score
+      FROM "chunks" c
+      INNER JOIN "documents" d ON d."id" = c."document_id"
+      CROSS JOIN query
+      WHERE c."knowledge_base_id" = ${knowledgeBaseId}::uuid
+        AND c."status" = 'ACTIVE'
+        AND d."status" = 'INDEXED'
+        AND c."search_vector" IS NOT NULL
+        AND numnode(query.value) > 0
+        AND c."search_vector" @@ query.value
+      ORDER BY keyword_score DESC
+      LIMIT ${topK}
+    `;
+  }
+
+  private mergeRetrievalRows(
+    vectorRows: VectorRetrievalRow[],
+    keywordRows: KeywordRetrievalRow[],
+    topK: number,
+  ) {
+    const candidates = new Map<string, RetrievalCandidate>();
+
+    for (const row of vectorRows) {
+      candidates.set(row.chunk_id, {
+        chunkId: row.chunk_id,
+        documentId: row.document_id,
+        documentName: row.document_name,
+        content: row.content,
+        position: row.position,
+        charCount: row.char_count,
+        vectorScore: this.normalizeScore(row.vector_score),
+        keywordScore: null,
+      });
+    }
+
+    for (const row of keywordRows) {
+      const candidate = candidates.get(row.chunk_id);
+      const keywordScore = this.normalizeScore(row.keyword_score);
+
+      if (candidate) {
+        candidate.keywordScore = keywordScore;
+        continue;
+      }
+
+      candidates.set(row.chunk_id, {
+        chunkId: row.chunk_id,
+        documentId: row.document_id,
+        documentName: row.document_name,
+        content: row.content,
+        position: row.position,
+        charCount: row.char_count,
+        vectorScore: null,
+        keywordScore,
+      });
+    }
+
+    return [...candidates.values()]
+      .map((candidate) => this.toHit(candidate))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, topK);
+  }
+
+  private toHit(candidate: RetrievalCandidate): RetrievalHit {
+    const finalScore = this.calculateFinalScore(
+      candidate.vectorScore,
+      candidate.keywordScore,
+    );
+
     return {
-      chunkId: row.chunk_id,
-      documentId: row.document_id,
-      documentName: row.document_name,
-      content: row.content,
-      position: row.position,
-      charCount: row.char_count,
-      score: Number(row.score),
+      chunkId: candidate.chunkId,
+      documentId: candidate.documentId,
+      documentName: candidate.documentName,
+      content: candidate.content,
+      position: candidate.position,
+      charCount: candidate.charCount,
+      score: finalScore,
+      vectorScore: candidate.vectorScore,
+      keywordScore: candidate.keywordScore,
+      finalScore,
+      matchReason: this.getMatchReason(
+        candidate.vectorScore,
+        candidate.keywordScore,
+      ),
     };
+  }
+
+  private calculateFinalScore(
+    vectorScore: number | null,
+    keywordScore: number | null,
+  ) {
+    return this.normalizeScore(
+      (vectorScore ?? 0) * VECTOR_SCORE_WEIGHT +
+        (keywordScore ?? 0) * KEYWORD_SCORE_WEIGHT,
+    );
+  }
+
+  private getMatchReason(
+    vectorScore: number | null,
+    keywordScore: number | null,
+  ): RetrievalMatchReason {
+    if (vectorScore !== null && keywordScore !== null) {
+      return 'HYBRID';
+    }
+
+    return vectorScore !== null ? 'VECTOR' : 'KEYWORD';
+  }
+
+  private normalizeScore(value: number | string) {
+    const score = Number(value);
+
+    if (!Number.isFinite(score)) {
+      return 0;
+    }
+
+    return Math.min(Math.max(score, 0), 1);
   }
 
   private normalizeQuestion(question: string | undefined) {

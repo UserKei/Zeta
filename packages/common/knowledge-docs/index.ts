@@ -108,6 +108,8 @@ export type RetrievalTestPayload = {
   topK?: number;
 };
 
+export type RetrievalMatchReason = 'VECTOR' | 'KEYWORD' | 'HYBRID';
+
 export type RetrievalHit = {
   chunkId: string;
   documentId: string;
@@ -116,6 +118,10 @@ export type RetrievalHit = {
   position: number;
   charCount: number;
   score: number;
+  vectorScore: number | null;
+  keywordScore: number | null;
+  finalScore: number;
+  matchReason: RetrievalMatchReason;
 };
 
 export type RetrievalResult = {

@@ -40,7 +40,7 @@ const formatScore = (score: number | null) =>
               分段 #{{ citation.chunkPosition + 1 }}
             </el-tag>
             <span class="text-xs text-(--zeta-muted)">
-              相似度 {{ formatScore(citation.score) }}
+              综合分数 {{ formatScore(citation.score) }}
             </span>
           </div>
         </header>

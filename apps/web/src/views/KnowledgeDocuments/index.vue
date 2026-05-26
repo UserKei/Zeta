@@ -27,6 +27,7 @@ import {
   type DocumentStatus,
   type KnowledgeDocument,
   type ManualDocumentPayload,
+  type RetrievalHit,
   type RetrievalResult,
 } from '@/apis/knowledge-docs'
 import { isCancelAction, showErrorMessage } from '@/utils/feedback'
@@ -420,7 +421,22 @@ const formatTime = (value: string) =>
     minute: '2-digit',
   }).format(new Date(value))
 
-const formatScore = (value: number) => `${(value * 100).toFixed(1)}%`
+const formatScore = (value: number | null) =>
+  value === null ? '-' : `${(value * 100).toFixed(1)}%`
+
+const matchReasonText = (reason: RetrievalHit['matchReason']) =>
+  ({
+    VECTOR: '语义命中',
+    KEYWORD: '关键词命中',
+    HYBRID: '混合命中',
+  })[reason]
+
+const matchReasonType = (reason: RetrievalHit['matchReason']) =>
+  ({
+    VECTOR: 'info',
+    KEYWORD: 'warning',
+    HYBRID: 'success',
+  })[reason]
 
 const statusText = (status: DocumentStatus) =>
   ({
@@ -812,10 +828,21 @@ onMounted(load)
             :key="hit.chunkId"
             class="grid gap-2 rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-3"
           >
-            <header class="flex justify-between gap-3">
+            <header class="flex flex-wrap items-center justify-between gap-2">
               <strong class="min-w-0 truncate">{{ hit.documentName }}</strong>
-              <el-tag effect="light" type="success">{{ formatScore(hit.score) }}</el-tag>
+              <div class="flex flex-wrap items-center gap-2">
+                <el-tag effect="light" :type="matchReasonType(hit.matchReason)">
+                  {{ matchReasonText(hit.matchReason) }}
+                </el-tag>
+                <el-tag effect="light" type="success">
+                  综合 {{ formatScore(hit.finalScore) }}
+                </el-tag>
+              </div>
             </header>
+            <div class="flex flex-wrap gap-3 text-xs text-(--zeta-muted)">
+              <span>语义 {{ formatScore(hit.vectorScore) }}</span>
+              <span>关键词 {{ formatScore(hit.keywordScore) }}</span>
+            </div>
             <p class="m-0 max-h-40 overflow-auto whitespace-pre-wrap text-sm text-(--zeta-content) leading-6">
               {{ hit.content }}
             </p>
