@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
+  ArrowLeftBold,
+  ArrowRightBold,
   Delete,
   EditPen,
   Plus,
@@ -49,6 +51,7 @@ const loading = ref(false)
 const ordering = ref(false)
 const searchText = ref('')
 const searchType = ref<'title' | 'content'>('title')
+const sidebarCollapsed = ref(false)
 const hoveredChunkId = ref<string | null>(null)
 const dialogOpen = ref(false)
 const dialogMode = ref<DialogMode>('view')
@@ -320,8 +323,14 @@ onMounted(load)
         </el-input>
       </div>
 
-      <div class="grid min-h-[640px] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside class="hidden border-r border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4 lg:block">
+      <div
+        class="relative grid min-h-[640px] grid-cols-1"
+        :class="sidebarCollapsed ? 'lg:grid-cols-[0_minmax(0,1fr)]' : 'lg:grid-cols-[220px_minmax(0,1fr)]'"
+      >
+        <aside
+          class="hidden overflow-hidden border-r border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4 transition-[width,padding] lg:block"
+          :class="sidebarCollapsed ? 'w-0 border-r-0 p-0' : 'w-[220px]'"
+        >
           <el-scrollbar height="600px">
             <div class="grid gap-1">
               <button
@@ -336,6 +345,16 @@ onMounted(load)
             </div>
           </el-scrollbar>
         </aside>
+        <el-tooltip :content="sidebarCollapsed ? '展开目录' : '收起目录'" placement="right">
+          <el-button
+            class="absolute top-6 z-10 hidden shadow-sm lg:inline-flex"
+            :class="sidebarCollapsed ? 'left-3' : 'left-[207px]'"
+            :icon="sidebarCollapsed ? ArrowRightBold : ArrowLeftBold"
+            circle
+            size="small"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          />
+        </el-tooltip>
 
         <main class="min-w-0 bg-(--zeta-bg) p-4">
           <el-empty v-if="chunks.length === 0" description="暂无分段" />

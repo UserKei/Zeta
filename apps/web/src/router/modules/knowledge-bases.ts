@@ -1,4 +1,7 @@
 import Layout from '@/layout/index.vue'
+import WorkspaceLayout from '@/layout/workspace/index.vue'
+import { Document, Search, Setting } from '@element-plus/icons-vue'
+import type { RouteLocation } from 'vue-router'
 
 export default [
   {
@@ -17,14 +20,69 @@ export default [
         component: () => import('@/views/KnowledgeBases/index.vue'),
       },
       {
-        path: ':knowledgeBaseId/document',
-        name: 'knowledge-documents',
+        path: ':knowledgeBaseId/document/upload',
+        name: 'knowledge-document-upload',
         meta: {
           requiresAuth: true,
           activeMenu: 'knowledge-bases',
-          title: '文档',
+          title: '上传文档',
         },
-        component: () => import('@/views/KnowledgeDocuments/index.vue'),
+        component: () => import('@/views/KnowledgeDocuments/Upload/index.vue'),
+      },
+      {
+        path: ':knowledgeBaseId',
+        component: WorkspaceLayout,
+        redirect: (to: RouteLocation) => ({
+          name: 'knowledge-documents',
+          params: to.params,
+        }),
+        meta: {
+          requiresAuth: true,
+          activeMenu: 'knowledge-bases',
+          workspaceTitle: '知识库',
+          workspaceSubtitle: '文档、分段与检索管理',
+          workspaceBackRoute: 'knowledge-bases',
+        },
+        children: [
+          {
+            path: 'document',
+            name: 'knowledge-documents',
+            meta: {
+              requiresAuth: true,
+              activeMenu: 'knowledge-bases',
+              workspaceMenu: true,
+              title: '文档管理',
+              icon: Document,
+            },
+            component: () => import('@/views/KnowledgeDocuments/index.vue'),
+          },
+          {
+            path: 'retrieval',
+            name: 'knowledge-retrieval',
+            meta: {
+              requiresAuth: true,
+              activeMenu: 'knowledge-bases',
+              workspaceMenu: true,
+              title: '检索测试',
+              icon: Search,
+              disabled: true,
+            },
+            component: () => import('@/views/KnowledgeDocuments/index.vue'),
+          },
+          {
+            path: 'settings',
+            name: 'knowledge-settings',
+            meta: {
+              requiresAuth: true,
+              activeMenu: 'knowledge-bases',
+              workspaceMenu: true,
+              title: '知识库设置',
+              icon: Setting,
+              disabled: true,
+            },
+            component: () => import('@/views/KnowledgeDocuments/index.vue'),
+          },
+        ],
       },
     ],
   },
