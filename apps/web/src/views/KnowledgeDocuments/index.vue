@@ -448,7 +448,7 @@ onMounted(load)
       width="min(1120px, calc(100vw - 32px))"
     >
       <el-form label-position="top" @submit.prevent="saveDocument">
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div class="grid max-h-[calc(100vh-220px)] min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]">
           <aside class="grid content-start gap-4">
             <section class="rounded-lg border border-(--zeta-line) p-4">
               <h3 class="m-0 mb-4 text-base font-semibold">文档信息</h3>
@@ -462,7 +462,7 @@ onMounted(load)
 
           </aside>
 
-          <section class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line)">
+          <section class="flex min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-(--zeta-line)">
             <header
               class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center"
             >
@@ -475,7 +475,7 @@ onMounted(load)
               <el-button :icon="Plus" @click="addFormChunk">添加分段</el-button>
             </header>
 
-            <el-scrollbar height="560px">
+            <div class="min-h-0 flex-1 overflow-auto">
               <div class="grid gap-3 p-4">
                 <article
                   v-for="(chunk, index) in form.chunks"
@@ -507,7 +507,7 @@ onMounted(load)
                   </div>
                 </article>
               </div>
-            </el-scrollbar>
+            </div>
           </section>
         </div>
       </el-form>

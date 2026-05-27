@@ -82,7 +82,7 @@ const logout = async () => {
       </div>
     </header>
 
-    <section class="grid min-w-0 flex-1 content-start gap-5 p-5 lg:p-8">
+    <section class="flex min-w-0 min-h-0 flex-1 flex-col p-5 lg:p-8">
       <RouterView />
     </section>
   </main>

@@ -83,7 +83,7 @@ const back = async () => {
 </script>
 
 <template>
-  <div class="grid min-h-[calc(100vh-116px)] grid-cols-1 overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel) lg:grid-cols-[232px_minmax(0,1fr)]">
+  <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel) lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-none">
     <aside class="border-b border-(--zeta-line-soft) bg-(--zeta-surface) lg:border-b-0 lg:border-r">
       <div class="grid gap-4 p-4">
         <div class="flex items-start gap-3">
@@ -130,7 +130,7 @@ const back = async () => {
       </div>
     </aside>
 
-    <section class="min-w-0 bg-(--zeta-bg)">
+    <section class="flex min-w-0 min-h-0 flex-col bg-(--zeta-bg)">
       <RouterView />
     </section>
   </div>

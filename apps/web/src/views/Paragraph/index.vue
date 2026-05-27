@@ -261,7 +261,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="grid gap-4">
+  <div class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
     <header class="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
       <div class="flex min-w-0 items-start gap-3">
         <el-button
@@ -297,9 +297,9 @@ onMounted(load)
 
     <el-card
       v-loading="loading || ordering"
-      :body-style="{ padding: '0' }"
+      :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }"
       shadow="never"
-      class="overflow-hidden"
+      class="min-h-0 overflow-hidden"
     >
       <div
         class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) p-4 lg:flex-row lg:items-center"
@@ -324,14 +324,14 @@ onMounted(load)
       </div>
 
       <div
-        class="relative grid min-h-[640px] grid-cols-1"
+        class="relative grid min-h-0 flex-1 grid-cols-1"
         :class="sidebarCollapsed ? 'lg:grid-cols-[0_minmax(0,1fr)]' : 'lg:grid-cols-[220px_minmax(0,1fr)]'"
       >
         <aside
-          class="hidden overflow-hidden border-r border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4 transition-[width,padding] lg:block"
+          class="hidden min-h-0 overflow-hidden border-r border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4 transition-[width,padding] lg:flex lg:flex-col"
           :class="sidebarCollapsed ? 'w-0 border-r-0 p-0' : 'w-[220px]'"
         >
-          <el-scrollbar height="600px">
+          <div class="min-h-0 flex-1 overflow-auto">
             <div class="grid gap-1">
               <button
                 v-for="chunk in chunks.filter((item) => item.title && matchesChunk(item))"
@@ -343,7 +343,7 @@ onMounted(load)
                 {{ chunk.title }}
               </button>
             </div>
-          </el-scrollbar>
+          </div>
         </aside>
         <el-tooltip :content="sidebarCollapsed ? '展开目录' : '收起目录'" placement="right">
           <el-button
@@ -356,7 +356,7 @@ onMounted(load)
           />
         </el-tooltip>
 
-        <main class="min-w-0 bg-(--zeta-bg) p-4">
+        <main class="min-h-0 min-w-0 overflow-auto bg-(--zeta-bg) p-4">
           <el-empty v-if="chunks.length === 0" description="暂无分段" />
           <el-empty v-else-if="visibleChunkCount === 0" description="没有匹配的分段" />
 
