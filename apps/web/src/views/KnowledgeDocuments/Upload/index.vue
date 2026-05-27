@@ -227,23 +227,16 @@ onMounted(loadKnowledgeBase)
 </script>
 
 <template>
-  <div class="grid min-h-full grid-rows-[auto_minmax(0,1fr)] gap-4 pb-20" v-loading="loading">
+  <div class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 pb-20" v-loading="loading">
     <header class="flex min-w-0 items-center gap-2">
       <el-button :icon="ArrowLeft" text @click="goBack" />
       <h1 class="m-0 truncate text-xl font-semibold text-(--zeta-ink)">上传文档</h1>
     </header>
 
-    <el-card :body-style="{ padding: '0' }" shadow="never" class="min-h-0 overflow-hidden">
-      <div class="border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3">
-        <el-steps :active="activeStep" finish-status="success" simple>
-          <el-step title="选择文件" />
-          <el-step title="调整分段" />
-          <el-step title="入库完成" />
-        </el-steps>
-      </div>
-
-      <div v-if="activeStep === 0" class="grid gap-5 p-6">
-        <section class="mx-auto grid w-full max-w-[1120px] gap-5 py-3">
+    <el-card :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }" shadow="never"
+      class="min-h-0 overflow-hidden">
+      <div v-if="activeStep === 0" class="flex min-h-0 flex-1 flex-col p-6">
+        <section class="mx-auto flex min-h-0 w-full max-w-280 flex-col gap-5 py-3">
           <div>
             <h2 class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)">
               上传文档
@@ -254,19 +247,10 @@ onMounted(loadKnowledgeBase)
             支持单个 .md / .markdown 文件，最大 2MB。上传后会先解析成分段草稿，不会立即入库。
           </div>
 
-          <el-upload
-            v-model:file-list="uploadFiles"
-            accept=".md,.markdown"
-            action="#"
-            drag
-            class="mx-auto w-full lg:w-[70%]"
-            :auto-upload="false"
-            :limit="1"
-            :on-change="handleFileChange"
-            :on-exceed="handleFileExceed"
-            :on-remove="resetUpload"
-          >
-            <div class="grid min-h-[220px] justify-items-center gap-3 py-8">
+          <el-upload v-model:file-list="uploadFiles" accept=".md,.markdown" action="#" drag
+            class="zeta-upload-dropzone mx-auto flex min-h-80 flex-1 w-full lg:w-[70%]" :auto-upload="false" :limit="1"
+            :on-change="handleFileChange" :on-exceed="handleFileExceed" :on-remove="resetUpload">
+            <div class="grid h-full min-h-80 content-center justify-items-center gap-3 py-8">
               <el-icon class="text-4xl text-(--zeta-blue)">
                 <Upload />
               </el-icon>
@@ -281,11 +265,9 @@ onMounted(loadKnowledgeBase)
         <el-empty v-if="previewing" description="正在解析 Markdown..." />
       </div>
 
-      <div
-        v-else-if="activeStep === 1"
-        class="grid min-h-[620px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]"
-        v-loading="previewing"
-      >
+      <div v-else-if="activeStep === 1"
+        class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-none"
+        v-loading="previewing">
         <aside class="border-b border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-5 lg:border-b-0 lg:border-r">
           <h2 class="m-0 text-lg font-semibold text-(--zeta-ink)">文档信息</h2>
           <p class="m-0 mt-2 text-sm text-(--zeta-muted)">
@@ -304,15 +286,14 @@ onMounted(loadKnowledgeBase)
           <div class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3 text-sm text-(--zeta-muted)">
             <p class="m-0">分段数量：{{ form.chunks.length }}</p>
             <p class="m-0 mt-1">
-              启用分段：{{ form.chunks.filter((chunk) => chunk.status === 'ACTIVE').length }}
+              启用分段：{{form.chunks.filter((chunk) => chunk.status === 'ACTIVE').length}}
             </p>
           </div>
         </aside>
 
-        <section class="min-w-0">
+        <section class="flex min-w-0 min-h-0 flex-col">
           <header
-            class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center"
-          >
+            class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center">
             <div>
               <h2 class="m-0 text-base font-semibold text-(--zeta-ink)">分段草稿</h2>
               <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
@@ -322,21 +303,13 @@ onMounted(loadKnowledgeBase)
             <el-button :icon="Plus" @click="addChunk">添加分段</el-button>
           </header>
 
-          <el-scrollbar height="560px">
+          <div class="min-h-0 flex-1 overflow-auto">
             <div class="grid gap-3 p-4">
-              <article
-                v-for="(chunk, index) in form.chunks"
-                :key="index"
-                class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3"
-              >
+              <article v-for="(chunk, index) in form.chunks" :key="index"
+                class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3">
                 <header class="mb-3 flex items-center justify-between gap-3">
                   <strong>分段 #{{ index + 1 }}</strong>
-                  <el-button
-                    :icon="Delete"
-                    size="small"
-                    type="danger"
-                    @click="removeChunk(index)"
-                  />
+                  <el-button :icon="Delete" size="small" type="danger" @click="removeChunk(index)" />
                 </header>
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
                   <el-form-item label="标题">
@@ -354,11 +327,11 @@ onMounted(loadKnowledgeBase)
                 </div>
               </article>
             </div>
-          </el-scrollbar>
+          </div>
         </section>
       </div>
 
-      <div v-else class="grid min-h-[520px] place-items-center p-6">
+      <div v-else class="grid min-h-0 flex-1 place-items-center p-6">
         <div class="grid max-w-md justify-items-center gap-4 text-center">
           <div class="grid size-16 place-items-center rounded-full bg-(--zeta-success-soft) text-(--zeta-success)">
             <el-icon class="text-3xl">
@@ -381,30 +354,33 @@ onMounted(loadKnowledgeBase)
       </div>
     </el-card>
 
-    <footer
-      v-if="activeStep !== 2"
-      class="fixed inset-x-0 bottom-0 z-30 flex justify-end gap-2 border-t border-(--zeta-line-soft) bg-(--zeta-panel) px-6 py-4"
-    >
+    <footer v-if="activeStep !== 2"
+      class="fixed inset-x-0 bottom-0 z-30 flex justify-end gap-2 border-t border-(--zeta-line-soft) bg-(--zeta-panel) px-6 py-4">
       <el-button @click="goBack">取消</el-button>
       <el-button v-if="activeStep === 1" @click="activeStep = 0">上一步</el-button>
-      <el-button
-        v-if="activeStep === 0"
-        :disabled="form.chunks.length === 0"
-        :loading="previewing"
-        type="primary"
-        @click="activeStep = 1"
-      >
+      <el-button v-if="activeStep === 0" :disabled="form.chunks.length === 0" :loading="previewing" type="primary"
+        @click="activeStep = 1">
         下一步
       </el-button>
-      <el-button
-        v-else
-        :disabled="!canImport"
-        :loading="saving"
-        type="primary"
-        @click="importDocument"
-      >
+      <el-button v-else :disabled="!canImport" :loading="saving" type="primary" @click="importDocument">
         确认入库
       </el-button>
     </footer>
   </div>
 </template>
+
+<style scoped>
+.zeta-upload-dropzone :deep(.el-upload) {
+  display: flex;
+  flex: 1;
+  width: 100%;
+}
+
+.zeta-upload-dropzone :deep(.el-upload-dragger) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+</style>
