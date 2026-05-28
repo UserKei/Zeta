@@ -27,7 +27,7 @@ export default [
           activeMenu: 'knowledge-bases',
           title: '上传文档',
         },
-        component: () => import('@/views/KnowledgeDocuments/Upload/index.vue'),
+        component: () => import('@/views/DocumentUpload/index.vue'),
       },
       {
         path: ':knowledgeBaseId',

@@ -24,7 +24,7 @@ export default [
           activeMenu: 'agents',
           title: '聊天日志',
         },
-        component: () => import('@/views/Agents/ChatLogs/index.vue'),
+        component: () => import('@/views/ChatLogs/index.vue'),
       },
     ],
   },

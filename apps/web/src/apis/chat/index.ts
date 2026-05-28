@@ -2,7 +2,9 @@ import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { apiBaseUrl, responseData, serverApi, type Response } from '..'
 import { useUserStore } from '@/stores/user'
 import type {
+  ChatImproveDeleteResponse,
   ChatImprovePayload,
+  ChatImproveRecordDetail,
   ChatImproveResponse,
   ChatMessage,
   ChatPayload,
@@ -13,8 +15,10 @@ import type {
 
 export type {
   ChatCitation,
+  ChatImproveDeleteResponse,
   ChatImprovePayload,
   ChatImproveRecord,
+  ChatImproveRecordDetail,
   ChatImproveResponse,
   ChatMessage,
   ChatMessageRole,
@@ -96,6 +100,20 @@ export const improveChatMessage = (
     serverApi.post(`/chat-messages/${messageId}/improve`, payload) as Promise<
       Response<ChatImproveResponse>
     >,
+  )
+
+export const listChatMessageImproves = (messageId: string) =>
+  responseData(
+    serverApi.get(`/chat-messages/${messageId}/improve`) as Promise<
+      Response<ChatImproveRecordDetail[]>
+    >,
+  )
+
+export const deleteChatMessageImprove = (messageId: string, chunkId: string) =>
+  responseData(
+    serverApi.delete(
+      `/chat-messages/${messageId}/improve/${chunkId}`,
+    ) as Promise<Response<ChatImproveDeleteResponse>>,
   )
 
 const readStreamError = async (response: globalThis.Response) => {
