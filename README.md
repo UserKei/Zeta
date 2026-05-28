@@ -5,7 +5,7 @@ AI 知识库管理平台，围绕企业知识从生产、管理、检索到 Agen
 当前主链路：
 
 ```text
-模型配置 -> 知识库 -> 文档分段 -> 检索测试 -> 专家 Agent -> 流式问答与引用来源
+模型配置 -> 知识库 -> 文档分段 -> 检索测试 -> 专家 Agent -> 流式问答与引用来源 -> 对话日志标注入库
 ```
 
 Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用，内部包含管理端页面和独立 Chat 页面；后端是 NestJS 模块化单体，统一负责数据库、检索、模型调用和业务流程。
@@ -37,7 +37,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 - 后端框架：NestJS 11、TypeScript、JWT、bcrypt、全局拦截器和统一响应封装。
 - 数据访问：Prisma 7、Prisma migration、Prisma seed、PostgreSQL 16。
 - 检索能力：pgvector、PostgreSQL 全文检索、Chunk Embedding、RAG 检索增强生成。
-- AI 接入：阿里云百炼 `text-embedding-v4`、OpenAI-compatible Chat Completions。
+- AI 接入：阿里云百炼 `text-embedding-v4`、DeepSeek 对话模型（OpenAI-compatible Chat Completions 协议）。
 - 工程工具：pnpm workspace、ESLint、Oxlint、Prettier、Husky、lint-staged。
 - 部署运行：Docker Compose、Nginx、生产多阶段 Dockerfile。
 
@@ -136,11 +136,39 @@ flowchart LR
 - 模型管理：维护 Chat、Embedding、Reranker 模型配置。
 - 知识库管理：创建知识库，绑定 Embedding 模型，配置分段参数。
 - 文档列表：按知识库管理文档、来源、状态、字符数和分段数。
+- Markdown 导入：上传 `.md/.markdown` 文件，解析为分段草稿，人工调整后确认入库。
 - 分段管理：支持新增、编辑、删除、启停和拖拽重排分段。
 - 索引与检索：为启用分段写入全文索引和向量 Embedding，支持检索测试。
 - 专家 Agent：配置 Prompt、Chat 模型，并绑定一个或多个知识库。
 - Chat 问答：独立聊天页面，支持 SSE 流式回答、历史会话和引用来源。
+- 对话日志标注：管理端可把有价值的 AI 回答标注回知识库，形成 AI 提炼文档和分段。
 - 删除策略：删除知识库、Agent、模型时清理内部数据或解除绑定关系，避免要求用户手动层层解绑。
+
+## 推荐演示路径
+
+1. 使用默认账号 `admin / 123456` 登录系统。
+2. 在模型管理中确认已有 Chat 模型和启用的 Embedding 模型。
+3. 创建一个知识库，例如“企业制度知识库”。
+4. 进入知识库文档管理，上传 `docs/demo/it-account-onboarding.md`。
+5. 在上传页查看 Markdown 解析出的分段草稿，编辑一个分段标题或内容后确认入库。
+6. 进入分段页，演示分段的新增、编辑、启停、排序和删除。
+7. 回到文档列表，打开检索测试，提问“VPN 权限多久生效？”并查看命中分段、来源和分数。
+8. 创建或选择一个绑定该知识库的专家 Agent，进入 Chat 页面提问“采购合同超过 100 万需要哪些审批？”。
+9. 查看 AI 回答下方的引用来源，并打开引用详情确认回答可追溯到文档分段。
+10. 回到 Agent 管理页，进入对话日志，将某条 AI 回答标注入库。
+11. 回到知识库文档列表，确认出现“AI 提炼”来源的文档或新增分段，完成知识生产到知识消费再回流的闭环。
+
+## 演示材料
+
+仓库内提供 3 份企业场景 Markdown 样例，可直接用于知识库上传测试：
+
+| 文件 | 场景 | 推荐问题 |
+| ---- | ---- | -------- |
+| `docs/demo/it-account-onboarding.md` | 入职账号、邮箱、飞书、VPN、MFA | `VPN 权限多久生效？` |
+| `docs/demo/procurement-contract-approval.md` | 采购合同、审批材料、金额节点、风险条款 | `采购合同超过 100 万需要哪些审批？` |
+| `docs/demo/security-incident-response.md` | 钓鱼邮件、账号异常、数据泄露、安全事件上报 | `发现钓鱼邮件应该多久内上报？` |
+
+这些样例用于演示 Markdown 上传、分段预览、检索测试、Agent 引用回答和对话日志标注入库。
 
 ## 快速开始
 
@@ -289,8 +317,10 @@ Zeta/
 │       │       ├── Models/          # 模型管理
 │       │       ├── KnowledgeBases/  # 知识库列表
 │       │       ├── KnowledgeDocuments/ # 文档列表
+│       │       ├── DocumentUpload/  # 上传文档流程页
 │       │       ├── Paragraph/       # 分段预览与编辑
 │       │       ├── Agents/          # Agent 管理
+│       │       ├── ChatLogs/        # Agent 对话日志与标注入库
 │       │       └── Chat/            # 独立聊天页
 │       ├── package.json
 │       └── vite.config.ts
@@ -310,6 +340,7 @@ Zeta/
 │       └── shared/                  # 后端内部共享库
 │           ├── auth/                # AuthGuard 等认证公共能力
 │           ├── embedding/           # Embedding 调用封装
+│           ├── file-storage/        # 文件元数据与 Large Object 存储
 │           ├── generated/           # Prisma Client 生成代码
 │           ├── interceptor/         # 全局拦截器
 │           ├── parser/              # Markdown Parser
@@ -412,10 +443,10 @@ bash scripts/deploy.sh
 
 ## 后续计划
 
-- Markdown 文件上传与解析入库：上传 `.md` 文件，解析为分段草稿，人工确认后入库。
-- 混合检索与命中解释：从单纯向量检索升级为向量检索 + PostgreSQL 全文检索，并展示命中原因和分数。
-- 一键创建 Agent：从知识库页面直接生成默认专家 Agent。
-- 引用跳转：Chat 引用来源支持跳转到对应文档分段页。
-- 演示数据与答辩流程：准备稳定的知识库样例、Agent 样例和演示脚本。
+- 常见文件格式识别：在 Markdown 已接入的基础上，继续评估 TXT、HTML、PDF、DOCX、CSV、XLSX、XLS。
+- 检索准确率深化：继续优化中文全文检索、混合检索分数解释，并为后续 Rerank 留出扩展点。
+- 引用追溯体验：Chat 引用来源支持跳转到对应文档分段页。
+- 对话日志标注体验：完善标注记录查看、编辑和删除，让 AI 回答能更自然地回流到知识库。
+- 演示数据与答辩流程：持续补充稳定的知识库样例、Agent 样例和演示脚本。
 
 暂不扩展 ZIP 批量导入、图片、音频、视频、多租户、复杂权限、统计页和通用工具编排，优先把知识生产、检索解释和 Agent 消费这条主链路做扎实。
