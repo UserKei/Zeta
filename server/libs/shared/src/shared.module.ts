@@ -10,6 +10,9 @@ import { RetrievalModule } from './retrieval/retrieval.module';
 import { ParserModule } from './parser/parser.module';
 import { TextSplitterModule } from './text-splitter/text-splitter.module';
 import { FileStorageModule } from './file-storage/file-storage.module';
+import { getZetaEnvFilePath } from './env/load-env';
+
+const envFilePath = getZetaEnvFilePath();
 
 @Global()
 @Module({
@@ -34,7 +37,11 @@ import { FileStorageModule } from './file-storage/file-storage.module';
     ParserModule,
     TextSplitterModule,
     FileStorageModule,
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: envFilePath ? [envFilePath] : [],
+      ignoreEnvFile: !envFilePath,
+    }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

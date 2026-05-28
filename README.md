@@ -182,7 +182,7 @@ pnpm install
 ### 2. 准备环境变量
 
 ```bash
-cp server/.env.example server/.env
+cp .env.example .env
 ```
 
 本地默认连接 Docker 中的 PostgreSQL：
@@ -191,7 +191,7 @@ cp server/.env.example server/.env
 DATABASE_URL="postgresql://zeta@localhost:5432/zeta?schema=public"
 ```
 
-如果需要使用默认阿里云百炼 Embedding 模型，把真实 key 写入本地 `server/.env`：
+如果需要使用默认阿里云百炼 Embedding 模型，把真实 key 写入本地 `.env`：
 
 ```env
 DASHSCOPE_API_KEY="your-api-key"
@@ -396,7 +396,7 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
 
 ## 环境变量
 
-本地后端环境变量位于 `server/.env`，可以从 `server/.env.example` 复制。
+本地开发环境变量位于仓库根目录 `.env`，可以从 `.env.example` 复制。
 
 | 变量                        | 说明                                        |
 | --------------------------- | ------------------------------------------- |
@@ -408,6 +408,9 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
 | `SEED_ADMIN_PASSWORD`       | seed 默认管理员密码                         |
 | `SEED_ADMIN_DISPLAY_NAME`   | seed 默认管理员展示名                       |
 | `DASHSCOPE_API_KEY`         | 阿里云百炼 API Key，用于默认 Embedding 模型 |
+| `POSTGRES_DB`               | 本地 PostgreSQL 数据库名                    |
+| `POSTGRES_USER`             | 本地 PostgreSQL 用户名                      |
+| `POSTGRES_PORT`             | 本地 PostgreSQL 宿主机端口                  |
 
 生产部署环境变量位于 `.env.production`，可以从 `.env.production.example` 复制。生产环境必须设置数据库密码和高强度 `AUTH_TOKEN_SECRET`。
 

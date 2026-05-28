@@ -21,17 +21,19 @@ pnpm infra:up
 DATABASE_URL="postgresql://zeta@localhost:5432/zeta?schema=public"
 ```
 
-当 Prisma 需要连接 Docker 中的 PostgreSQL 时，把它配置到 `server/.env`。
+当 Prisma 需要连接 Docker 中的 PostgreSQL 时，把它配置到仓库根目录 `.env`。
 
 当前配置只用于本地开发，PostgreSQL 使用 `trust` 认证，不设置密码。
 后续部署到服务器时不要直接复用这套无密码配置。
 
 如果要修改本地数据库名、用户名或宿主机端口，
-先把 `docker-infra/.env.example` 复制为 `docker-infra/.env`，
-再在首次初始化容器前修改对应值。使用自定义 env 文件启动：
+先把仓库根目录 `.env.example` 复制为 `.env`，
+再在首次初始化容器前修改 `POSTGRES_DB`、`POSTGRES_USER` 或 `POSTGRES_PORT`。
+`pnpm infra:*` 命令会优先读取根目录 `.env`；没有 `.env` 时使用 Compose 默认值。
 
 ```bash
-docker compose --env-file docker-infra/.env -f docker-compose.infra.yml up -d
+cp .env.example .env
+pnpm infra:up
 ```
 
 常用命令：

@@ -1,8 +1,10 @@
-import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../libs/shared/src/generated/prisma/client';
 import { AiModelType } from '../libs/shared/src/generated/prisma/enums';
 import { hashPassword } from '../src/auth/auth.service';
+import { loadZetaEnv } from '../libs/shared/src/env/load-env';
+
+loadZetaEnv();
 
 const databaseUrl = process.env.DATABASE_URL;
 
