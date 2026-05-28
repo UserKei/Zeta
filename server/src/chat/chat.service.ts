@@ -12,6 +12,9 @@ import {
 } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
+  ChatImprovePayload,
+  ChatImproveRecord,
+  ChatImproveResponse,
   ChatMessage,
   ChatPayload,
   ChatResponse,
@@ -19,6 +22,7 @@ import type {
   ChatStreamEvent,
 } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
+import { KnowledgeDocsService } from '../knowledge-docs/knowledge-docs.service';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
 
 type ChatSessionRecord = Prisma.ChatSessionGetPayload<{
@@ -57,6 +61,7 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly retrievalService: RetrievalService,
+    private readonly knowledgeDocsService: KnowledgeDocsService,
   ) {}
 
   async chat(
@@ -154,6 +159,62 @@ export class ChatService {
     });
 
     return messages.map((message) => this.toMessageResponse(message));
+  }
+
+  async improveMessage(
+    messageId: string,
+    userId: string,
+    input: ChatImprovePayload,
+  ): Promise<ChatImproveResponse> {
+    const message = await this.requireImproveTargetMessage(messageId, userId);
+    const isBoundKnowledgeBase = message.session.agent.agentKnowledgeBases.some(
+      (item) => item.knowledgeBaseId === input.knowledgeBaseId,
+    );
+
+    if (!isBoundKnowledgeBase) {
+      throw new BadRequestException(
+        'knowledge base is not bound to this agent',
+      );
+    }
+
+    const result = await this.knowledgeDocsService.createAiExtractedChunk(
+      input.knowledgeBaseId,
+      {
+        title: input.title,
+        content: input.content,
+        documentId: input.documentId,
+        documentName: input.documentName,
+        sourceMessageId: message.id,
+      },
+    );
+    const metadata = this.toMetadataObject(message.metadata);
+    const improveRecord: ChatImproveRecord = {
+      knowledgeBaseId: input.knowledgeBaseId,
+      documentId: result.document.id,
+      documentName: result.document.name,
+      chunkId: result.chunk.id,
+      chunkTitle: result.chunk.title,
+      chunkPosition: result.chunk.position,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = await this.prisma.chatMessage.update({
+      where: { id: message.id },
+      data: {
+        metadata: {
+          ...metadata,
+          improveRecords: [
+            ...this.toImproveRecords(message.metadata),
+            improveRecord,
+          ],
+        },
+      },
+      select: chatMessageSelect,
+    });
+
+    return {
+      message: this.toMessageResponse(updated),
+      improveRecord,
+    };
   }
 
   private async prepareChat(
@@ -261,6 +322,41 @@ export class ChatService {
     if (!session) {
       throw new NotFoundException('chat session does not exist');
     }
+  }
+
+  private async requireImproveTargetMessage(messageId: string, userId: string) {
+    const message = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        role: true,
+        metadata: true,
+        session: {
+          select: {
+            userId: true,
+            agent: {
+              select: {
+                agentKnowledgeBases: {
+                  select: {
+                    knowledgeBaseId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!message || message.session.userId !== userId) {
+      throw new NotFoundException('chat message does not exist');
+    }
+
+    if (message.role !== ChatMessageRole.ASSISTANT) {
+      throw new BadRequestException('only assistant messages can be improved');
+    }
+
+    return message;
   }
 
   private async callChatModel(
@@ -568,9 +664,12 @@ export class ChatService {
   }
 
   private toMessageResponse(message: ChatMessageRecord): ChatMessage {
+    const { metadata, ...messageData } = message;
+
     return {
-      ...message,
+      ...messageData,
       createdAt: message.createdAt.toISOString(),
+      improveRecords: this.toImproveRecords(metadata),
       citations: message.citations.map((citation) => ({
         id: citation.id,
         chunkId: citation.chunkId,
@@ -582,5 +681,40 @@ export class ChatService {
         createdAt: citation.createdAt.toISOString(),
       })),
     };
+  }
+
+  private toMetadataObject(
+    metadata: Prisma.JsonValue,
+  ): Record<string, unknown> {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return {};
+    }
+
+    return { ...metadata };
+  }
+
+  private toImproveRecords(metadata: Prisma.JsonValue): ChatImproveRecord[] {
+    const value = this.toMetadataObject(metadata).improveRecords;
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is ChatImproveRecord => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return false;
+      }
+
+      const record = item as Partial<ChatImproveRecord>;
+
+      return (
+        typeof record.knowledgeBaseId === 'string' &&
+        typeof record.documentId === 'string' &&
+        typeof record.documentName === 'string' &&
+        typeof record.chunkId === 'string' &&
+        typeof record.chunkPosition === 'number' &&
+        typeof record.createdAt === 'string'
+      );
+    });
   }
 }

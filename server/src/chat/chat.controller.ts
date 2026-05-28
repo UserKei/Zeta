@@ -13,7 +13,7 @@ import type { Request, Response } from 'express';
 import { AuthGuard, AuthRequestUser } from '@libs/shared';
 import type { ChatStreamEvent } from '@zeta/common/chat';
 import { ChatService } from './chat.service';
-import { ChatDto } from './dto/chat.dto';
+import { ChatDto, ChatImproveDto } from './dto/chat.dto';
 
 type AuthenticatedRequest = Request & {
   user: AuthRequestUser;
@@ -76,6 +76,15 @@ export class ChatController {
         response.end();
       }
     }
+  }
+
+  @Post('chat-messages/:messageId/improve')
+  improveMessage(
+    @Param('messageId') messageId: string,
+    @Req() request: AuthenticatedRequest,
+    @Body() body: ChatImproveDto,
+  ) {
+    return this.chatService.improveMessage(messageId, request.user.id, body);
   }
 
   @Get('chat-sessions')

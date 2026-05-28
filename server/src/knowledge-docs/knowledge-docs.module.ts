@@ -12,5 +12,6 @@ import { KnowledgeDocsService } from './knowledge-docs.service';
   imports: [EmbeddingModule, FileStorageModule, ParserModule, RetrievalModule],
   controllers: [KnowledgeDocsController],
   providers: [KnowledgeDocsService],
+  exports: [KnowledgeDocsService],
 })
 export class KnowledgeDocsModule {}

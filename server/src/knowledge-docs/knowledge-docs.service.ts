@@ -64,6 +64,14 @@ type MarkdownImportFields = {
   chunks?: string | ChunkDraftPayload[];
 };
 
+type AiExtractedChunkInput = {
+  documentId?: string;
+  documentName?: string;
+  title?: string | null;
+  content: string;
+  sourceMessageId: string;
+};
+
 const MAX_DOCUMENT_CONTENT_LENGTH = 200_000;
 const MAX_CHUNK_CONTENT_LENGTH = 102_400;
 const MAX_CHUNK_COUNT = 200;
@@ -313,6 +321,39 @@ export class KnowledgeDocsService {
 
       throw cause;
     }
+  }
+
+  async createAiExtractedChunk(
+    knowledgeBaseId: string,
+    input: AiExtractedChunkInput,
+  ) {
+    const knowledgeBase =
+      await this.requireIndexableKnowledgeBase(knowledgeBaseId);
+    const document = input.documentId
+      ? await this.requireAiExtractedTargetDocument(
+          knowledgeBase.id,
+          input.documentId,
+        )
+      : await this.findOrCreateAiExtractedDocument(
+          knowledgeBase.id,
+          input.documentName,
+          input.sourceMessageId,
+        );
+
+    const chunk = await this.createChunk(document.id, {
+      title: input.title,
+      content: input.content,
+      status: ChunkStatus.ACTIVE,
+    });
+    const updatedDocument = await this.prisma.document.findUniqueOrThrow({
+      where: { id: document.id },
+      select: documentSelect,
+    });
+
+    return {
+      document: this.toDocumentResponse(updatedDocument),
+      chunk,
+    };
   }
 
   async listChunks(documentId: string) {
@@ -991,6 +1032,58 @@ export class KnowledgeDocsService {
         embeddingModel,
       },
     };
+  }
+
+  private async requireAiExtractedTargetDocument(
+    knowledgeBaseId: string,
+    documentId: string,
+  ) {
+    const document = await this.requireIndexableDocument(documentId);
+
+    if (document.knowledgeBaseId !== knowledgeBaseId) {
+      throw new BadRequestException(
+        'document does not belong to the target knowledge base',
+      );
+    }
+
+    return document;
+  }
+
+  private async findOrCreateAiExtractedDocument(
+    knowledgeBaseId: string,
+    documentName: string | undefined,
+    sourceMessageId: string,
+  ) {
+    const name = documentName?.trim() || '聊天补充知识';
+    const existingDocument = await this.prisma.document.findFirst({
+      where: {
+        knowledgeBaseId,
+        sourceType: DocumentSourceType.AI_EXTRACTED,
+        name,
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existingDocument) {
+      return this.requireIndexableDocument(existingDocument.id);
+    }
+
+    const document = await this.prisma.document.create({
+      data: {
+        knowledgeBase: { connect: { id: knowledgeBaseId } },
+        name,
+        sourceType: DocumentSourceType.AI_EXTRACTED,
+        status: DocumentStatus.CHUNKING,
+        metadata: {
+          description: '从 Agent 聊天记录标注入库的知识',
+          sourceMessageId,
+        },
+      },
+      select: { id: true },
+    });
+
+    return this.requireIndexableDocument(document.id);
   }
 
   private async requireIndexableChunk(id: string) {

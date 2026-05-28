@@ -22,6 +22,7 @@ export const chatMessageSelect = {
   content: true,
   modelId: true,
   tokenUsage: true,
+  metadata: true,
   createdAt: true,
   citations: {
     orderBy: { createdAt: 'asc' },

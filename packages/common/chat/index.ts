@@ -35,6 +35,16 @@ export type ChatCitation = {
   createdAt: string;
 };
 
+export type ChatImproveRecord = {
+  knowledgeBaseId: string;
+  documentId: string;
+  documentName: string;
+  chunkId: string;
+  chunkTitle: string | null;
+  chunkPosition: number;
+  createdAt: string;
+};
+
 export type ChatMessage = {
   id: string;
   sessionId: string;
@@ -44,12 +54,26 @@ export type ChatMessage = {
   tokenUsage: unknown;
   createdAt: string;
   citations: ChatCitation[];
+  improveRecords: ChatImproveRecord[];
 };
 
 export type ChatPayload = {
   message: string;
   sessionId?: string;
   topK?: number;
+};
+
+export type ChatImprovePayload = {
+  knowledgeBaseId: string;
+  documentId?: string;
+  documentName?: string;
+  title?: string | null;
+  content: string;
+};
+
+export type ChatImproveResponse = {
+  message: ChatMessage;
+  improveRecord: ChatImproveRecord;
 };
 
 export type ChatResponse = {
