@@ -252,7 +252,7 @@ onMounted(load)
             {{ formatTime(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column align="right" fixed="right" label="操作" min-width="210">
+        <el-table-column align="right" fixed="right" label="操作" min-width="260">
           <template #default="{ row }: { row: Agent }">
             <el-button
               :disabled="!row.model"
@@ -260,6 +260,12 @@ onMounted(load)
               @click="router.push({ name: 'agent-chat', params: { agentId: row.id } })"
             >
               聊天
+            </el-button>
+            <el-button
+              size="small"
+              @click="router.push({ name: 'agent-chat-logs', params: { agentId: row.id } })"
+            >
+              日志
             </el-button>
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="danger" @click="remove(row)">删除</el-button>

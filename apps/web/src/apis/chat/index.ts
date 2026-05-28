@@ -2,6 +2,8 @@ import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { apiBaseUrl, responseData, serverApi, type Response } from '..'
 import { useUserStore } from '@/stores/user'
 import type {
+  ChatImprovePayload,
+  ChatImproveResponse,
   ChatMessage,
   ChatPayload,
   ChatResponse,
@@ -11,6 +13,9 @@ import type {
 
 export type {
   ChatCitation,
+  ChatImprovePayload,
+  ChatImproveRecord,
+  ChatImproveResponse,
   ChatMessage,
   ChatMessageRole,
   ChatPayload,
@@ -80,6 +85,16 @@ export const listChatMessages = (sessionId: string) =>
   responseData(
     serverApi.get(`/chat-sessions/${sessionId}/messages`) as Promise<
       Response<ChatMessage[]>
+    >,
+  )
+
+export const improveChatMessage = (
+  messageId: string,
+  payload: ChatImprovePayload,
+) =>
+  responseData(
+    serverApi.post(`/chat-messages/${messageId}/improve`, payload) as Promise<
+      Response<ChatImproveResponse>
     >,
   )
 

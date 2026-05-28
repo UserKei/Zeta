@@ -16,6 +16,16 @@ export default [
         },
         component: () => import('@/views/Agents/index.vue'),
       },
+      {
+        path: ':agentId/chat-logs',
+        name: 'agent-chat-logs',
+        meta: {
+          requiresAuth: true,
+          activeMenu: 'agents',
+          title: '聊天日志',
+        },
+        component: () => import('@/views/Agents/ChatLogs/index.vue'),
+      },
     ],
   },
 ]

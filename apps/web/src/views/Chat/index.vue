@@ -238,6 +238,7 @@ const createLocalMessage = (message: {
   modelId: null,
   tokenUsage: {},
   citations: [],
+  improveRecords: [],
 })
 
 const applySuggestedQuestion = (question: string) => {
