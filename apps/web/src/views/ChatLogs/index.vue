@@ -9,6 +9,7 @@ import {
   listChatMessageImproves,
   listChatMessages,
   listChatSessions,
+  type ChatImproveRecord,
   type ChatImproveRecordDetail,
   type ChatMessage,
   type ChatSession,
@@ -221,6 +222,9 @@ const countImproveRecords = (sessionMessages: ChatMessage[]) =>
     0,
   )
 
+const latestImproveRecord = (message: ChatMessage) =>
+  message.improveRecords.at(-1) ?? null
+
 const openImprove = async (message: ChatMessage, index: number) => {
   const defaultKnowledgeBase = targetKnowledgeBases.value[0]
 
@@ -398,14 +402,23 @@ const findPreviousQuestion = (index: number) => {
   return selectedSession.value?.title ?? ''
 }
 
-const goParagraph = (knowledgeBaseId: string, documentId: string) => {
+const goParagraph = (
+  knowledgeBaseId: string,
+  documentId: string,
+  chunkId?: string,
+) => {
   router.push({
     name: 'paragraph',
     params: {
       knowledgeBaseId,
       documentId,
     },
+    query: chunkId ? { chunkId } : undefined,
   })
+}
+
+const goImproveRecord = (record: ChatImproveRecord) => {
+  goParagraph(record.knowledgeBaseId, record.documentId, record.chunkId)
 }
 
 const formatTime = (value: string) =>
@@ -474,12 +487,7 @@ onMounted(load)
             <strong>{{ row.title || '新会话' }}</strong>
           </template>
         </el-table-column>
-        <el-table-column
-          align="right"
-          label="对话提问数"
-          prop="messageCount"
-          width="130"
-        />
+        <el-table-column align="right" label="消息数" prop="messageCount" width="110" />
         <el-table-column align="right" label="改进标注" prop="improveCount" width="120">
           <template #default="{ row }">
             <el-tag v-if="row.improveCount > 0" type="success" effect="light">
@@ -544,6 +552,15 @@ onMounted(load)
                 改进标注
               </el-button>
               <el-button
+                v-if="latestImproveRecord(message)"
+                size="small"
+                type="primary"
+                plain
+                @click="goImproveRecord(latestImproveRecord(message)!)"
+              >
+                查看分段
+              </el-button>
+              <el-button
                 size="small"
                 type="primary"
                 plain
@@ -557,6 +574,28 @@ onMounted(load)
           <p class="m-0 whitespace-pre-wrap text-sm leading-7 text-(--zeta-content)">
             {{ message.content }}
           </p>
+
+          <div
+            v-if="latestImproveRecord(message)"
+            class="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-(--zeta-blue-line) bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)"
+          >
+            <el-tag type="success" effect="light" size="small">
+              已标注 {{ message.improveRecords.length }}
+            </el-tag>
+            <span class="font-medium">
+              {{ latestImproveRecord(message)!.documentName }}
+            </span>
+            <span class="text-(--zeta-muted)">
+              分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
+            </span>
+            <el-button
+              link
+              type="primary"
+              @click="goImproveRecord(latestImproveRecord(message)!)"
+            >
+              查看分段
+            </el-button>
+          </div>
         </article>
 
         <el-empty v-if="!messageLoading && messages.length === 0" description="暂无消息" />
@@ -629,7 +668,7 @@ onMounted(load)
               <el-button
                 size="small"
                 :icon="View"
-                @click="goParagraph(record.knowledgeBaseId, record.documentId)"
+                @click="goParagraph(record.knowledgeBaseId, record.documentId, record.chunkId)"
               >
                 查看分段
               </el-button>

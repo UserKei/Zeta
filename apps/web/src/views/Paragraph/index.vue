@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -58,6 +58,8 @@ const dialogMode = ref<DialogMode>('view')
 const chunkEditingId = ref<string | null>(null)
 const afterChunkId = ref<string | null>(null)
 const chunkSaving = ref(false)
+const highlightedChunkId = ref('')
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
 
 const chunkForm = reactive<ChunkForm>({
   title: '',
@@ -96,6 +98,28 @@ const load = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const focusChunkFromQuery = async () => {
+  const chunkId = typeof route.query.chunkId === 'string' ? route.query.chunkId : ''
+
+  if (!chunkId) {
+    return
+  }
+
+  await nextTick()
+  scrollToChunk(chunkId)
+  highlightedChunkId.value = chunkId
+
+  if (highlightTimer) {
+    clearTimeout(highlightTimer)
+  }
+
+  highlightTimer = setTimeout(() => {
+    if (highlightedChunkId.value === chunkId) {
+      highlightedChunkId.value = ''
+    }
+  }, 2600)
 }
 
 const refreshDocument = async () => {
@@ -257,7 +281,23 @@ const chunkStatusText = (status: ChunkStatus) => (status === 'ACTIVE' ? '启用'
 
 const chunkStatusClass = (status: ChunkStatus) => (status === 'ACTIVE' ? 'success' : 'info')
 
-onMounted(load)
+watch(
+  () => route.query.chunkId,
+  () => {
+    void focusChunkFromQuery()
+  },
+)
+
+onMounted(async () => {
+  await load()
+  await focusChunkFromQuery()
+})
+
+onBeforeUnmount(() => {
+  if (highlightTimer) {
+    clearTimeout(highlightTimer)
+  }
+})
 </script>
 
 <template>
@@ -373,8 +413,13 @@ onMounted(load)
               v-show="matchesChunk(chunk)"
               :id="`chunk-${chunk.id}`"
               :key="chunk.id"
-              class="group relative mb-4 cursor-pointer rounded-lg border border-white bg-(--zeta-panel) p-4 shadow-none hover:border-(--zeta-line)"
-              :class="chunk.status === 'DISABLED' ? 'opacity-60' : ''"
+              class="group relative mb-4 scroll-mt-4 cursor-pointer rounded-lg border border-white bg-(--zeta-panel) p-4 shadow-none transition-colors duration-300 hover:border-(--zeta-line)"
+              :class="[
+                chunk.status === 'DISABLED' ? 'opacity-60' : '',
+                highlightedChunkId === chunk.id
+                  ? 'border-(--zeta-blue) bg-(--zeta-blue-soft) ring-2 ring-(--zeta-blue-line)'
+                  : '',
+              ]"
               @click="openViewChunk(chunk)"
               @mouseenter="hoveredChunkId = chunk.id"
               @mouseleave="hoveredChunkId = null"
