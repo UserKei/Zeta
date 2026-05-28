@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ChunkStatus } from '@zeta/common/knowledge-docs';
+import { ChunkStatus } from '../generated/prisma/enums';
 import { TextSplitterService } from '../text-splitter/text-splitter.service';
 import type {
   DocumentFileParser,
   FileParseInput,
   FileParseOptions,
+  FileParseResult,
 } from './parser.types';
 import {
   getDocumentNameFromFileName,
@@ -28,7 +29,7 @@ export class HtmlParserService implements DocumentFileParser {
     );
   }
 
-  parse(input: FileParseInput, options: FileParseOptions) {
+  parse(input: FileParseInput, options: FileParseOptions): FileParseResult {
     const fileName = normalizeFileName(input.fileName);
     const documentName = getDocumentNameFromFileName(fileName);
     const content = this.extractText(input.buffer.toString('utf8'));
