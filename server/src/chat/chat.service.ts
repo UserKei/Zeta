@@ -12,8 +12,10 @@ import {
 } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
+  ChatImproveDeleteResponse,
   ChatImprovePayload,
   ChatImproveRecord,
+  ChatImproveRecordDetail,
   ChatImproveResponse,
   ChatMessage,
   ChatPayload,
@@ -214,6 +216,52 @@ export class ChatService {
     return {
       message: this.toMessageResponse(updated),
       improveRecord,
+    };
+  }
+
+  async listImproveRecords(
+    messageId: string,
+    userId: string,
+  ): Promise<ChatImproveRecordDetail[]> {
+    const message = await this.requireImproveTargetMessage(messageId, userId);
+
+    return this.toImproveRecordDetails(this.toImproveRecords(message.metadata));
+  }
+
+  async removeImproveRecord(
+    messageId: string,
+    userId: string,
+    chunkId: string,
+  ): Promise<ChatImproveDeleteResponse> {
+    const message = await this.requireImproveTargetMessage(messageId, userId);
+    const metadata = this.toMetadataObject(message.metadata);
+    const improveRecords = this.toImproveRecords(message.metadata);
+    const deletedRecord = improveRecords.find(
+      (record) => record.chunkId === chunkId,
+    );
+
+    if (!deletedRecord) {
+      throw new NotFoundException('improve record does not exist');
+    }
+
+    await this.knowledgeDocsService.removeImprovedChunk(chunkId);
+
+    const updated = await this.prisma.chatMessage.update({
+      where: { id: message.id },
+      data: {
+        metadata: {
+          ...metadata,
+          improveRecords: improveRecords.filter(
+            (record) => record.chunkId !== chunkId,
+          ),
+        },
+      },
+      select: chatMessageSelect,
+    });
+
+    return {
+      message: this.toMessageResponse(updated),
+      deletedRecord,
     };
   }
 
@@ -716,5 +764,51 @@ export class ChatService {
         typeof record.createdAt === 'string'
       );
     });
+  }
+
+  private async toImproveRecordDetails(
+    records: ChatImproveRecord[],
+  ): Promise<ChatImproveRecordDetail[]> {
+    if (records.length === 0) {
+      return [];
+    }
+
+    const chunks = await this.prisma.chunk.findMany({
+      where: { id: { in: records.map((record) => record.chunkId) } },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        position: true,
+        document: {
+          select: {
+            id: true,
+            name: true,
+            knowledgeBaseId: true,
+          },
+        },
+      },
+    });
+    const chunksById = new Map(chunks.map((chunk) => [chunk.id, chunk]));
+
+    return records
+      .map((record) => {
+        const chunk = chunksById.get(record.chunkId);
+
+        if (!chunk) {
+          return null;
+        }
+
+        return {
+          ...record,
+          knowledgeBaseId: chunk.document.knowledgeBaseId,
+          documentId: chunk.document.id,
+          documentName: chunk.document.name,
+          chunkTitle: chunk.title,
+          chunkPosition: chunk.position,
+          content: chunk.content,
+        };
+      })
+      .filter((record): record is ChatImproveRecordDetail => record !== null);
   }
 }

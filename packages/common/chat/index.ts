@@ -45,6 +45,10 @@ export type ChatImproveRecord = {
   createdAt: string;
 };
 
+export type ChatImproveRecordDetail = ChatImproveRecord & {
+  content: string;
+};
+
 export type ChatMessage = {
   id: string;
   sessionId: string;
@@ -74,6 +78,11 @@ export type ChatImprovePayload = {
 export type ChatImproveResponse = {
   message: ChatMessage;
   improveRecord: ChatImproveRecord;
+};
+
+export type ChatImproveDeleteResponse = {
+  message: ChatMessage;
+  deletedRecord: ChatImproveRecord;
 };
 
 export type ChatResponse = {

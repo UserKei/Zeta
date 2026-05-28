@@ -504,6 +504,28 @@ export class KnowledgeDocsService {
     return { id };
   }
 
+  async removeImprovedChunk(id: string) {
+    const chunk = await this.prisma.chunk.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        documentId: true,
+      },
+    });
+
+    if (!chunk) {
+      throw new NotFoundException('chunk does not exist');
+    }
+
+    await this.prisma.chatCitation.deleteMany({ where: { chunkId: id } });
+    await this.prisma.chunkEmbedding.deleteMany({ where: { chunkId: id } });
+    await this.prisma.chunk.delete({ where: { id } });
+    await this.reorderDocumentChunks(chunk.documentId);
+    await this.refreshDocumentStats(chunk.documentId);
+
+    return { id };
+  }
+
   async reorderChunks(documentId: string, input: ChunkReorderPayload) {
     await this.requireDocument(documentId);
 

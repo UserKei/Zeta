@@ -28,6 +28,7 @@ import { ChatService } from './chat.service';
 describe('ChatService improveMessage', () => {
   const knowledgeDocsService = {
     createAiExtractedChunk: jest.fn(),
+    removeImprovedChunk: jest.fn(),
   };
 
   const createService = (prisma: Record<string, unknown>) =>
@@ -206,5 +207,166 @@ describe('ChatService improveMessage', () => {
     );
     expect(result.improveRecord.documentId).toBe('doc-1');
     expect(result.message.improveRecords).toHaveLength(1);
+  });
+
+  it('lists improve records with current chunk content', async () => {
+    const service = createService({
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'message-1',
+          role: ChatMessageRole.ASSISTANT,
+          metadata: {
+            improveRecords: [
+              {
+                knowledgeBaseId: 'kb-1',
+                documentId: 'doc-1',
+                documentName: '聊天补充知识',
+                chunkId: 'chunk-1',
+                chunkTitle: '旧标题',
+                chunkPosition: 0,
+                createdAt: '2026-05-28T08:00:00.000Z',
+              },
+            ],
+          },
+          session: {
+            userId: 'user-1',
+            agent: {
+              agentKnowledgeBases: [{ knowledgeBaseId: 'kb-1' }],
+            },
+          },
+        }),
+      },
+      chunk: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'chunk-1',
+            title: '当前标题',
+            content: '当前标注内容',
+            position: 2,
+            document: {
+              id: 'doc-1',
+              name: '聊天补充知识',
+              knowledgeBaseId: 'kb-1',
+            },
+          },
+        ]),
+      },
+    });
+
+    const records = await service.listImproveRecords('message-1', 'user-1');
+
+    expect(records).toEqual([
+      {
+        knowledgeBaseId: 'kb-1',
+        documentId: 'doc-1',
+        documentName: '聊天补充知识',
+        chunkId: 'chunk-1',
+        chunkTitle: '当前标题',
+        chunkPosition: 2,
+        content: '当前标注内容',
+        createdAt: '2026-05-28T08:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('deletes an improve record and removes its chunk', async () => {
+    const updatedAt = new Date('2026-05-28T08:00:00.000Z');
+    const existingRecords = [
+      {
+        knowledgeBaseId: 'kb-1',
+        documentId: 'doc-1',
+        documentName: '聊天补充知识',
+        chunkId: 'chunk-1',
+        chunkTitle: '标题 1',
+        chunkPosition: 0,
+        createdAt: updatedAt.toISOString(),
+      },
+      {
+        knowledgeBaseId: 'kb-1',
+        documentId: 'doc-1',
+        documentName: '聊天补充知识',
+        chunkId: 'chunk-2',
+        chunkTitle: '标题 2',
+        chunkPosition: 1,
+        createdAt: updatedAt.toISOString(),
+      },
+    ];
+    const updateChatMessage = jest.fn().mockResolvedValue({
+      id: 'message-1',
+      sessionId: 'session-1',
+      role: ChatMessageRole.ASSISTANT,
+      content: 'AI 回答',
+      modelId: 'model-1',
+      tokenUsage: {},
+      metadata: {
+        improveRecords: [existingRecords[1]],
+      },
+      createdAt: updatedAt,
+      citations: [],
+    });
+    const service = createService({
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'message-1',
+          role: ChatMessageRole.ASSISTANT,
+          metadata: {
+            improveRecords: existingRecords,
+          },
+          session: {
+            userId: 'user-1',
+            agent: {
+              agentKnowledgeBases: [{ knowledgeBaseId: 'kb-1' }],
+            },
+          },
+        }),
+        update: updateChatMessage,
+      },
+    });
+
+    const result = await service.removeImproveRecord(
+      'message-1',
+      'user-1',
+      'chunk-1',
+    );
+
+    expect(knowledgeDocsService.removeImprovedChunk).toHaveBeenCalledWith(
+      'chunk-1',
+    );
+    expect(updateChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'message-1' },
+        data: {
+          metadata: {
+            improveRecords: [existingRecords[1]],
+          },
+        },
+      }),
+    );
+    expect(result.deletedRecord.chunkId).toBe('chunk-1');
+    expect(result.message.improveRecords).toHaveLength(1);
+  });
+
+  it('rejects deleting a missing improve record', async () => {
+    const service = createService({
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'message-1',
+          role: ChatMessageRole.ASSISTANT,
+          metadata: { improveRecords: [] },
+          session: {
+            userId: 'user-1',
+            agent: {
+              agentKnowledgeBases: [{ knowledgeBaseId: 'kb-1' }],
+            },
+          },
+        }),
+      },
+    });
+
+    await expect(
+      service.removeImproveRecord('message-1', 'user-1', 'chunk-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(knowledgeDocsService.removeImprovedChunk).not.toHaveBeenCalled();
   });
 });

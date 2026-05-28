@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -85,6 +86,27 @@ export class ChatController {
     @Body() body: ChatImproveDto,
   ) {
     return this.chatService.improveMessage(messageId, request.user.id, body);
+  }
+
+  @Get('chat-messages/:messageId/improve')
+  listImproveRecords(
+    @Param('messageId') messageId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.chatService.listImproveRecords(messageId, request.user.id);
+  }
+
+  @Delete('chat-messages/:messageId/improve/:chunkId')
+  removeImproveRecord(
+    @Param('messageId') messageId: string,
+    @Param('chunkId') chunkId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.chatService.removeImproveRecord(
+      messageId,
+      request.user.id,
+      chunkId,
+    );
   }
 
   @Get('chat-sessions')
