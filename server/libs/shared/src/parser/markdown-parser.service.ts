@@ -13,11 +13,13 @@ export class MarkdownParserService {
   constructor(private readonly textSplitter: TextSplitterService) {}
 
   parse(content: string, options: MarkdownParseOptions) {
-    const text = content
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .replaceAll('\0', '')
-      .trim();
+    const text = this.stripLeadingFrontmatter(
+      content
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replaceAll('\0', '')
+        .trim(),
+    ).trim();
     const chunks: ChunkDraftPayload[] = [];
     const headingStack: Heading[] = [];
     let inCodeBlock = false;
@@ -35,10 +37,9 @@ export class MarkdownParserService {
     const flush = () => {
       const title = currentTitle();
       const body = buffer.join('\n').trim();
-      const chunkContent = body || title || '';
 
-      if (chunkContent) {
-        for (const contentPart of this.textSplitter.split(chunkContent, {
+      if (body) {
+        for (const contentPart of this.textSplitter.split(body, {
           maxLength: options.maxChunkLength,
         })) {
           chunks.push({
@@ -103,5 +104,9 @@ export class MarkdownParserService {
 
   private isFenceLine(line: string) {
     return /^\s*(```|~~~)/.test(line);
+  }
+
+  private stripLeadingFrontmatter(text: string) {
+    return text.replace(/^---[^\S\n]*\n[\s\S]*?\n---[^\S\n]*(?:\n|$)/, '');
   }
 }
