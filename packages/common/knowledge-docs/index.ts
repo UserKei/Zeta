@@ -63,6 +63,8 @@ export type ChunkDraftPayload = {
   status?: ChunkStatus;
 };
 
+export type FileSourceFormat = 'MARKDOWN' | 'TEXT' | 'HTML';
+
 export type ManualDocumentPayload = {
   name: string;
   description?: string;
@@ -84,6 +86,29 @@ export type MarkdownPreviewResult = {
   fileName: string;
   documentName: string;
   chunks: ChunkDraftPayload[];
+};
+
+export type FilePreviewItem = {
+  fileIndex: number;
+  fileName: string;
+  documentName: string;
+  sourceFormat: FileSourceFormat;
+  chunks: ChunkDraftPayload[];
+};
+
+export type FilePreviewResult = {
+  files: FilePreviewItem[];
+};
+
+export type FileImportDocumentPayload = {
+  fileIndex: number;
+  name: string;
+  description?: string;
+  chunks: ChunkDraftPayload[];
+};
+
+export type FileImportResult = {
+  documents: KnowledgeDocument[];
 };
 
 export type ChunkPayload = {

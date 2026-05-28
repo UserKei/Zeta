@@ -18,6 +18,7 @@ import type {
   ChunkReorderPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
+  FileImportDocumentPayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
@@ -77,6 +78,42 @@ export class MarkdownImportFormDto {
   @IsOptional()
   @IsString()
   chunks?: string;
+}
+
+export class FileImportFormDto {
+  @ApiProperty({
+    description: '用户确认后的文档 JSON 字符串',
+    example:
+      '[{"fileIndex":0,"name":"员工手册","chunks":[{"title":"员工手册","content":"正文内容","status":"ACTIVE"}]}]',
+  })
+  @IsString()
+  @MinLength(1)
+  documents!: string;
+}
+
+export class FileImportDocumentDto implements FileImportDocumentPayload {
+  @ApiProperty({ example: 0 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  fileIndex!: number;
+
+  @ApiProperty({ example: '员工手册' })
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
+  @ApiPropertyOptional({ example: '文本文件导入' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({ type: [ChunkDraftDto], description: '用户确认后的分段列表' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ChunkDraftDto)
+  chunks!: ChunkDraftDto[];
 }
 
 export class DocumentUpdateDto implements DocumentUpdatePayload {

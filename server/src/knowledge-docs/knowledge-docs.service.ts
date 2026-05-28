@@ -7,10 +7,11 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   EmbeddingService,
+  FileParserService,
   FileStorageService,
-  MarkdownParserService,
   PrismaService,
   RetrievalService,
+  type FileParseResult,
 } from '@libs/shared';
 import {
   AiModelType,
@@ -26,6 +27,8 @@ import type {
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
+  FileImportDocumentPayload,
+  FilePreviewResult,
   MarkdownImportPayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
@@ -51,7 +54,7 @@ type EmbeddableChunk = {
   content: string;
 };
 
-export type UploadedMarkdownFile = {
+export type UploadedDocumentFile = {
   originalname: string;
   mimetype?: string;
   size: number;
@@ -62,6 +65,10 @@ type MarkdownImportFields = {
   name?: string;
   description?: string;
   chunks?: string | ChunkDraftPayload[];
+};
+
+type FileImportFields = {
+  documents?: string | FileImportDocumentPayload[];
 };
 
 type AiExtractedChunkInput = {
@@ -76,7 +83,9 @@ const MAX_DOCUMENT_CONTENT_LENGTH = 200_000;
 const MAX_CHUNK_CONTENT_LENGTH = 102_400;
 const MAX_CHUNK_COUNT = 200;
 const LATIN1_MOJIBAKE_PATTERN = /[\u0080-\u009f]/;
-export const MARKDOWN_FILE_SIZE_LIMIT = 2 * 1024 * 1024;
+export const DOCUMENT_FILE_SIZE_LIMIT = 2 * 1024 * 1024;
+export const DOCUMENT_FILE_COUNT_LIMIT = 10;
+export const MARKDOWN_FILE_SIZE_LIMIT = DOCUMENT_FILE_SIZE_LIMIT;
 
 @Injectable()
 export class KnowledgeDocsService {
@@ -84,7 +93,7 @@ export class KnowledgeDocsService {
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
     private readonly fileStorageService: FileStorageService,
-    private readonly markdownParser: MarkdownParserService,
+    private readonly fileParser: FileParserService,
     private readonly retrievalService: RetrievalService,
   ) {}
 
@@ -219,44 +228,131 @@ export class KnowledgeDocsService {
 
   async previewMarkdownFile(
     knowledgeBaseId: string,
-    file: UploadedMarkdownFile | undefined,
+    file: UploadedDocumentFile | undefined,
   ) {
     await this.requireKnowledgeBase(knowledgeBaseId);
 
-    const content = this.getMarkdownContent(file);
+    const parsedFile = this.parseUploadedFile(file);
+
+    if (parsedFile.sourceFormat !== 'MARKDOWN') {
+      throw new BadRequestException('仅支持 .md 或 .markdown 文件');
+    }
 
     return {
-      fileName: this.getUploadFileName(file),
-      documentName: this.getDefaultDocumentName(file),
-      chunks: this.parseMarkdownContent(content),
+      fileName: parsedFile.fileName,
+      documentName: parsedFile.documentName,
+      chunks: parsedFile.chunks,
+    };
+  }
+
+  async previewDocumentFiles(
+    knowledgeBaseId: string,
+    files: UploadedDocumentFile[] | undefined,
+  ): Promise<FilePreviewResult> {
+    await this.requireKnowledgeBase(knowledgeBaseId);
+
+    const uploadedFiles = this.assertUploadedFiles(files);
+
+    return {
+      files: uploadedFiles.map((file, fileIndex) => {
+        const parsedFile = this.parseUploadedFile(file);
+
+        return {
+          fileIndex,
+          fileName: parsedFile.fileName,
+          documentName: parsedFile.documentName,
+          sourceFormat: parsedFile.sourceFormat,
+          chunks: parsedFile.chunks,
+        };
+      }),
     };
   }
 
   async createMarkdownDocument(
     knowledgeBaseId: string,
-    file: UploadedMarkdownFile | undefined,
+    file: UploadedDocumentFile | undefined,
     fields: MarkdownImportFields,
+  ) {
+    const parsedFile = this.parseUploadedFile(file);
+
+    if (parsedFile.sourceFormat !== 'MARKDOWN') {
+      throw new BadRequestException('仅支持 .md 或 .markdown 文件');
+    }
+
+    const importPayload = this.parseMarkdownImportPayload(fields);
+
+    const result = await this.createFileDocuments(knowledgeBaseId, [file!], {
+      documents: [
+        {
+          fileIndex: 0,
+          name: importPayload.name?.trim() || parsedFile.documentName,
+          description: importPayload.description,
+          chunks: importPayload.chunks,
+        },
+      ],
+    });
+
+    return result.documents[0];
+  }
+
+  async createFileDocuments(
+    knowledgeBaseId: string,
+    files: UploadedDocumentFile[] | undefined,
+    fields: FileImportFields,
   ) {
     const knowledgeBase =
       await this.requireIndexableKnowledgeBase(knowledgeBaseId);
-    const content = this.getMarkdownContent(file);
-    const importPayload = this.parseMarkdownImportPayload(fields);
-    const name =
-      importPayload.name?.trim() || this.getDefaultDocumentName(file);
-    const chunks = this.toChunkDrafts(importPayload.chunks);
+    const uploadedFiles = this.assertUploadedFiles(files);
+    const importDocuments = this.parseFileImportPayload(fields, uploadedFiles);
+    const documents: Array<ReturnType<typeof this.toDocumentResponse>> = [];
 
-    if (!name) {
-      throw new BadRequestException('name is required');
+    for (const importDocument of importDocuments) {
+      const file = uploadedFiles[importDocument.fileIndex];
+      const parsedFile = this.parseUploadedFile(file);
+      const chunks = this.toChunkDrafts(importDocument.chunks);
+      const name = importDocument.name?.trim() || parsedFile.documentName;
+
+      if (!name) {
+        throw new BadRequestException('name is required');
+      }
+
+      this.assertDocumentChunks(chunks);
+
+      const document = await this.createUploadedFileDocument(
+        knowledgeBase,
+        file,
+        parsedFile,
+        {
+          name,
+          description: importDocument.description,
+          chunks,
+        },
+      );
+
+      documents.push(document);
     }
 
-    this.assertDocumentChunks(chunks);
+    return { documents };
+  }
+
+  private async createUploadedFileDocument(
+    knowledgeBase: IndexableKnowledgeBaseWithEmbedding,
+    file: UploadedDocumentFile,
+    parsedFile: FileParseResult,
+    input: {
+      name: string;
+      description?: string;
+      chunks: ChunkDraft[];
+    },
+  ) {
+    const originalCharCount = this.countChars(input.chunks);
 
     const sourceFile = await this.fileStorageService.saveBuffer({
-      fileName: this.getUploadFileName(file),
-      mimeType: file?.mimetype || 'text/markdown',
-      buffer: file!.buffer,
+      fileName: parsedFile.fileName,
+      mimeType: file.mimetype || null,
+      buffer: file.buffer,
       metadata: {
-        sourceFormat: 'MARKDOWN',
+        sourceFormat: parsedFile.sourceFormat,
       },
     });
     let document: DocumentRecord | null = null;
@@ -266,24 +362,24 @@ export class KnowledgeDocsService {
         data: {
           knowledgeBase: { connect: { id: knowledgeBase.id } },
           sourceFile: { connect: { id: sourceFile.id } },
-          name,
+          name: input.name,
           sourceType: DocumentSourceType.FILE_UPLOAD,
           status: DocumentStatus.CHUNKING,
-          charCount: this.countChars(chunks),
-          chunkCount: chunks.length,
+          charCount: this.countChars(input.chunks),
+          chunkCount: input.chunks.length,
           metadata: {
-            description: importPayload.description?.trim() || null,
-            sourceFormat: 'MARKDOWN',
+            description: input.description?.trim() || null,
+            sourceFormat: parsedFile.sourceFormat,
             originalFileName: sourceFile.fileName,
             originalFileSize: Number(sourceFile.fileSize),
             sha256Hash: sourceFile.sha256Hash,
-            originalCharCount: content.length,
+            originalCharCount,
           },
         },
         select: documentSelect,
       });
 
-      await this.createChunks(knowledgeBase.id, document.id, chunks);
+      await this.createChunks(knowledgeBase.id, document.id, input.chunks);
       await this.refreshDocumentSearchVector(document.id);
 
       await this.prisma.document.update({
@@ -837,59 +933,69 @@ export class KnowledgeDocsService {
     return {};
   }
 
-  private parseMarkdownContent(content: string) {
-    return this.markdownParser.parse(content, {
-      maxChunkLength: MAX_CHUNK_CONTENT_LENGTH,
-      maxChunkCount: MAX_CHUNK_COUNT,
-    });
-  }
+  private parseUploadedFile(file: UploadedDocumentFile | undefined) {
+    this.assertUploadedFile(file);
 
-  private getMarkdownContent(file: UploadedMarkdownFile | undefined) {
-    this.assertMarkdownFile(file);
-
-    const content = this.normalizeText(
-      file.buffer.toString('utf8').replace(/^\uFEFF/, ''),
+    const parsedFile = this.fileParser.parse(
+      {
+        fileName: this.getUploadFileName(file),
+        mimeType: file.mimetype,
+        buffer: file.buffer,
+      },
+      {
+        maxChunkLength: MAX_CHUNK_CONTENT_LENGTH,
+        maxChunkCount: MAX_CHUNK_COUNT,
+      },
     );
 
-    if (!content) {
-      throw new BadRequestException('Markdown 文件不能为空');
-    }
+    const charCount = parsedFile.chunks.reduce(
+      (total, chunk) => total + chunk.content.length,
+      0,
+    );
 
-    if (content.length > MAX_DOCUMENT_CONTENT_LENGTH) {
+    if (charCount > MAX_DOCUMENT_CONTENT_LENGTH) {
       throw new BadRequestException(
-        `Markdown 内容不能超过 ${MAX_DOCUMENT_CONTENT_LENGTH} 个字符`,
+        `document content cannot exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`,
       );
     }
 
-    return content;
+    return parsedFile;
   }
 
-  private assertMarkdownFile(
-    file: UploadedMarkdownFile | undefined,
-  ): asserts file is UploadedMarkdownFile {
-    if (!file?.buffer) {
-      throw new BadRequestException('请上传 Markdown 文件');
+  private assertUploadedFiles(files: UploadedDocumentFile[] | undefined) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('请上传文档文件');
     }
 
-    const fileName = this.getUploadFileName(file);
-    const normalizedFileName = fileName.toLowerCase();
+    if (files.length > DOCUMENT_FILE_COUNT_LIMIT) {
+      throw new BadRequestException(
+        `一次最多上传 ${DOCUMENT_FILE_COUNT_LIMIT} 个文件`,
+      );
+    }
 
-    if (
-      !normalizedFileName.endsWith('.md') &&
-      !normalizedFileName.endsWith('.markdown')
-    ) {
-      throw new BadRequestException('仅支持 .md 或 .markdown 文件');
+    for (const file of files) {
+      this.assertUploadedFile(file);
+    }
+
+    return files;
+  }
+
+  private assertUploadedFile(
+    file: UploadedDocumentFile | undefined,
+  ): asserts file is UploadedDocumentFile {
+    if (!file?.buffer) {
+      throw new BadRequestException('请上传文档文件');
     }
 
     if (file.size <= 0 || file.buffer.byteLength <= 0) {
-      throw new BadRequestException('Markdown 文件不能为空');
+      throw new BadRequestException('文档文件不能为空');
     }
 
     if (
-      file.size > MARKDOWN_FILE_SIZE_LIMIT ||
-      file.buffer.byteLength > MARKDOWN_FILE_SIZE_LIMIT
+      file.size > DOCUMENT_FILE_SIZE_LIMIT ||
+      file.buffer.byteLength > DOCUMENT_FILE_SIZE_LIMIT
     ) {
-      throw new BadRequestException('Markdown 文件不能超过 2MB');
+      throw new BadRequestException('文档文件不能超过 2MB');
     }
   }
 
@@ -903,7 +1009,65 @@ export class KnowledgeDocsService {
     } satisfies MarkdownImportPayload;
   }
 
-  private parseChunksField(chunks: MarkdownImportFields['chunks']) {
+  private parseFileImportPayload(
+    fields: FileImportFields,
+    files: UploadedDocumentFile[],
+  ) {
+    const documents = this.parseDocumentsField(fields.documents);
+    const seenFileIndexes = new Set<number>();
+
+    if (documents.length !== files.length) {
+      throw new BadRequestException('documents must match uploaded files');
+    }
+
+    for (const document of documents) {
+      if (
+        !Number.isInteger(document.fileIndex) ||
+        document.fileIndex < 0 ||
+        document.fileIndex >= files.length
+      ) {
+        throw new BadRequestException('document fileIndex is invalid');
+      }
+
+      if (seenFileIndexes.has(document.fileIndex)) {
+        throw new BadRequestException('document fileIndex must be unique');
+      }
+
+      seenFileIndexes.add(document.fileIndex);
+    }
+
+    return documents;
+  }
+
+  private parseDocumentsField(
+    documents: FileImportFields['documents'],
+  ): FileImportDocumentPayload[] {
+    if (Array.isArray(documents)) {
+      return documents;
+    }
+
+    if (typeof documents !== 'string' || !documents.trim()) {
+      throw new BadRequestException('documents are required');
+    }
+
+    try {
+      const parsed = JSON.parse(documents) as FileImportDocumentPayload[];
+
+      if (!Array.isArray(parsed)) {
+        throw new Error('documents must be an array');
+      }
+
+      return parsed;
+    } catch {
+      throw new BadRequestException('documents must be valid JSON');
+    }
+  }
+
+  private parseChunksField(
+    chunks:
+      | MarkdownImportFields['chunks']
+      | FileImportDocumentPayload['chunks'],
+  ) {
     if (Array.isArray(chunks)) {
       return chunks;
     }
@@ -919,7 +1083,7 @@ export class KnowledgeDocsService {
     }
   }
 
-  private getUploadFileName(file: UploadedMarkdownFile | undefined) {
+  private getUploadFileName(file: UploadedDocumentFile | undefined) {
     return this.decodeUploadFileName(file?.originalname);
   }
 
@@ -939,13 +1103,6 @@ export class KnowledgeDocsService {
     }
 
     return decodedFileName;
-  }
-
-  private getDefaultDocumentName(file: UploadedMarkdownFile | undefined) {
-    const fileName = this.getUploadFileName(file);
-    const documentName = fileName.replace(/\.(md|markdown)$/i, '').trim();
-
-    return documentName || 'Markdown 文档';
   }
 
   private normalizeText(content: string | undefined) {
@@ -1214,6 +1371,13 @@ type IndexableKnowledgeBase = {
         isEnabled: boolean;
       })
     | null;
+};
+
+type IndexableKnowledgeBaseWithEmbedding = IndexableKnowledgeBase & {
+  embeddingModel: EmbeddingModelConfig & {
+    type: AiModelType;
+    isEnabled: boolean;
+  };
 };
 
 type EmbeddingModelConfig = {

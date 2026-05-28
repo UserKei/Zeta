@@ -1,7 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { ChunkDraftPayload } from '@zeta/common/knowledge-docs';
 import { TextSplitterService } from '../text-splitter/text-splitter.service';
-import type { MarkdownParseOptions } from './parser.types';
+import type {
+  DocumentFileParser,
+  FileParseInput,
+  FileParseOptions,
+  FileParseResult,
+  MarkdownParseOptions,
+} from './parser.types';
+import {
+  getDocumentNameFromFileName,
+  normalizeFileName,
+  normalizeTextContent,
+} from './parser.utils';
 
 type Heading = {
   level: number;
@@ -9,16 +20,47 @@ type Heading = {
 };
 
 @Injectable()
-export class MarkdownParserService {
+export class MarkdownParserService implements DocumentFileParser {
+  readonly sourceFormat = 'MARKDOWN' as const;
+
   constructor(private readonly textSplitter: TextSplitterService) {}
 
-  parse(content: string, options: MarkdownParseOptions) {
+  supports(fileName: string, mimeType?: string | null) {
+    const lowerFileName = fileName.toLowerCase();
+
+    return (
+      lowerFileName.endsWith('.md') ||
+      lowerFileName.endsWith('.markdown') ||
+      mimeType === 'text/markdown'
+    );
+  }
+
+  parse(content: string, options: MarkdownParseOptions): ChunkDraftPayload[];
+  parse(input: FileParseInput, options: FileParseOptions): FileParseResult;
+  parse(
+    contentOrInput: string | FileParseInput,
+    options: MarkdownParseOptions | FileParseOptions,
+  ): ChunkDraftPayload[] | FileParseResult {
+    if (typeof contentOrInput === 'string') {
+      return this.parseContent(contentOrInput, options);
+    }
+
+    const fileName = normalizeFileName(contentOrInput.fileName);
+
+    return {
+      fileName,
+      documentName: getDocumentNameFromFileName(fileName),
+      sourceFormat: this.sourceFormat,
+      chunks: this.parseContent(
+        contentOrInput.buffer.toString('utf8'),
+        options,
+      ),
+    };
+  }
+
+  private parseContent(content: string, options: MarkdownParseOptions) {
     const text = this.stripLeadingFrontmatter(
-      content
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .replaceAll('\0', '')
-        .trim(),
+      normalizeTextContent(content),
     ).trim();
     const chunks: ChunkDraftPayload[] = [];
     const headingStack: Heading[] = [];

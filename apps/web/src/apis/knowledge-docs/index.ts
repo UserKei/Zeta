@@ -4,6 +4,9 @@ import type {
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
+  FileImportDocumentPayload,
+  FileImportResult,
+  FilePreviewResult,
   KnowledgeChunk,
   KnowledgeDocument,
   MarkdownImportPayload,
@@ -22,6 +25,11 @@ export type {
   DocumentUpdatePayload,
   DocumentSourceType,
   DocumentStatus,
+  FileImportDocumentPayload,
+  FileImportResult,
+  FilePreviewItem,
+  FilePreviewResult,
+  FileSourceFormat,
   KnowledgeChunk,
   KnowledgeDocument,
   MarkdownImportPayload,
@@ -62,6 +70,24 @@ export const previewMarkdownDocument = (knowledgeBaseId: string, file: File) => 
   )
 }
 
+export const previewDocumentFiles = (
+  knowledgeBaseId: string,
+  files: File[],
+) => {
+  const formData = new FormData()
+
+  for (const file of files) {
+    formData.append('files', file)
+  }
+
+  return responseData(
+    serverApi.post(
+      `/knowledge-bases/${knowledgeBaseId}/documents/files/preview`,
+      formData,
+    ) as Promise<Response<FilePreviewResult>>,
+  )
+}
+
 export const createMarkdownDocument = (
   knowledgeBaseId: string,
   file: File,
@@ -81,6 +107,27 @@ export const createMarkdownDocument = (
       `/knowledge-bases/${knowledgeBaseId}/documents/markdown`,
       formData,
     ) as Promise<Response<KnowledgeDocument>>,
+  )
+}
+
+export const createFileDocuments = (
+  knowledgeBaseId: string,
+  files: File[],
+  documents: FileImportDocumentPayload[],
+) => {
+  const formData = new FormData()
+
+  for (const file of files) {
+    formData.append('files', file)
+  }
+
+  formData.append('documents', JSON.stringify(documents))
+
+  return responseData(
+    serverApi.post(
+      `/knowledge-bases/${knowledgeBaseId}/documents/files`,
+      formData,
+    ) as Promise<Response<FileImportResult>>,
   )
 }
 

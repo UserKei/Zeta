@@ -7,22 +7,26 @@ import {
   Patch,
   Post,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@libs/shared';
 import {
   KnowledgeDocsService,
+  DOCUMENT_FILE_COUNT_LIMIT,
+  DOCUMENT_FILE_SIZE_LIMIT,
   MARKDOWN_FILE_SIZE_LIMIT,
-  type UploadedMarkdownFile,
+  type UploadedDocumentFile,
 } from './knowledge-docs.service';
 import {
   ChunkDto,
   ChunkReorderDto,
   ChunkUpdateDto,
   DocumentUpdateDto,
+  FileImportFormDto,
   ManualDocumentDto,
   MarkdownImportFormDto,
   RetrievalTestDto,
@@ -68,9 +72,39 @@ export class KnowledgeDocsController {
   )
   previewMarkdown(
     @Param('knowledgeBaseId') knowledgeBaseId: string,
-    @UploadedFile() file?: UploadedMarkdownFile,
+    @UploadedFile() file?: UploadedDocumentFile,
   ) {
     return this.knowledgeDocsService.previewMarkdownFile(knowledgeBaseId, file);
+  }
+
+  @Post('knowledge-bases/:knowledgeBaseId/documents/files/preview')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files'],
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description: '.md/.markdown/.txt/.html/.htm 文件，最多 10 个',
+        },
+      },
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('files', DOCUMENT_FILE_COUNT_LIMIT, {
+      limits: { fileSize: DOCUMENT_FILE_SIZE_LIMIT },
+    }),
+  )
+  previewFiles(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @UploadedFiles() files?: UploadedDocumentFile[],
+  ) {
+    return this.knowledgeDocsService.previewDocumentFiles(
+      knowledgeBaseId,
+      files,
+    );
   }
 
   @Post('knowledge-bases/:knowledgeBaseId/documents/markdown')
@@ -105,12 +139,48 @@ export class KnowledgeDocsController {
   )
   createMarkdownDocument(
     @Param('knowledgeBaseId') knowledgeBaseId: string,
-    @UploadedFile() file: UploadedMarkdownFile | undefined,
+    @UploadedFile() file: UploadedDocumentFile | undefined,
     @Body() body: MarkdownImportFormDto,
   ) {
     return this.knowledgeDocsService.createMarkdownDocument(
       knowledgeBaseId,
       file,
+      body,
+    );
+  }
+
+  @Post('knowledge-bases/:knowledgeBaseId/documents/files')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['files', 'documents'],
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description: '.md/.markdown/.txt/.html/.htm 文件，最多 10 个',
+        },
+        documents: {
+          type: 'string',
+          description: '用户确认后的文档 JSON 字符串',
+        },
+      },
+    },
+  })
+  @UseInterceptors(
+    FilesInterceptor('files', DOCUMENT_FILE_COUNT_LIMIT, {
+      limits: { fileSize: DOCUMENT_FILE_SIZE_LIMIT },
+    }),
+  )
+  createFileDocuments(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @UploadedFiles() files: UploadedDocumentFile[] | undefined,
+    @Body() body: FileImportFormDto,
+  ) {
+    return this.knowledgeDocsService.createFileDocuments(
+      knowledgeBaseId,
+      files,
       body,
     );
   }
