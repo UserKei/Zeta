@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DocxParserService } from './docx-parser.service';
 import { FileParserService } from './file-parser.service';
 import { HtmlParserService } from './html-parser.service';
@@ -10,12 +12,13 @@ import { TextSplitterService } from '../text-splitter/text-splitter.service';
 
 describe('FileParserService', () => {
   const textSplitter = new TextSplitterService();
+  const markdownParser = new MarkdownParserService(textSplitter);
   const service = new FileParserService(
-    new MarkdownParserService(textSplitter),
+    markdownParser,
     new TextParserService(textSplitter),
     new HtmlParserService(textSplitter),
     new PdfParserService(textSplitter),
-    new DocxParserService(textSplitter),
+    new DocxParserService(markdownParser),
     new SpreadsheetParserService(),
   );
 
@@ -68,6 +71,9 @@ describe('FileParserService', () => {
 
     return XLSX.write(workbook, { type: 'buffer', bookType }) as Buffer;
   };
+
+  const readDemoFile = (fileName: string) =>
+    readFileSync(join(__dirname, '../../../../../docs/demo', fileName));
 
   it('parses txt files into chunks', async () => {
     const result = await service.parse({
@@ -171,6 +177,39 @@ describe('FileParserService', () => {
     expect(result.chunks[0]?.content).toContain(
       '客户招待费用单次限额为 1000 元',
     );
+  });
+
+  it('keeps docx heading structure when creating chunks', async () => {
+    const result = await service.parse({
+      fileName: '员工入职 IT 账号开通流程.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: readDemoFile('it-account-onboarding.docx'),
+    });
+
+    expect(result.sourceFormat).toBe('DOCX');
+    expect(result.chunks.length).toBeGreaterThan(1);
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('适用范围') &&
+          chunk.content.includes('本文适用于正式员工'),
+      ),
+    ).toBe(true);
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('默认开通系统') &&
+          chunk.content.includes('| 系统 | 默认开通 | 说明 |'),
+      ),
+    ).toBe(true);
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('VPN 权限申请') &&
+          chunk.content.includes('VPN 权限默认不自动开通'),
+      ),
+    ).toBe(true);
   });
 
   it('rejects damaged docx files', async () => {
