@@ -232,7 +232,7 @@ export class KnowledgeDocsService {
   ) {
     await this.requireKnowledgeBase(knowledgeBaseId);
 
-    const parsedFile = this.parseUploadedFile(file);
+    const parsedFile = await this.parseUploadedFile(file);
 
     if (parsedFile.sourceFormat !== 'MARKDOWN') {
       throw new BadRequestException('仅支持 .md 或 .markdown 文件');
@@ -254,17 +254,19 @@ export class KnowledgeDocsService {
     const uploadedFiles = this.assertUploadedFiles(files);
 
     return {
-      files: uploadedFiles.map((file, fileIndex) => {
-        const parsedFile = this.parseUploadedFile(file);
+      files: await Promise.all(
+        uploadedFiles.map(async (file, fileIndex) => {
+          const parsedFile = await this.parseUploadedFile(file);
 
-        return {
-          fileIndex,
-          fileName: parsedFile.fileName,
-          documentName: parsedFile.documentName,
-          sourceFormat: parsedFile.sourceFormat,
-          chunks: parsedFile.chunks,
-        };
-      }),
+          return {
+            fileIndex,
+            fileName: parsedFile.fileName,
+            documentName: parsedFile.documentName,
+            sourceFormat: parsedFile.sourceFormat,
+            chunks: parsedFile.chunks,
+          };
+        }),
+      ),
     };
   }
 
@@ -273,7 +275,7 @@ export class KnowledgeDocsService {
     file: UploadedDocumentFile | undefined,
     fields: MarkdownImportFields,
   ) {
-    const parsedFile = this.parseUploadedFile(file);
+    const parsedFile = await this.parseUploadedFile(file);
 
     if (parsedFile.sourceFormat !== 'MARKDOWN') {
       throw new BadRequestException('仅支持 .md 或 .markdown 文件');
@@ -308,7 +310,7 @@ export class KnowledgeDocsService {
 
     for (const importDocument of importDocuments) {
       const file = uploadedFiles[importDocument.fileIndex];
-      const parsedFile = this.parseUploadedFile(file);
+      const parsedFile = await this.parseUploadedFile(file);
       const chunks = this.toChunkDrafts(importDocument.chunks);
       const name = importDocument.name?.trim() || parsedFile.documentName;
 
@@ -933,10 +935,10 @@ export class KnowledgeDocsService {
     return {};
   }
 
-  private parseUploadedFile(file: UploadedDocumentFile | undefined) {
+  private async parseUploadedFile(file: UploadedDocumentFile | undefined) {
     this.assertUploadedFile(file);
 
-    const parsedFile = this.fileParser.parse(
+    const parsedFile = await this.fileParser.parse(
       {
         fileName: this.getUploadFileName(file),
         mimeType: file.mimetype,

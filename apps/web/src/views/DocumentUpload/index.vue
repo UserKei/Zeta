@@ -49,7 +49,7 @@ type UploadMode = 'TEXT' | 'TABLE'
 
 const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024
 const MAX_DOCUMENT_FILE_COUNT = 10
-const TEXT_EXTENSIONS = ['.md', '.markdown', '.txt', '.html', '.htm']
+const TEXT_EXTENSIONS = ['.md', '.markdown', '.txt', '.html', '.htm', '.pdf', '.docx']
 const TABLE_EXTENSIONS = ['.csv', '.xlsx', '.xls']
 
 const route = useRoute()
@@ -77,12 +77,12 @@ const acceptedFileAccept = computed(() => acceptedExtensions.value.join(','))
 const uploadModeDescription = computed(() =>
   uploadMode.value === 'TABLE'
     ? '支持 .csv / .xlsx / .xls 表格文件，最多 10 个，每个最大 2MB。第一行作为表头，后续每行会转换为可检索分段。'
-    : '支持 .md / .markdown / .txt / .html / .htm 文件，最多 10 个，每个最大 2MB。上传后会先解析成分段草稿，不会立即入库。',
+    : '支持 .md / .markdown / .txt / .html / .htm / .pdf / .docx 文件，最多 10 个，每个最大 2MB。PDF 首版仅支持文本型文件，扫描件后续进入 OCR 处理。',
 )
 const uploadModeHint = computed(() =>
   uploadMode.value === 'TABLE'
     ? '最多 10 个，每个最大 2MB，第一行作为表头'
-    : '最多 10 个，每个最大 2MB，解析后进入分段预览',
+    : '最多 10 个，每个最大 2MB，PDF 扫描件暂不支持',
 )
 
 const canImport = computed(
@@ -319,6 +319,8 @@ const sourceFormatText = (format: FileSourceFormat) =>
     MARKDOWN: 'Markdown',
     TEXT: '文本',
     HTML: 'HTML',
+    PDF: 'PDF',
+    DOCX: 'Word',
     CSV: 'CSV',
     EXCEL: 'Excel',
   })[format]

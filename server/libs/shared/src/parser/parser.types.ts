@@ -26,10 +26,15 @@ export type FileParseResult = {
   chunks: ChunkDraftPayload[];
 };
 
+export type MaybePromise<T> = T | Promise<T>;
+
 export interface DocumentFileParser {
   readonly sourceFormat: FileSourceFormat;
   supports(fileName: string, mimeType?: string | null): boolean;
-  parse(input: FileParseInput, options: FileParseOptions): FileParseResult;
+  parse(
+    input: FileParseInput,
+    options: FileParseOptions,
+  ): MaybePromise<FileParseResult>;
 }
 
 export const DEFAULT_FILE_PARSE_OPTIONS: FileParseOptions = {

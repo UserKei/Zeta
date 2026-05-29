@@ -136,7 +136,7 @@ flowchart LR
 - 模型管理：维护 Chat、Embedding、Reranker 模型配置。
 - 知识库管理：创建知识库，绑定 Embedding 模型，配置分段参数。
 - 文档列表：按知识库管理文档、来源、状态、字符数和分段数。
-- 文档导入：上传 Markdown、TXT、HTML 和表格文件，解析为分段草稿，人工调整后确认入库。
+- 文档导入：上传 Markdown、TXT、HTML、PDF、DOCX 和表格文件，解析为分段草稿，人工调整后确认入库。
 - 分段管理：支持新增、编辑、删除、启停和拖拽重排分段。
 - 索引与检索：为启用分段写入全文索引和向量 Embedding，支持检索测试。
 - 专家 Agent：配置 Prompt、Chat 模型，并绑定一个或多个知识库。
@@ -169,7 +169,7 @@ flowchart LR
 | `docs/demo/security-incident-response.md` | 钓鱼邮件、账号异常、数据泄露、安全事件上报 | `发现钓鱼邮件应该多久内上报？` |
 | `docs/demo/expense-policy-table.csv` | 报销费用类型、限额、审批人、生效时间 | `客户招待费用的单次限额是多少？` |
 
-这些样例用于演示文档上传、分段预览、检索测试、Agent 引用回答和对话日志标注入库。CSV 样例可在上传页切换到“表格”模式后导入，系统会把第一行作为表头，并将后续每一行转换为一个可检索分段。
+这些样例用于演示文档上传、分段预览、检索测试、Agent 引用回答和对话日志标注入库。CSV 样例可在上传页切换到“表格”模式后导入，系统会把第一行作为表头，并将后续每一行转换为一个可检索分段。PDF / DOCX 可使用 `docs/demo/pdf-docx-import.md` 中的生成说明准备样例文件。
 
 ## 快速开始
 
@@ -344,7 +344,7 @@ Zeta/
 │           ├── file-storage/        # 文件元数据与 Large Object 存储
 │           ├── generated/           # Prisma Client 生成代码
 │           ├── interceptor/         # 全局拦截器
-│           ├── parser/              # Markdown Parser
+│           ├── parser/              # 文件解析器：Markdown、TXT、HTML、PDF、DOCX、表格
 │           ├── prisma/              # Prisma Module / Service
 │           ├── response/            # 统一响应封装
 │           ├── retrieval/           # 检索服务
@@ -447,7 +447,7 @@ bash scripts/deploy.sh
 
 ## 后续计划
 
-- 常见文件格式识别：在 Markdown 已接入的基础上，继续评估 TXT、HTML、PDF、DOCX、CSV、XLSX、XLS。
+- 多模态入口：在文本类和表格类文件已接入的基础上，继续评估扫描 PDF、图片 OCR 和图片描述入库。
 - 检索准确率深化：继续优化中文全文检索、混合检索分数解释，并为后续 Rerank 留出扩展点。
 - 引用追溯体验：Chat 引用来源支持跳转到对应文档分段页。
 - 对话日志标注体验：完善标注记录查看、编辑和删除，让 AI 回答能更自然地回流到知识库。

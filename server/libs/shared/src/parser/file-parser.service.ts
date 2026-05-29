@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { DocxParserService } from './docx-parser.service';
 import { HtmlParserService } from './html-parser.service';
 import { MarkdownParserService } from './markdown-parser.service';
+import { PdfParserService } from './pdf-parser.service';
 import type {
   DocumentFileParser,
   FileParseInput,
@@ -17,18 +19,27 @@ export class FileParserService {
     markdownParser: MarkdownParserService,
     textParser: TextParserService,
     htmlParser: HtmlParserService,
+    pdfParser: PdfParserService,
+    docxParser: DocxParserService,
     spreadsheetParser: SpreadsheetParserService,
   ) {
-    this.parsers = [markdownParser, textParser, htmlParser, spreadsheetParser];
+    this.parsers = [
+      markdownParser,
+      textParser,
+      htmlParser,
+      pdfParser,
+      docxParser,
+      spreadsheetParser,
+    ];
   }
 
   private readonly parsers: DocumentFileParser[];
 
-  parse(input: FileParseInput, options: Partial<FileParseOptions> = {}) {
+  async parse(input: FileParseInput, options: Partial<FileParseOptions> = {}) {
     const fileName = normalizeFileName(input.fileName);
     const parser = this.findParser(fileName, input.mimeType);
 
-    return parser.parse(
+    return await parser.parse(
       { ...input, fileName },
       { ...DEFAULT_FILE_PARSE_OPTIONS, ...options },
     );
