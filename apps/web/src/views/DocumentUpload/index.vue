@@ -45,9 +45,12 @@ type UploadForm = {
   chunks: ChunkForm[]
 }
 
+type UploadMode = 'TEXT' | 'TABLE'
+
 const MAX_DOCUMENT_FILE_SIZE = 2 * 1024 * 1024
 const MAX_DOCUMENT_FILE_COUNT = 10
-const ACCEPTED_EXTENSIONS = ['.md', '.markdown', '.txt', '.html', '.htm']
+const TEXT_EXTENSIONS = ['.md', '.markdown', '.txt', '.html', '.htm']
+const TABLE_EXTENSIONS = ['.csv', '.xlsx', '.xls']
 
 const route = useRoute()
 const router = useRouter()
@@ -58,6 +61,7 @@ const activeStep = ref(0)
 const loading = ref(false)
 const previewing = ref(false)
 const saving = ref(false)
+const uploadMode = ref<UploadMode>('TEXT')
 const selectedFiles = ref<File[]>([])
 const uploadFiles = ref<UploadUserFile[]>([])
 const activeFileIndex = ref(0)
@@ -66,6 +70,20 @@ const savedDocuments = ref<KnowledgeDocument[]>([])
 const forms = ref<UploadForm[]>([])
 
 const currentForm = computed(() => forms.value[activeFileIndex.value] ?? null)
+const acceptedExtensions = computed(() =>
+  uploadMode.value === 'TABLE' ? TABLE_EXTENSIONS : TEXT_EXTENSIONS,
+)
+const acceptedFileAccept = computed(() => acceptedExtensions.value.join(','))
+const uploadModeDescription = computed(() =>
+  uploadMode.value === 'TABLE'
+    ? '支持 .csv / .xlsx / .xls 表格文件，最多 10 个，每个最大 2MB。第一行作为表头，后续每行会转换为可检索分段。'
+    : '支持 .md / .markdown / .txt / .html / .htm 文件，最多 10 个，每个最大 2MB。上传后会先解析成分段草稿，不会立即入库。',
+)
+const uploadModeHint = computed(() =>
+  uploadMode.value === 'TABLE'
+    ? '最多 10 个，每个最大 2MB，第一行作为表头'
+    : '最多 10 个，每个最大 2MB，解析后进入分段预览',
+)
 
 const canImport = computed(
   () =>
@@ -110,6 +128,21 @@ const resetUpload = () => {
   activeStep.value = 0
 }
 
+const setUploadMode = (mode: UploadMode) => {
+  if (uploadMode.value === mode) {
+    return
+  }
+
+  uploadMode.value = mode
+  resetUpload()
+}
+
+const handleUploadModeChange = (value: string | number | boolean | undefined) => {
+  if (value === 'TEXT' || value === 'TABLE') {
+    setUploadMode(value)
+  }
+}
+
 const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
   const rawFiles = files.reduce<UploadRawFile[]>((result, file) => {
     if (file.raw) {
@@ -138,7 +171,7 @@ const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
 
   if (invalidFile) {
     showErrorMessage(
-      new Error('仅支持 .md、.markdown、.txt、.html、.htm 文件'),
+      new Error(`仅支持 ${acceptedExtensions.value.join('、')} 文件`),
       '文件格式不支持',
     )
     resetUpload()
@@ -278,7 +311,7 @@ const toChunkForm = (chunk: ChunkDraftPayload): ChunkForm => ({
 const isSupportedFile = (file: File) => {
   const fileName = file.name.toLowerCase()
 
-  return ACCEPTED_EXTENSIONS.some((extension) => fileName.endsWith(extension))
+  return acceptedExtensions.value.some((extension) => fileName.endsWith(extension))
 }
 
 const sourceFormatText = (format: FileSourceFormat) =>
@@ -286,6 +319,8 @@ const sourceFormatText = (format: FileSourceFormat) =>
     MARKDOWN: 'Markdown',
     TEXT: '文本',
     HTML: 'HTML',
+    CSV: 'CSV',
+    EXCEL: 'Excel',
   })[format]
 
 onMounted(loadKnowledgeBase)
@@ -308,12 +343,16 @@ onMounted(loadKnowledgeBase)
             </h2>
           </div>
 
+          <el-radio-group :model-value="uploadMode" @change="handleUploadModeChange">
+            <el-radio-button value="TEXT">文本文件</el-radio-button>
+            <el-radio-button value="TABLE">表格</el-radio-button>
+          </el-radio-group>
+
           <div class="rounded-md bg-(--zeta-blue-soft) px-4 py-3 text-sm leading-6 text-(--zeta-content)">
-            支持 .md / .markdown / .txt / .html / .htm 文件，最多 10 个，每个最大
-            2MB。上传后会先解析成分段草稿，不会立即入库。
+            {{ uploadModeDescription }}
           </div>
 
-          <el-upload v-model:file-list="uploadFiles" accept=".md,.markdown,.txt,.html,.htm" action="#" drag multiple
+          <el-upload v-model:file-list="uploadFiles" :accept="acceptedFileAccept" action="#" drag multiple
             class="zeta-upload-dropzone mx-auto flex min-h-80 flex-1 w-full lg:w-[70%]" :auto-upload="false"
             :limit="MAX_DOCUMENT_FILE_COUNT"
             :on-change="handleFileChange" :on-exceed="handleFileExceed" :on-remove="resetUpload">
@@ -324,7 +363,7 @@ onMounted(loadKnowledgeBase)
               <div class="text-base font-medium text-(--zeta-ink)">
                 拖入文档文件，或点击选择
               </div>
-              <small class="text-(--zeta-muted)">最多 10 个，每个最大 2MB，解析后进入分段预览</small>
+              <small class="text-(--zeta-muted)">{{ uploadModeHint }}</small>
             </div>
           </el-upload>
         </section>

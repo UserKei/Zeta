@@ -8,6 +8,7 @@ import type {
 } from './parser.types';
 import { DEFAULT_FILE_PARSE_OPTIONS } from './parser.types';
 import { normalizeFileName } from './parser.utils';
+import { SpreadsheetParserService } from './spreadsheet-parser.service';
 import { TextParserService } from './text-parser.service';
 
 @Injectable()
@@ -16,8 +17,9 @@ export class FileParserService {
     markdownParser: MarkdownParserService,
     textParser: TextParserService,
     htmlParser: HtmlParserService,
+    spreadsheetParser: SpreadsheetParserService,
   ) {
-    this.parsers = [markdownParser, textParser, htmlParser];
+    this.parsers = [markdownParser, textParser, htmlParser, spreadsheetParser];
   }
 
   private readonly parsers: DocumentFileParser[];

@@ -63,7 +63,7 @@ export type ChunkDraftPayload = {
   status?: ChunkStatus;
 };
 
-export type FileSourceFormat = 'MARKDOWN' | 'TEXT' | 'HTML';
+export type FileSourceFormat = 'MARKDOWN' | 'TEXT' | 'HTML' | 'CSV' | 'EXCEL';
 
 export type ManualDocumentPayload = {
   name: string;
