@@ -113,6 +113,52 @@ describe('FileParserService', () => {
     });
   });
 
+  it('ignores blank csv rows and empty columns while preserving Chinese headers', () => {
+    const result = service.parse({
+      fileName: '系统权限清单.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(
+        '系统,默认开通,,说明\n飞书,是,,用于 IM 协作\n,,,\nVPN,否,,需要主管审批\n报销系统,,,\n',
+      ),
+    });
+
+    expect(result).toMatchObject({
+      fileName: '系统权限清单.csv',
+      documentName: '系统权限清单',
+      sourceFormat: 'CSV',
+      chunks: [
+        {
+          title: '系统权限清单 / 第 2 行',
+          content: '系统: 飞书; 默认开通: 是; 说明: 用于 IM 协作',
+          status: 'ACTIVE',
+        },
+        {
+          title: '系统权限清单 / 第 3 行',
+          content: '系统: VPN; 默认开通: 否; 说明: 需要主管审批',
+          status: 'ACTIVE',
+        },
+        {
+          title: '系统权限清单 / 第 4 行',
+          content: '系统: 报销系统',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+  });
+
+  it('rejects spreadsheet rows longer than the configured chunk length', () => {
+    expect(() =>
+      service.parse(
+        {
+          fileName: '超长表格.csv',
+          mimeType: 'text/csv',
+          buffer: Buffer.from(`字段\n${'内容'.repeat(20)}`),
+        },
+        { maxChunkLength: 10 },
+      ),
+    ).toThrow('chunk length cannot exceed 10');
+  });
+
   it('parses xlsx sheets into structured chunks', () => {
     const result = service.parse({
       fileName: '权限表.xlsx',

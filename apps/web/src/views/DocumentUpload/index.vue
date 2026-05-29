@@ -411,7 +411,7 @@ onMounted(loadKnowledgeBase)
             <div>
               <h2 class="m-0 text-base font-semibold text-(--zeta-ink)">分段草稿</h2>
               <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
-                当前文件：{{ currentForm.fileName }}
+                当前文件：{{ currentForm.fileName }} · {{ sourceFormatText(currentForm.sourceFormat) }}
               </p>
             </div>
             <el-button :icon="Plus" @click="addChunk">添加分段</el-button>
