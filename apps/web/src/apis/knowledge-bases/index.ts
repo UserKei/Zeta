@@ -23,7 +23,7 @@ export type KnowledgeBase = {
 
 export type KnowledgeBasePayload = {
   name: string
-  description?: string
+  description?: string | null
   status: KnowledgeBaseStatus
   embeddingModelId: string
   chunkSize: number

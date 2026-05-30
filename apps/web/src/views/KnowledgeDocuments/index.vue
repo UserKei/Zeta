@@ -17,15 +17,12 @@ import {
   createManualDocument,
   deleteDocument,
   listDocuments,
-  testKnowledgeBaseRetrieval,
   updateDocument,
   type ChunkDraftPayload,
   type ChunkStatus,
   type DocumentStatus,
   type KnowledgeDocument,
   type ManualDocumentPayload,
-  type RetrievalHit,
-  type RetrievalResult,
 } from '@/apis/knowledge-docs'
 import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
@@ -59,9 +56,6 @@ const documentStatusFilter = ref<DocumentStatus | ''>('')
 const editOpen = ref(false)
 const editingDocumentId = ref<string | null>(null)
 const editSaving = ref(false)
-const retrievalOpen = ref(false)
-const retrieving = ref(false)
-const retrievalResult = ref<RetrievalResult | null>(null)
 
 const createEmptyChunk = (content = ''): ChunkForm => ({
   title: '',
@@ -78,11 +72,6 @@ const form = reactive<DocumentForm>({
 const editForm = reactive({
   name: '',
   description: '',
-})
-
-const retrievalForm = reactive({
-  question: '',
-  topK: 5,
 })
 
 const documentStatusOptions: Array<{ label: string; value: DocumentStatus }> = [
@@ -259,21 +248,6 @@ const openParagraph = (document: KnowledgeDocument) => {
   })
 }
 
-const runRetrieval = async () => {
-  retrieving.value = true
-
-  try {
-    retrievalResult.value = await testKnowledgeBaseRetrieval(knowledgeBaseId.value, {
-      question: retrievalForm.question,
-      topK: retrievalForm.topK,
-    })
-  } catch (cause) {
-    showErrorMessage(cause, '检索测试失败')
-  } finally {
-    retrieving.value = false
-  }
-}
-
 const toChunkPayload = (chunk: ChunkForm): ChunkDraftPayload => ({
   title: chunk.title || undefined,
   content: chunk.content,
@@ -287,23 +261,6 @@ const formatTime = (value: string) =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
-
-const formatScore = (value: number | null) =>
-  value === null ? '-' : `${(value * 100).toFixed(1)}%`
-
-const matchReasonText = (reason: RetrievalHit['matchReason']) =>
-  ({
-    VECTOR: '语义命中',
-    KEYWORD: '关键词命中',
-    HYBRID: '混合命中',
-  })[reason]
-
-const matchReasonType = (reason: RetrievalHit['matchReason']) =>
-  ({
-    VECTOR: 'info',
-    KEYWORD: 'warning',
-    HYBRID: 'success',
-  })[reason]
 
 const statusText = (status: DocumentStatus) =>
   ({
@@ -366,7 +323,9 @@ onMounted(load)
           <el-button :icon="DocumentAdd" type="primary" @click="openCreate">新增文本知识</el-button>
           <el-button :icon="Upload" @click="openMarkdownUpload">上传文档</el-button>
           <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-          <el-button @click="retrievalOpen = true">检索测试</el-button>
+          <el-button @click="router.push({ name: 'knowledge-retrieval', params: { knowledgeBaseId } })">
+            检索测试
+          </el-button>
           <span class="text-sm text-(--zeta-muted)">
             当前 {{ filteredDocuments.length }} / {{ documents.length }}
           </span>
@@ -536,56 +495,5 @@ onMounted(load)
       </template>
     </el-dialog>
 
-    <el-drawer v-model="retrievalOpen" title="检索测试" size="420px">
-      <el-form class="grid gap-3" label-position="top" @submit.prevent="runRetrieval">
-        <el-form-item label="问题">
-          <el-input v-model="retrievalForm.question" :rows="4" type="textarea" />
-        </el-form-item>
-        <el-form-item label="Top K">
-          <el-input-number
-            v-model="retrievalForm.topK"
-            :max="20"
-            :min="1"
-            controls-position="right"
-          />
-        </el-form-item>
-        <el-button :loading="retrieving" native-type="submit" type="primary">
-          测试检索
-        </el-button>
-      </el-form>
-
-      <div v-if="retrievalResult" class="mt-4 grid gap-3">
-        <el-empty v-if="retrievalResult.hits.length === 0" description="暂无命中" />
-        <template v-else>
-          <article
-            v-for="hit in retrievalResult.hits"
-            :key="hit.chunkId"
-            class="grid gap-2 rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-3"
-          >
-            <header class="flex flex-wrap items-center justify-between gap-2">
-              <strong class="min-w-0 truncate">{{ hit.documentName }}</strong>
-              <div class="flex flex-wrap items-center gap-2">
-                <el-tag effect="light" :type="matchReasonType(hit.matchReason)">
-                  {{ matchReasonText(hit.matchReason) }}
-                </el-tag>
-                <el-tag effect="light" type="success">
-                  综合 {{ formatScore(hit.finalScore) }}
-                </el-tag>
-              </div>
-            </header>
-            <div class="flex flex-wrap gap-3 text-xs text-(--zeta-muted)">
-              <span>语义 {{ formatScore(hit.vectorScore) }}</span>
-              <span>关键词 {{ formatScore(hit.keywordScore) }}</span>
-            </div>
-            <p class="m-0 max-h-40 overflow-auto whitespace-pre-wrap text-sm text-(--zeta-content) leading-6">
-              {{ hit.content }}
-            </p>
-            <small class="text-(--zeta-muted)">
-              分段 #{{ hit.position + 1 }} · {{ hit.charCount }} 字符
-            </small>
-          </article>
-        </template>
-      </div>
-    </el-drawer>
   </div>
 </template>

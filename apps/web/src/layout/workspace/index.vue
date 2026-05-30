@@ -11,7 +11,6 @@ type WorkspaceMenu = {
   name: RouteRecordName
   label: string
   icon?: unknown
-  disabled?: boolean
 }
 
 const route = useRoute()
@@ -50,7 +49,6 @@ const workspaceMenus = computed<WorkspaceMenu[]>(() => {
       name: child.name as RouteRecordName,
       label: typeof child.meta?.title === 'string' ? child.meta.title : String(child.name),
       icon: child.meta?.icon,
-      disabled: child.meta?.disabled === true,
     }))
 })
 
@@ -65,10 +63,6 @@ const activeMenu = computed(() => {
 })
 
 const openMenu = async (menu: WorkspaceMenu) => {
-  if (menu.disabled) {
-    return
-  }
-
   await router.push({
     name: menu.name,
     params: route.params,
@@ -83,9 +77,9 @@ const back = async () => {
 </script>
 
 <template>
-  <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel) lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-none">
+  <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel) lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-none">
     <aside class="border-b border-(--zeta-line-soft) bg-(--zeta-surface) lg:border-b-0 lg:border-r">
-      <div class="grid gap-4 p-4">
+      <div class="grid gap-3 p-3.5">
         <div class="flex items-start gap-3">
           <el-button
             v-if="backRouteName"
@@ -95,13 +89,13 @@ const back = async () => {
             @click="back"
           />
           <div class="min-w-0">
-            <p class="m-0 text-xs font-semibold uppercase tracking-wide text-(--zeta-blue)">
-              Workspace
+            <p class="m-0 text-xs font-semibold text-(--zeta-blue)">
+              知识库工作区
             </p>
-            <h2 class="m-0 mt-1 truncate text-lg font-semibold text-(--zeta-ink)">
+            <h2 class="m-0 mt-1 truncate text-base font-semibold text-(--zeta-ink)">
               {{ workspaceTitle }}
             </h2>
-            <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
+            <p class="m-0 mt-0.5 text-xs text-(--zeta-muted)">
               {{ workspaceSubtitle }}
             </p>
           </div>
@@ -117,7 +111,6 @@ const back = async () => {
           <el-menu-item
             v-for="menu in workspaceMenus"
             :key="String(menu.name)"
-            :disabled="menu.disabled"
             :index="String(menu.name)"
             @click="openMenu(menu)"
           >
@@ -142,7 +135,7 @@ const back = async () => {
 }
 
 .zeta-workspace-menu :deep(.el-menu-item) {
-  height: 42px;
+  height: 40px;
   margin-bottom: 4px;
   border-radius: 6px;
   font-weight: 500;
