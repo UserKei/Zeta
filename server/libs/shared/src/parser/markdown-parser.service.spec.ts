@@ -1,4 +1,4 @@
-import { MarkdownParserService } from './markdown-parser.service';
+import { MarkdownParserService } from './document/markdown-parser.service';
 import { TextSplitterService } from '../text-splitter/text-splitter.service';
 
 describe('MarkdownParserService', () => {

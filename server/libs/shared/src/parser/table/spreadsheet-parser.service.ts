@@ -1,13 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as XLSX from 'xlsx';
-import { ChunkStatus } from '../generated/prisma/enums';
+import { ChunkStatus } from '../../generated/prisma/enums';
 import type {
   DocumentFileParser,
   FileParseInput,
   FileParseOptions,
   FileParseResult,
-} from './parser.types';
-import { getDocumentNameFromFileName, normalizeFileName } from './parser.utils';
+} from '../core/parser.types';
+import {
+  getDocumentNameFromFileName,
+  normalizeFileName,
+} from '../core/parser.utils';
 
 @Injectable()
 export class SpreadsheetParserService implements DocumentFileParser {

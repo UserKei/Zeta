@@ -77,7 +77,7 @@ export class KnowledgeBasesService {
       const [documents, chunks] = await Promise.all([
         prisma.document.findMany({
           where: { knowledgeBaseId: id },
-          select: { id: true, sourceFileId: true },
+          select: { id: true, sourceFileId: true, metadata: true },
         }),
         prisma.chunk.findMany({
           where: { knowledgeBaseId: id },
@@ -89,7 +89,10 @@ export class KnowledgeBasesService {
       sourceFileIds = [
         ...new Set(
           documents
-            .map((document) => document.sourceFileId)
+            .flatMap((document) => [
+              document.sourceFileId,
+              ...this.getDocumentAssetFileIds(document.metadata),
+            ])
             .filter((fileId): fileId is string => Boolean(fileId)),
         ),
       ];
@@ -124,6 +127,30 @@ export class KnowledgeBasesService {
     await this.fileStorageService.removeFilesIfUnreferenced(sourceFileIds);
 
     return { id };
+  }
+
+  private getDocumentAssetFileIds(metadata: Prisma.JsonValue) {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return [];
+    }
+
+    const assets = (metadata as Record<string, Prisma.JsonValue>).assets;
+
+    if (!Array.isArray(assets)) {
+      return [];
+    }
+
+    return assets
+      .map((asset) => {
+        if (!asset || typeof asset !== 'object' || Array.isArray(asset)) {
+          return null;
+        }
+
+        const fileId = (asset as Record<string, Prisma.JsonValue>).fileId;
+
+        return typeof fileId === 'string' ? fileId : null;
+      })
+      .filter((fileId): fileId is string => Boolean(fileId));
   }
 
   private async createData(

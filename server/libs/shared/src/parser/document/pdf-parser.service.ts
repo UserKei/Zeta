@@ -1,18 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PDFParse } from 'pdf-parse';
-import { ChunkStatus } from '../generated/prisma/enums';
-import { TextSplitterService } from '../text-splitter/text-splitter.service';
+import { ChunkStatus } from '../../generated/prisma/enums';
+import { TextSplitterService } from '../../text-splitter/text-splitter.service';
 import type {
   DocumentFileParser,
   FileParseInput,
   FileParseOptions,
   FileParseResult,
-} from './parser.types';
+} from '../core/parser.types';
 import {
   getDocumentNameFromFileName,
   normalizeFileName,
   normalizeTextContent,
-} from './parser.utils';
+} from '../core/parser.utils';
 
 PDFParse.setWorker();
 

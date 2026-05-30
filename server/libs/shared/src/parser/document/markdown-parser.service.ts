@@ -1,18 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { ChunkDraftPayload } from '@zeta/common/knowledge-docs';
-import { TextSplitterService } from '../text-splitter/text-splitter.service';
+import { TextSplitterService } from '../../text-splitter/text-splitter.service';
 import type {
   DocumentFileParser,
   FileParseInput,
   FileParseOptions,
   FileParseResult,
   MarkdownParseOptions,
-} from './parser.types';
+} from '../core/parser.types';
 import {
   getDocumentNameFromFileName,
   normalizeFileName,
   normalizeTextContent,
-} from './parser.utils';
+} from '../core/parser.utils';
 
 type Heading = {
   level: number;

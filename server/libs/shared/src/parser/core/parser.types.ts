@@ -24,6 +24,17 @@ export type FileParseResult = {
   documentName: string;
   sourceFormat: FileSourceFormat;
   chunks: ChunkDraftPayload[];
+  assets?: FileParseAsset[];
+};
+
+export type FileParseAssetSource = 'DOCX_IMAGE';
+
+export type FileParseAsset = {
+  source: FileParseAssetSource;
+  fileName: string;
+  mimeType: string;
+  reference: string;
+  buffer: Buffer;
 };
 
 export type MaybePromise<T> = T | Promise<T>;

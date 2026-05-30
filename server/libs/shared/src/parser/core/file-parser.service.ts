@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { DocxParserService } from './docx-parser.service';
-import { HtmlParserService } from './html-parser.service';
-import { MarkdownParserService } from './markdown-parser.service';
-import { PdfParserService } from './pdf-parser.service';
+import { DocxParserService } from '../document/docx-parser.service';
+import { HtmlParserService } from '../document/html-parser.service';
+import { MarkdownParserService } from '../document/markdown-parser.service';
+import { PdfParserService } from '../document/pdf-parser.service';
+import { TextParserService } from '../document/text-parser.service';
+import { SpreadsheetParserService } from '../table/spreadsheet-parser.service';
 import type {
   DocumentFileParser,
   FileParseInput,
@@ -10,8 +12,6 @@ import type {
 } from './parser.types';
 import { DEFAULT_FILE_PARSE_OPTIONS } from './parser.types';
 import { normalizeFileName } from './parser.utils';
-import { SpreadsheetParserService } from './spreadsheet-parser.service';
-import { TextParserService } from './text-parser.service';
 
 @Injectable()
 export class FileParserService {

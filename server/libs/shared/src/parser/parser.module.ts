@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TextSplitterModule } from '../text-splitter/text-splitter.module';
-import { DocxParserService } from './docx-parser.service';
-import { FileParserService } from './file-parser.service';
-import { HtmlParserService } from './html-parser.service';
-import { MarkdownParserService } from './markdown-parser.service';
-import { PdfParserService } from './pdf-parser.service';
-import { SpreadsheetParserService } from './spreadsheet-parser.service';
-import { TextParserService } from './text-parser.service';
+import { FileParserService } from './core/file-parser.service';
+import { DocxParserService } from './document/docx-parser.service';
+import { HtmlParserService } from './document/html-parser.service';
+import { MarkdownParserService } from './document/markdown-parser.service';
+import { PdfParserService } from './document/pdf-parser.service';
+import { TextParserService } from './document/text-parser.service';
+import { SpreadsheetParserService } from './table/spreadsheet-parser.service';
 
 @Module({
   imports: [TextSplitterModule],

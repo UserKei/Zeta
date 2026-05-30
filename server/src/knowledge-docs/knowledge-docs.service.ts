@@ -54,6 +54,17 @@ type EmbeddableChunk = {
   content: string;
 };
 
+type DocumentAssetMetadata = {
+  source: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: number;
+  sha256Hash: string | null;
+  originalReference: string;
+  reference: string;
+};
+
 export type UploadedDocumentFile = {
   originalname: string;
   mimetype?: string;
@@ -358,8 +369,18 @@ export class KnowledgeDocsService {
       },
     });
     let document: DocumentRecord | null = null;
+    let chunks = input.chunks;
 
     try {
+      const documentMetadata = {
+        description: input.description?.trim() || null,
+        sourceFormat: parsedFile.sourceFormat,
+        originalFileName: sourceFile.fileName,
+        originalFileSize: Number(sourceFile.fileSize),
+        sha256Hash: sourceFile.sha256Hash,
+        originalCharCount,
+      };
+
       document = await this.prisma.document.create({
         data: {
           knowledgeBase: { connect: { id: knowledgeBase.id } },
@@ -367,21 +388,37 @@ export class KnowledgeDocsService {
           name: input.name,
           sourceType: DocumentSourceType.FILE_UPLOAD,
           status: DocumentStatus.CHUNKING,
-          charCount: this.countChars(input.chunks),
-          chunkCount: input.chunks.length,
-          metadata: {
-            description: input.description?.trim() || null,
-            sourceFormat: parsedFile.sourceFormat,
-            originalFileName: sourceFile.fileName,
-            originalFileSize: Number(sourceFile.fileSize),
-            sha256Hash: sourceFile.sha256Hash,
-            originalCharCount,
-          },
+          charCount: this.countChars(chunks),
+          chunkCount: chunks.length,
+          metadata: documentMetadata,
         },
         select: documentSelect,
       });
 
-      await this.createChunks(knowledgeBase.id, document.id, input.chunks);
+      const assets = await this.saveParsedFileAssets(
+        document.id,
+        sourceFile.id,
+        parsedFile,
+      );
+
+      if (assets.length > 0) {
+        chunks = this.rewriteAssetReferences(chunks, assets);
+        this.assertDocumentChunks(chunks);
+
+        await this.prisma.document.update({
+          where: { id: document.id },
+          data: {
+            charCount: this.countChars(chunks),
+            chunkCount: chunks.length,
+            metadata: {
+              ...documentMetadata,
+              assets,
+            },
+          },
+        });
+      }
+
+      await this.createChunks(knowledgeBase.id, document.id, chunks);
       await this.refreshDocumentSearchVector(document.id);
 
       await this.prisma.document.update({
@@ -672,7 +709,7 @@ export class KnowledgeDocsService {
   async remove(documentId: string) {
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
-      select: { id: true, sourceFileId: true },
+      select: { id: true, sourceFileId: true, metadata: true },
     });
 
     if (!document) {
@@ -698,11 +735,86 @@ export class KnowledgeDocsService {
     }
 
     await this.prisma.document.delete({ where: { id: documentId } });
-    await this.fileStorageService.removeFileIfUnreferenced(
-      document.sourceFileId,
+    await this.fileStorageService.removeFilesIfUnreferenced(
+      [
+        document.sourceFileId,
+        ...this.getDocumentAssetFileIds(document.metadata),
+      ].filter((fileId): fileId is string => Boolean(fileId)),
     );
 
     return { id: documentId };
+  }
+
+  private async saveParsedFileAssets(
+    documentId: string,
+    sourceFileId: string,
+    parsedFile: FileParseResult,
+  ): Promise<DocumentAssetMetadata[]> {
+    const assets = parsedFile.assets ?? [];
+
+    if (assets.length === 0) {
+      return [];
+    }
+
+    const savedAssets: DocumentAssetMetadata[] = [];
+
+    try {
+      for (const asset of assets) {
+        const savedFile = await this.fileStorageService.saveBuffer({
+          fileName: asset.fileName,
+          mimeType: asset.mimeType,
+          buffer: asset.buffer,
+          metadata: {
+            source: asset.source,
+            sourceFormat: parsedFile.sourceFormat,
+            documentId,
+            sourceFileId,
+            originalReference: asset.reference,
+          },
+        });
+
+        savedAssets.push({
+          source: asset.source,
+          fileId: savedFile.id,
+          fileName: savedFile.fileName,
+          mimeType: savedFile.mimeType,
+          fileSize: Number(savedFile.fileSize),
+          sha256Hash: savedFile.sha256Hash,
+          originalReference: asset.reference,
+          reference: `./files/${savedFile.id}`,
+        });
+      }
+    } catch (cause) {
+      await this.fileStorageService.removeFilesIfUnreferenced(
+        savedAssets.map((asset) => asset.fileId),
+      );
+      throw cause;
+    }
+
+    return savedAssets;
+  }
+
+  private rewriteAssetReferences(
+    chunks: ChunkDraft[],
+    assets: DocumentAssetMetadata[],
+  ) {
+    return chunks.map((chunk) => {
+      const content = assets.reduce(
+        (currentContent, asset) =>
+          currentContent.split(asset.originalReference).join(asset.reference),
+        chunk.content,
+      );
+
+      if (content === chunk.content) {
+        return chunk;
+      }
+
+      return {
+        ...chunk,
+        content,
+        charCount: content.length,
+      };
+    });
   }
 
   async retrievalTest(knowledgeBaseId: string, input: RetrievalTestPayload) {
@@ -933,6 +1045,27 @@ export class KnowledgeDocsService {
     }
 
     return {};
+  }
+
+  private getDocumentAssetFileIds(metadata: Prisma.JsonValue) {
+    const metadataObject = this.toMetadataObject(metadata);
+    const assets = metadataObject.assets;
+
+    if (!Array.isArray(assets)) {
+      return [];
+    }
+
+    return assets
+      .map((asset) => {
+        if (!asset || typeof asset !== 'object' || Array.isArray(asset)) {
+          return null;
+        }
+
+        const fileId = (asset as Record<string, Prisma.JsonValue>).fileId;
+
+        return typeof fileId === 'string' ? fileId : null;
+      })
+      .filter((fileId): fileId is string => Boolean(fileId));
   }
 
   private async parseUploadedFile(file: UploadedDocumentFile | undefined) {

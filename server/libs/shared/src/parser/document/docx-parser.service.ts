@@ -3,15 +3,16 @@ import * as mammoth from 'mammoth';
 import { MarkdownParserService } from './markdown-parser.service';
 import type {
   DocumentFileParser,
+  FileParseAsset,
   FileParseInput,
   FileParseOptions,
   FileParseResult,
-} from './parser.types';
+} from '../core/parser.types';
 import {
   getDocumentNameFromFileName,
   normalizeFileName,
   normalizeTextContent,
-} from './parser.utils';
+} from '../core/parser.utils';
 
 @Injectable()
 export class DocxParserService implements DocumentFileParser {
@@ -33,13 +34,13 @@ export class DocxParserService implements DocumentFileParser {
   ): Promise<FileParseResult> {
     const fileName = normalizeFileName(input.fileName);
     const documentName = getDocumentNameFromFileName(fileName);
-    const content = await this.extractMarkdown(input.buffer);
+    const { markdown, assets } = await this.extractMarkdown(input.buffer);
 
-    if (!content) {
+    if (!markdown) {
       throw new BadRequestException('DOCX 文件没有可解析文本');
     }
 
-    const chunks = this.markdownParser.parse(content, options);
+    const chunks = this.markdownParser.parse(markdown, options);
 
     if (chunks.length === 0) {
       throw new BadRequestException('DOCX 文件无法解析');
@@ -59,14 +60,40 @@ export class DocxParserService implements DocumentFileParser {
         ...chunk,
         title: chunk.title || documentName,
       })),
+      assets,
     };
   }
 
   private async extractMarkdown(buffer: Buffer) {
     try {
-      const result = await mammoth.convertToHtml({ buffer });
+      const assets: FileParseAsset[] = [];
+      const result = await mammoth.convertToHtml(
+        { buffer },
+        {
+          convertImage: mammoth.images.imgElement(async (image) => {
+            const imageIndex = assets.length + 1;
+            const extension = this.getImageExtension(image.contentType);
+            const fileName = `image${imageIndex}.${extension}`;
+            const reference = `./files/${fileName}`;
+            const imageBuffer = await image.readAsBuffer();
 
-      return this.htmlToMarkdown(result.value);
+            assets.push({
+              source: 'DOCX_IMAGE',
+              fileName,
+              mimeType: image.contentType || 'application/octet-stream',
+              reference,
+              buffer: imageBuffer,
+            });
+
+            return { src: reference };
+          }),
+        },
+      );
+
+      return {
+        markdown: this.htmlToMarkdown(result.value),
+        assets,
+      };
     } catch {
       throw new BadRequestException('DOCX 文件解析失败');
     }
@@ -80,6 +107,7 @@ export class DocxParserService implements DocumentFileParser {
         .replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, (table) =>
           this.tableToMarkdown(table),
         )
+        .replace(/<img\b[^>]*>/gi, (image) => this.imageToMarkdown(image))
         .replace(
           /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi,
           (_match: string, level: string, text: string) =>
@@ -115,6 +143,19 @@ export class DocxParserService implements DocumentFileParser {
     const normalizedLevel = Math.min(Math.max(level, 1), 6);
 
     return `\n${'#'.repeat(normalizedLevel)} ${title}\n`;
+  }
+
+  private imageToMarkdown(imageHtml: string) {
+    const src = this.getHtmlAttribute(imageHtml, 'src');
+
+    if (!src) {
+      return '\n';
+    }
+
+    const alt =
+      this.getHtmlAttribute(imageHtml, 'alt') || basenameFromPath(src);
+
+    return `\n![${alt}](${src})\n`;
   }
 
   private tableToMarkdown(tableHtml: string) {
@@ -173,4 +214,36 @@ export class DocxParserService implements DocumentFileParser {
         String.fromCodePoint(Number.parseInt(code, 16)),
       );
   }
+
+  private getHtmlAttribute(html: string, name: string) {
+    const pattern = new RegExp(`${name}=["']([^"']+)["']`, 'i');
+    const value = html.match(pattern)?.[1];
+
+    return value ? this.decodeHtmlEntities(value) : null;
+  }
+
+  private getImageExtension(mimeType: string | null | undefined) {
+    switch (mimeType) {
+      case 'image/jpeg':
+        return 'jpg';
+      case 'image/png':
+        return 'png';
+      case 'image/gif':
+        return 'gif';
+      case 'image/webp':
+        return 'webp';
+      case 'image/svg+xml':
+        return 'svg';
+      default:
+        return 'bin';
+    }
+  }
+}
+
+function basenameFromPath(path: string) {
+  const [withoutQuery] = path.split('?');
+  const [withoutHash] = withoutQuery.split('#');
+  const name = withoutHash.split('/').filter(Boolean).at(-1);
+
+  return name || 'image';
 }
