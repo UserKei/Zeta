@@ -141,14 +141,41 @@ describe('FileParserService', () => {
     expect(result.chunks[0]?.content).toContain('Expense approval limit');
   });
 
-  it('rejects pdf files without extractable text', async () => {
-    await expect(
-      service.parse({
-        fileName: '扫描件.pdf',
-        mimeType: 'application/pdf',
-        buffer: createPdfBuffer(''),
-      }),
-    ).rejects.toThrow('PDF 文件没有可解析文本');
+  it('renders pdf pages as image assets when text cannot be extracted', async () => {
+    const result = await service.parse({
+      fileName: '扫描件.pdf',
+      mimeType: 'application/pdf',
+      buffer: createPdfBuffer(''),
+    });
+
+    expect(result).toMatchObject({
+      fileName: '扫描件.pdf',
+      documentName: '扫描件',
+      sourceFormat: 'PDF',
+      chunks: [
+        {
+          title: '扫描件 / 第 1 页',
+          status: 'ACTIVE',
+          metadata: {
+            contentKind: 'PDF_PAGE_IMAGE',
+            assetReference: './files/page-1.png',
+            pageNumber: 1,
+          },
+        },
+      ],
+      assets: [
+        {
+          source: 'PDF_PAGE_SCREENSHOT',
+          fileName: 'page-1.png',
+          mimeType: 'image/png',
+          reference: './files/page-1.png',
+        },
+      ],
+    });
+    expect(result.chunks[0]?.content).toContain(
+      '![扫描件 第 1 页](./files/page-1.png)',
+    );
+    expect(result.assets?.[0]?.buffer.byteLength).toBeGreaterThan(0);
   });
 
   it('rejects damaged pdf files', async () => {

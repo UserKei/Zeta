@@ -14,6 +14,7 @@ export type ModelPayload = {
   baseUrl?: string | null;
   apiKey?: string | null;
   isEnabled?: boolean;
+  configJson?: Record<string, unknown> | null;
 };
 
 export type ModelUpdatePayload = Partial<ModelPayload>;

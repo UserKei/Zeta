@@ -9,6 +9,7 @@ export type AiModel = {
   type: AiModelType
   modelName: string
   baseUrl: string | null
+  configJson: Record<string, unknown>
   apiKeyMasked: string | null
   isEnabled: boolean
   createdAt: string
@@ -23,6 +24,7 @@ export type ModelPayload = {
   baseUrl?: string
   apiKey?: string
   isEnabled: boolean
+  configJson?: Record<string, unknown> | null
 }
 
 export const listModels = () =>

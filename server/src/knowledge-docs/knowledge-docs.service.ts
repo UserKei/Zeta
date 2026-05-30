@@ -11,6 +11,7 @@ import {
   FileStorageService,
   PrismaService,
   RetrievalService,
+  type EmbeddingInput,
   type FileParseResult,
 } from '@libs/shared';
 import {
@@ -46,12 +47,14 @@ type ChunkDraft = {
   status: ChunkStatus;
   position: number;
   charCount: number;
+  metadata: Prisma.InputJsonValue;
 };
 
 type EmbeddableChunk = {
   id: string;
   title: string | null;
   content: string;
+  metadata: Prisma.JsonValue;
 };
 
 type DocumentAssetMetadata = {
@@ -549,6 +552,7 @@ export class KnowledgeDocsService {
           position,
           charCount: chunk.charCount,
           status: chunk.status,
+          metadata: chunk.metadata,
         },
         select: chunkSelect,
       });
@@ -813,8 +817,36 @@ export class KnowledgeDocsService {
         ...chunk,
         content,
         charCount: content.length,
+        metadata: this.rewriteChunkAssetMetadata(chunk.metadata, assets),
       };
     });
+  }
+
+  private rewriteChunkAssetMetadata(
+    metadata: Prisma.InputJsonValue,
+    assets: DocumentAssetMetadata[],
+  ): Prisma.InputJsonValue {
+    const metadataObject = this.toMetadataObject(metadata as Prisma.JsonValue);
+    const assetReference = metadataObject.assetReference;
+
+    if (typeof assetReference !== 'string') {
+      return metadata;
+    }
+
+    const asset = assets.find(
+      (candidate) => candidate.originalReference === assetReference,
+    );
+
+    if (!asset) {
+      return metadata;
+    }
+
+    return {
+      ...metadataObject,
+      assetReference: asset.reference,
+      assetFileId: asset.fileId,
+      assetSource: asset.source,
+    };
   }
 
   async retrievalTest(knowledgeBaseId: string, input: RetrievalTestPayload) {
@@ -840,6 +872,7 @@ export class KnowledgeDocsService {
         position: chunk.position,
         charCount: chunk.charCount,
         status: chunk.status,
+        metadata: chunk.metadata,
       })),
     });
   }
@@ -851,7 +884,7 @@ export class KnowledgeDocsService {
     const activeChunks = await this.prisma.chunk.findMany({
       where: { documentId, status: ChunkStatus.ACTIVE },
       orderBy: { position: 'asc' },
-      select: { id: true, title: true, content: true },
+      select: { id: true, title: true, content: true, metadata: true },
     });
 
     if (activeChunks.length === 0) {
@@ -870,9 +903,9 @@ export class KnowledgeDocsService {
     await this.createEmbeddings(
       embeddingModel.id,
       activeChunks,
-      await this.embeddingService.embedTexts(
+      await this.embeddingService.embedInputs(
         embeddingModel,
-        activeChunks.map((chunk) => this.toEmbeddingText(chunk)),
+        await this.toEmbeddingInputs(activeChunks, embeddingModel),
       ),
     );
   }
@@ -883,7 +916,7 @@ export class KnowledgeDocsService {
   ) {
     const chunk = await this.prisma.chunk.findUniqueOrThrow({
       where: { id: chunkId },
-      select: { id: true, title: true, content: true },
+      select: { id: true, title: true, content: true, metadata: true },
     });
 
     await this.prisma.chunkEmbedding.deleteMany({
@@ -893,9 +926,10 @@ export class KnowledgeDocsService {
     await this.createEmbeddings(
       embeddingModel.id,
       [chunk],
-      await this.embeddingService.embedTexts(embeddingModel, [
-        this.toEmbeddingText(chunk),
-      ]),
+      await this.embeddingService.embedInputs(
+        embeddingModel,
+        await this.toEmbeddingInputs([chunk], embeddingModel),
+      ),
     );
   }
 
@@ -997,6 +1031,7 @@ export class KnowledgeDocsService {
       status: this.normalizeChunkStatus(input.status, ChunkStatus.ACTIVE),
       position,
       charCount: content.length,
+      metadata: this.normalizeChunkMetadata(input.metadata),
     };
   }
 
@@ -1250,6 +1285,16 @@ export class KnowledgeDocsService {
     return normalizedTitle ? normalizedTitle.slice(0, 512) : null;
   }
 
+  private normalizeChunkMetadata(
+    metadata: ChunkDraftPayload['metadata'],
+  ): Prisma.InputJsonValue {
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      return metadata as Prisma.InputJsonObject;
+    }
+
+    return {};
+  }
+
   private normalizeChunkStatus(
     status: ChunkStatus | undefined,
     fallback: ChunkStatus,
@@ -1267,6 +1312,66 @@ export class KnowledgeDocsService {
 
   private toEmbeddingText(chunk: EmbeddableChunk) {
     return chunk.title ? `${chunk.title}\n${chunk.content}` : chunk.content;
+  }
+
+  private async toEmbeddingInputs(
+    chunks: EmbeddableChunk[],
+    embeddingModel: EmbeddingModelConfig,
+  ): Promise<EmbeddingInput[]> {
+    return Promise.all(
+      chunks.map(async (chunk) => {
+        const text = this.toEmbeddingText(chunk);
+        const assetFileId = this.getImageAssetFileIdForEmbedding(
+          chunk,
+          embeddingModel,
+        );
+
+        if (!assetFileId) {
+          return { text };
+        }
+
+        const asset = await this.fileStorageService.readBuffer(assetFileId);
+
+        return {
+          text,
+          image: {
+            dataUrl: this.toDataUrl(
+              asset.mimeType || 'application/octet-stream',
+              asset.buffer,
+            ),
+          },
+        };
+      }),
+    );
+  }
+
+  private getImageAssetFileIdForEmbedding(
+    chunk: EmbeddableChunk,
+    embeddingModel: EmbeddingModelConfig,
+  ) {
+    if (!this.isDashScopeMultimodalModel(embeddingModel)) {
+      return null;
+    }
+
+    const metadata = this.toMetadataObject(chunk.metadata);
+
+    if (metadata.contentKind !== 'PDF_PAGE_IMAGE') {
+      return null;
+    }
+
+    return typeof metadata.assetFileId === 'string'
+      ? metadata.assetFileId
+      : null;
+  }
+
+  private isDashScopeMultimodalModel(model: EmbeddingModelConfig) {
+    const config = this.toMetadataObject(model.configJson);
+
+    return config.protocol === 'dashscope-multimodal';
+  }
+
+  private toDataUrl(mimeType: string, buffer: Buffer) {
+    return `data:${mimeType};base64,${buffer.toString('base64')}`;
   }
 
   private toVectorLiteral(embedding: number[]) {

@@ -27,7 +27,7 @@ export type FileParseResult = {
   assets?: FileParseAsset[];
 };
 
-export type FileParseAssetSource = 'DOCX_IMAGE';
+export type FileParseAssetSource = 'DOCX_IMAGE' | 'PDF_PAGE_SCREENSHOT';
 
 export type FileParseAsset = {
   source: FileParseAssetSource;

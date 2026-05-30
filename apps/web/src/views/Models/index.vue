@@ -21,6 +21,7 @@ const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
+const configJsonText = ref('')
 
 const modelTypes: { value: AiModelType; label: string }[] = [
   { value: 'CHAT', label: '对话模型' },
@@ -36,6 +37,7 @@ const form = reactive<ModelPayload>({
   baseUrl: '',
   apiKey: '',
   isEnabled: true,
+  configJson: {},
 })
 
 const title = computed(() => (editingId.value ? '编辑模型' : '添加模型'))
@@ -62,7 +64,9 @@ const openCreate = () => {
     baseUrl: '',
     apiKey: '',
     isEnabled: true,
+    configJson: {},
   })
+  configJsonText.value = ''
   formOpen.value = true
 }
 
@@ -76,7 +80,12 @@ const openEdit = (model: AiModel) => {
     baseUrl: model.baseUrl ?? '',
     apiKey: '',
     isEnabled: model.isEnabled,
+    configJson: model.configJson,
   })
+  configJsonText.value =
+    Object.keys(model.configJson).length > 0
+      ? JSON.stringify(model.configJson, null, 2)
+      : ''
   formOpen.value = true
 }
 
@@ -84,10 +93,12 @@ const save = async () => {
   saving.value = true
 
   try {
+    const configJson = parseConfigJson()
     const payload = {
       ...form,
       apiKey: form.apiKey || undefined,
       baseUrl: form.baseUrl || undefined,
+      configJson,
     }
 
     const saved = editingId.value
@@ -107,6 +118,26 @@ const save = async () => {
     showErrorMessage(cause, '保存模型失败')
   } finally {
     saving.value = false
+  }
+}
+
+const parseConfigJson = () => {
+  const content = configJsonText.value.trim()
+
+  if (!content) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(content) as unknown
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('高级配置必须是 JSON 对象')
+    }
+
+    return parsed as Record<string, unknown>
+  } catch (cause) {
+    throw cause instanceof Error ? cause : new Error('高级配置 JSON 格式不正确')
   }
 }
 
@@ -212,6 +243,14 @@ onMounted(load)
               :placeholder="editingId ? '留空表示保持原凭证' : '可留空'"
               show-password
               type="password"
+            />
+          </el-form-item>
+          <el-form-item class="md:col-span-2" label="高级配置 JSON">
+            <el-input
+              v-model="configJsonText"
+              :rows="5"
+              placeholder='例如：{"protocol":"dashscope-multimodal","dimension":1024}'
+              type="textarea"
             />
           </el-form-item>
           <el-form-item class="md:col-span-2">

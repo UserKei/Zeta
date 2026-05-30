@@ -34,6 +34,7 @@ type ChunkForm = {
   title: string
   content: string
   status: ChunkStatus
+  metadata?: Record<string, unknown>
 }
 
 type UploadForm = {
@@ -300,12 +301,14 @@ const toChunkPayload = (chunk: ChunkForm): ChunkDraftPayload => ({
   title: chunk.title || undefined,
   content: chunk.content,
   status: chunk.status,
+  metadata: chunk.metadata,
 })
 
 const toChunkForm = (chunk: ChunkDraftPayload): ChunkForm => ({
   title: chunk.title ?? '',
   content: chunk.content,
   status: chunk.status ?? 'ACTIVE',
+  metadata: chunk.metadata,
 })
 
 const isSupportedFile = (file: File) => {

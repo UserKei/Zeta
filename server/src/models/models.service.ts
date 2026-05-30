@@ -15,6 +15,7 @@ type ModelInput = {
   baseUrl?: string | null;
   apiKey?: string | null;
   isEnabled?: boolean;
+  configJson?: Record<string, unknown> | null;
 };
 
 const modelSelect = {
@@ -24,6 +25,7 @@ const modelSelect = {
   type: true,
   modelName: true,
   baseUrl: true,
+  configJson: true,
   apiKey: true,
   isEnabled: true,
   createdAt: true,
@@ -101,6 +103,7 @@ export class ModelsService {
       baseUrl: input.baseUrl?.trim() || null,
       apiKey: input.apiKey?.trim() || null,
       isEnabled: input.isEnabled ?? true,
+      configJson: this.normalizeConfigJson(input.configJson),
     };
   }
 
@@ -157,7 +160,25 @@ export class ModelsService {
       data.isEnabled = input.isEnabled;
     }
 
+    if (input.configJson !== undefined) {
+      data.configJson = this.normalizeConfigJson(input.configJson);
+    }
+
     return data;
+  }
+
+  private normalizeConfigJson(
+    configJson: ModelInput['configJson'],
+  ): Prisma.InputJsonValue {
+    if (
+      configJson &&
+      typeof configJson === 'object' &&
+      !Array.isArray(configJson)
+    ) {
+      return configJson as Prisma.InputJsonObject;
+    }
+
+    return {};
   }
 
   private async requireModel(id: string) {

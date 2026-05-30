@@ -64,6 +64,34 @@ async function main() {
       },
     },
   });
+
+  await prisma.aiModel.upsert({
+    where: { id: '8f2087d9-f96f-4c12-a028-10e33c5c6d1f' },
+    update: {
+      apiKey: dashScopeApiKey,
+      isEnabled: Boolean(dashScopeApiKey),
+      configJson: {
+        protocol: 'dashscope-multimodal',
+        dimension: 1024,
+        enableFusion: true,
+      },
+    },
+    create: {
+      id: '8f2087d9-f96f-4c12-a028-10e33c5c6d1f',
+      name: 'zeta-aliyun-multimodal-embedding',
+      provider: 'aliyun-bailian',
+      type: AiModelType.EMBEDDING,
+      modelName: 'qwen3-vl-embedding',
+      baseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+      apiKey: dashScopeApiKey,
+      isEnabled: Boolean(dashScopeApiKey),
+      configJson: {
+        protocol: 'dashscope-multimodal',
+        dimension: 1024,
+        enableFusion: true,
+      },
+    },
+  });
 }
 
 main()

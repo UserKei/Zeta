@@ -140,6 +140,11 @@ export class RetrievalService {
       embeddingModel,
       [question],
     );
+
+    if (!queryEmbedding) {
+      throw new BadRequestException('embedding provider returned empty data');
+    }
+
     const candidateLimit = topK * RETRIEVAL_CANDIDATE_MULTIPLIER;
     const [vectorRows, keywordRows] = await Promise.all([
       this.searchByVector(

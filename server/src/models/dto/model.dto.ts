@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEnum,
+  IsObject,
   IsOptional,
   IsString,
   MinLength,
@@ -51,6 +52,15 @@ export class ModelDto implements ModelPayload {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: { protocol: 'openai-compatible', dimensions: 1024 },
+    nullable: true,
+    description: '模型高级配置 JSON',
+  })
+  @IsOptional()
+  @IsObject()
+  configJson?: Record<string, unknown> | null;
 }
 
 export class ModelUpdateDto implements ModelUpdatePayload {
@@ -91,4 +101,12 @@ export class ModelUpdateDto implements ModelUpdatePayload {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    example: { protocol: 'dashscope-multimodal', dimension: 1024 },
+    nullable: true,
+  })
+  @IsOptional()
+  @IsObject()
+  configJson?: Record<string, unknown> | null;
 }

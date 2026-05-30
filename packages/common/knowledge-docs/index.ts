@@ -61,6 +61,7 @@ export type ChunkDraftPayload = {
   title?: string | null;
   content: string;
   status?: ChunkStatus;
+  metadata?: Record<string, unknown>;
 };
 
 export type FileSourceFormat =
