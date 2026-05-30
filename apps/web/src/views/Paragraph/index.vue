@@ -12,9 +12,10 @@ import {
   Rank,
   Search,
 } from '@element-plus/icons-vue'
-import { MdEditor, MdPreview } from 'md-editor-v3'
+import { MdEditor } from 'md-editor-v3'
 import { VueDraggable } from 'vue-draggable-plus'
 import 'md-editor-v3/lib/style.css'
+import ZetaMarkdownPreview from '@/components/ZetaMarkdownPreview.vue'
 import {
   createDocumentChunk,
   deleteDocumentChunk,
@@ -461,7 +462,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <MdPreview
+              <ZetaMarkdownPreview
                 :editor-id="`chunk-preview-${chunk.id}`"
                 :model-value="chunk.content"
                 class="zeta-md-preview"
@@ -491,7 +492,7 @@ onBeforeUnmount(() => {
               编辑
             </el-button>
           </div>
-          <MdPreview
+          <ZetaMarkdownPreview
             editor-id="chunk-dialog-preview"
             :model-value="chunkForm.content"
             class="zeta-md-preview rounded-lg border border-(--zeta-line-soft) p-3"

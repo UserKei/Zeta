@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { FileStatus } from '../generated/prisma/enums';
 import type { Prisma } from '../generated/prisma/client';
@@ -9,6 +9,14 @@ type SaveFileInput = {
   mimeType?: string | null;
   buffer: Buffer;
   metadata?: Prisma.InputJsonValue;
+};
+
+type StoredFileBuffer = {
+  id: string;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: bigint;
+  buffer: Buffer;
 };
 
 @Injectable()
@@ -48,6 +56,41 @@ export class FileStorageService {
       await this.unlinkLargeObject(largeObject.loid);
       throw cause;
     }
+  }
+
+  async readBuffer(fileId: string): Promise<StoredFileBuffer> {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      select: {
+        id: true,
+        fileName: true,
+        mimeType: true,
+        fileSize: true,
+        loid: true,
+      },
+    });
+
+    if (!file) {
+      throw new NotFoundException('file does not exist');
+    }
+
+    const [largeObject] = await this.prisma.$queryRaw<
+      Array<{ content: Buffer | Uint8Array }>
+    >`
+      SELECT lo_get(${file.loid}::oid) AS "content"
+    `;
+
+    if (!largeObject) {
+      throw new NotFoundException('file content does not exist');
+    }
+
+    return {
+      id: file.id,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      buffer: Buffer.from(largeObject.content),
+    };
   }
 
   async removeFileIfUnreferenced(fileId: string | null | undefined) {

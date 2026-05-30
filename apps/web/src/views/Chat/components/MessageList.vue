@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ChatDotRound } from '@element-plus/icons-vue'
-import { MdPreview } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
+import ZetaMarkdownPreview from '@/components/ZetaMarkdownPreview.vue'
 import type { ChatCitation, ChatMessage } from '@/apis/chat'
 
 const props = defineProps<{
@@ -105,7 +104,7 @@ const getCitationDocuments = (citations: ChatCitation[]) => {
             <span>{{ formatTime(message.createdAt) }}</span>
           </header>
 
-          <MdPreview
+          <ZetaMarkdownPreview
             v-if="message.content"
             :editor-id="`chat-message-${message.id}`"
             :model-value="message.content"
