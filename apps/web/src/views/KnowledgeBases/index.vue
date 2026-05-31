@@ -2,9 +2,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -189,36 +189,36 @@ onMounted(load)
 
     <section
       v-if="embeddingModels.length === 0"
-      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)"
+      class="rounded-lg border border-border bg-muted/40 px-4 py-3.5 text-sm text-muted-foreground"
     >
       还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
     </section>
 
     <section
-      class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"
+      class="min-w-0 overflow-hidden rounded-lg border border-border bg-card text-card-foreground"
     >
       <div
-        class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 lg:flex-row lg:items-center"
+        class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3 lg:flex-row lg:items-center"
       >
         <div class="flex flex-wrap items-center gap-2">
-          <el-button :icon="Plus" type="primary" @click="openCreate">创建</el-button>
-          <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-          <span class="text-sm text-(--zeta-muted)">
+          <Button @click="openCreate">创建</Button>
+          <Button variant="outline" :disabled="loading" @click="load">
+            {{ loading ? '刷新中' : '刷新' }}
+          </Button>
+          <span class="text-sm text-muted-foreground">
             当前 {{ filteredKnowledgeBases.length }} / {{ knowledgeBases.length }}
           </span>
         </div>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-          <el-select v-model="statusFilter" clearable placeholder="状态" class="w-full sm:w-32">
-            <el-option label="启用" value="ACTIVE" />
-            <el-option label="停用" value="DISABLED" />
-          </el-select>
-          <el-input
-            v-model="keyword"
-            :prefix-icon="Search"
-            clearable
-            placeholder="搜索知识库"
-            class="w-full sm:w-64"
-          />
+          <select
+            v-model="statusFilter"
+            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-36"
+          >
+            <option value="">全部状态</option>
+            <option value="ACTIVE">启用</option>
+            <option value="DISABLED">停用</option>
+          </select>
+          <Input v-model="keyword" placeholder="搜索知识库" class="w-full sm:w-64" />
         </div>
       </div>
 
