@@ -1,11 +1,39 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { Delete, Plus } from '@element-plus/icons-vue'
+import { PlusIcon, TrashIcon } from '@lucide/vue'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogScrollContent,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -14,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { getKnowledgeBase, type KnowledgeBase } from '@/apis/knowledge-bases'
 import {
   createManualDocument,
@@ -26,7 +55,7 @@ import {
   type KnowledgeDocument,
   type ManualDocumentPayload,
 } from '@/apis/knowledge-docs'
-import { isCancelAction, showErrorMessage } from '@/utils/feedback'
+import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeDocumentsView',
@@ -58,6 +87,9 @@ const documentStatusFilter = ref<DocumentStatus | ''>('')
 const editOpen = ref(false)
 const editingDocumentId = ref<string | null>(null)
 const editSaving = ref(false)
+const deleteOpen = ref(false)
+const deleting = ref(false)
+const deletingDocument = ref<KnowledgeDocument | null>(null)
 
 const createEmptyChunk = (content = ''): ChunkForm => ({
   title: '',
@@ -85,6 +117,13 @@ const documentStatusOptions: Array<{ label: string; value: DocumentStatus }> = [
   { label: '失败', value: 'FAILED' },
   { label: '停用', value: 'DISABLED' },
 ]
+
+const documentStatusFilterValue = computed({
+  get: () => documentStatusFilter.value || 'ALL',
+  set: (value: string) => {
+    documentStatusFilter.value = value === 'ALL' ? '' : (value as DocumentStatus)
+  },
+})
 
 const filteredDocuments = computed(() => {
   const query = documentKeyword.value.trim().toLowerCase()
@@ -222,21 +261,27 @@ const saveDocumentMeta = async () => {
   }
 }
 
-const removeDocument = async (document: KnowledgeDocument) => {
-  try {
-    await ElMessageBox.confirm(`删除文档「${document.name}」？`, '删除文档', {
-      cancelButtonText: '取消',
-      confirmButtonText: '删除',
-      type: 'warning',
-    })
-    await deleteDocument(document.id)
-    documents.value = documents.value.filter((item) => item.id !== document.id)
-  } catch (cause) {
-    if (isCancelAction(cause)) {
-      return
-    }
+const removeDocument = (document: KnowledgeDocument) => {
+  deletingDocument.value = document
+  deleteOpen.value = true
+}
 
+const confirmRemoveDocument = async () => {
+  if (!deletingDocument.value) {
+    return
+  }
+
+  deleting.value = true
+
+  try {
+    await deleteDocument(deletingDocument.value.id)
+    documents.value = documents.value.filter((item) => item.id !== deletingDocument.value?.id)
+    deleteOpen.value = false
+    deletingDocument.value = null
+  } catch (cause) {
     showErrorMessage(cause, '删除文档失败')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -346,19 +391,23 @@ onMounted(load)
           </span>
         </div>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-          <select
-            v-model="documentStatusFilter"
-            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-36"
-          >
-            <option value="">全部状态</option>
-            <option
-              v-for="status in documentStatusOptions"
-              :key="status.value"
-              :value="status.value"
-            >
-              {{ status.label }}
-            </option>
-          </select>
+          <Select v-model="documentStatusFilterValue">
+            <SelectTrigger class="w-full sm:w-36">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="ALL">全部状态</SelectItem>
+                <SelectItem
+                  v-for="status in documentStatusOptions"
+                  :key="status.value"
+                  :value="status.value"
+                >
+                  {{ status.label }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
           <Input v-model="documentKeyword" placeholder="搜索文档" class="w-full sm:w-64" />
         </div>
       </div>
@@ -441,34 +490,53 @@ onMounted(load)
       </Table>
     </section>
 
-    <el-dialog v-model="formOpen" title="新增文本知识" width="min(1120px, calc(100vw - 32px))">
-      <el-form label-position="top" @submit.prevent="saveDocument">
-        <div
+    <Dialog v-model:open="formOpen">
+      <DialogScrollContent class="max-h-[calc(100vh-2rem)] overflow-hidden sm:max-w-280">
+        <DialogHeader>
+          <DialogTitle>新增文本知识</DialogTitle>
+          <DialogDescription>
+            直接录入文本并调整分段，保存后会写入文档、分段和索引。
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
           class="grid max-h-[calc(100vh-220px)] min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]"
+          @submit.prevent="saveDocument"
         >
           <aside class="grid content-start gap-4">
-            <section class="rounded-lg border border-(--zeta-line) p-4">
-              <h3 class="m-0 mb-4 text-base font-semibold">文档信息</h3>
-              <el-form-item label="文档名称">
-                <el-input v-model="form.name" />
-              </el-form-item>
-              <el-form-item label="描述">
-                <el-input v-model="form.description" :rows="3" type="textarea" />
-              </el-form-item>
-            </section>
+            <Card>
+              <CardHeader>
+                <CardTitle class="text-base">文档信息</CardTitle>
+              </CardHeader>
+              <CardContent class="grid gap-3">
+                <div class="grid gap-2">
+                  <Label for="manual-document-name">文档名称</Label>
+                  <Input id="manual-document-name" v-model="form.name" />
+                </div>
+                <div class="grid gap-2">
+                  <Label for="manual-document-description">描述</Label>
+                  <Textarea id="manual-document-description" v-model="form.description" rows="3" />
+                </div>
+              </CardContent>
+            </Card>
           </aside>
 
           <section
-            class="flex min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-(--zeta-line)"
+            class="flex min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-border"
           >
             <header
-              class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center"
+              class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3 sm:flex-row sm:items-center"
             >
               <div>
                 <h3 class="m-0 text-base font-semibold">分段预览</h3>
-                <p class="m-0 mt-1 text-sm text-(--zeta-muted)">{{ form.chunks.length }} 个分段</p>
+                <p class="m-0 mt-1 text-sm text-muted-foreground">
+                  {{ form.chunks.length }} 个分段
+                </p>
               </div>
-              <el-button :icon="Plus" @click="addFormChunk">添加分段</el-button>
+              <Button type="button" variant="outline" @click="addFormChunk">
+                <PlusIcon data-icon="inline-start" />
+                添加分段
+              </Button>
             </header>
 
             <div class="min-h-0 flex-1 overflow-auto">
@@ -476,65 +544,109 @@ onMounted(load)
                 <article
                   v-for="(chunk, index) in form.chunks"
                   :key="index"
-                  class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3"
+                  class="rounded-lg border border-border bg-card p-3"
                 >
                   <header class="mb-3 flex items-center justify-between gap-3">
                     <strong>分段 #{{ index + 1 }}</strong>
-                    <el-button
-                      :icon="Delete"
-                      size="small"
-                      type="danger"
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      :aria-label="`删除分段 ${index + 1}`"
                       @click="removeFormChunk(index)"
-                    />
+                    >
+                      <TrashIcon />
+                    </Button>
                   </header>
                   <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                    <el-form-item label="标题">
-                      <el-input v-model="chunk.title" />
-                    </el-form-item>
-                    <el-form-item label="状态">
-                      <el-select v-model="chunk.status">
-                        <el-option label="启用" value="ACTIVE" />
-                        <el-option label="停用" value="DISABLED" />
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item class="md:col-span-2" label="内容">
-                      <el-input v-model="chunk.content" :rows="7" type="textarea" />
-                    </el-form-item>
+                    <div class="grid gap-2">
+                      <Label :for="`manual-chunk-title-${index}`">标题</Label>
+                      <Input :id="`manual-chunk-title-${index}`" v-model="chunk.title" />
+                    </div>
+                    <div class="grid gap-2">
+                      <Label :for="`manual-chunk-status-${index}`">状态</Label>
+                      <Select v-model="chunk.status">
+                        <SelectTrigger :id="`manual-chunk-status-${index}`" class="w-full">
+                          <SelectValue placeholder="请选择状态" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="ACTIVE">启用</SelectItem>
+                            <SelectItem value="DISABLED">停用</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div class="grid gap-2 md:col-span-2">
+                      <Label :for="`manual-chunk-content-${index}`">内容</Label>
+                      <Textarea
+                        :id="`manual-chunk-content-${index}`"
+                        v-model="chunk.content"
+                        rows="7"
+                      />
+                    </div>
                   </div>
                 </article>
               </div>
             </div>
           </section>
-        </div>
-      </el-form>
+        </form>
 
-      <template #footer>
-        <el-button @click="formOpen = false">取消</el-button>
-        <el-button
-          :disabled="!canSaveDocument"
-          :loading="saving"
-          type="primary"
-          @click="saveDocument"
-        >
-          保存并索引
-        </el-button>
-      </template>
-    </el-dialog>
+        <DialogFooter>
+          <Button variant="outline" @click="formOpen = false">取消</Button>
+          <Button :disabled="!canSaveDocument || saving" @click="saveDocument">
+            {{ saving ? '保存中...' : '保存并索引' }}
+          </Button>
+        </DialogFooter>
+      </DialogScrollContent>
+    </Dialog>
 
-    <el-dialog v-model="editOpen" title="编辑文档" width="560px">
-      <el-form label-position="top" @submit.prevent="saveDocumentMeta">
-        <el-form-item label="文档名称">
-          <el-input v-model="editForm.name" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="editForm.description" :rows="4" type="textarea" />
-        </el-form-item>
-      </el-form>
+    <Dialog v-model:open="editOpen">
+      <DialogContent class="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>编辑文档</DialogTitle>
+          <DialogDescription>修改文档名称和描述，不会重切已有分段。</DialogDescription>
+        </DialogHeader>
 
-      <template #footer>
-        <el-button @click="editOpen = false">取消</el-button>
-        <el-button :loading="editSaving" type="primary" @click="saveDocumentMeta">保存</el-button>
-      </template>
-    </el-dialog>
+        <form class="grid gap-4" @submit.prevent="saveDocumentMeta">
+          <div class="grid gap-2">
+            <Label for="edit-document-name">文档名称</Label>
+            <Input id="edit-document-name" v-model="editForm.name" />
+          </div>
+          <div class="grid gap-2">
+            <Label for="edit-document-description">描述</Label>
+            <Textarea id="edit-document-description" v-model="editForm.description" rows="4" />
+          </div>
+        </form>
+
+        <DialogFooter>
+          <Button variant="outline" @click="editOpen = false">取消</Button>
+          <Button :disabled="editSaving" @click="saveDocumentMeta">
+            {{ editSaving ? '保存中...' : '保存' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog v-model:open="deleteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除文档</AlertDialogTitle>
+          <AlertDialogDescription>
+            删除文档「{{ deletingDocument?.name }}」？对应分段、向量和源文件也会同步清理。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="deleting"
+            @click.prevent="confirmRemoveDocument"
+          >
+            {{ deleting ? '删除中...' : '删除' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
