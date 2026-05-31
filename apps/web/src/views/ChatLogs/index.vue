@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ExternalLinkIcon, EyeIcon, PencilIcon, TrashIcon } from '@lucide/vue'
+import { EyeIcon, PencilIcon, TrashIcon } from '@lucide/vue'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -34,13 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -65,6 +58,7 @@ import {
 import { getAgent, type Agent } from '@/apis/agents'
 import { listDocuments, updateDocumentChunk, type KnowledgeDocument } from '@/apis/knowledge-docs'
 import { getErrorMessage } from '@/utils/feedback'
+import ChatLogDetailSheet from './components/ChatLogDetailSheet.vue'
 
 defineOptions({
   name: 'AgentChatLogsView',
@@ -286,7 +280,11 @@ const replaceMessage = (message: ChatMessage) => {
 const countImproveRecords = (sessionMessages: ChatMessage[]) =>
   sessionMessages.reduce((total, message) => total + message.improveRecords.length, 0)
 
-const latestImproveRecord = (message: ChatMessage) => message.improveRecords.at(-1) ?? null
+const trailingCitationLinePattern =
+  /(?:^|\r?\n)\s*(?:引用|参考|参考来源|References?|Sources?)\s*[:：]\s*(?:(?:\[\s*\d+\s*\]|\d+)(?:\s*(?:[,，、;；]\s*)?(?:\[\s*\d+\s*\]|\d+))*)\s*$/i
+
+const stripTrailingCitationLine = (content: string) =>
+  content.replace(trailingCitationLinePattern, '').trimEnd()
 
 const openImprove = async (message: ChatMessage, index: number) => {
   const defaultKnowledgeBase = targetKnowledgeBases.value[0]
@@ -295,7 +293,7 @@ const openImprove = async (message: ChatMessage, index: number) => {
   form.knowledgeBaseId = defaultKnowledgeBase?.id ?? ''
   form.documentId = ''
   form.title = findPreviousQuestion(index)
-  form.content = message.content
+  form.content = stripTrailingCitationLine(message.content)
   improveOpen.value = true
 
   if (form.knowledgeBaseId) {
@@ -597,104 +595,15 @@ onMounted(load)
       </CardContent>
     </Card>
 
-    <Sheet v-model:open="drawerOpen">
-      <SheetContent
-        side="right"
-        class="w-[calc(100vw-1rem)] p-0 sm:max-w-none md:w-[60vw] md:min-w-180"
-      >
-        <SheetHeader class="border-b border-border px-5 py-4">
-          <SheetTitle>对话详情</SheetTitle>
-          <SheetDescription>
-            {{ selectedSession?.title || '新会话' }}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div class="min-h-0 flex-1 overflow-auto p-5">
-          <div v-if="messageLoading" class="grid gap-4">
-            <Skeleton v-for="index in 3" :key="index" class="h-34 w-full" />
-          </div>
-
-          <div
-            v-else-if="messages.length === 0"
-            class="grid min-h-40 place-items-center text-sm text-muted-foreground"
-          >
-            暂无消息
-          </div>
-
-          <div v-else class="grid gap-4">
-            <Card
-              v-for="(message, index) in messages"
-              :key="message.id"
-              class="gap-3 border-border p-4 shadow-none"
-              :class="message.role === 'ASSISTANT' ? 'bg-card' : 'bg-muted/40'"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="flex flex-wrap items-center gap-2">
-                  <Badge :variant="message.role === 'ASSISTANT' ? 'default' : 'secondary'">
-                    {{ message.role === 'ASSISTANT' ? 'AI 回答' : '用户问题' }}
-                  </Badge>
-                  <span class="text-xs text-muted-foreground">
-                    {{ formatTime(message.createdAt) }}
-                  </span>
-                  <Badge v-if="message.improveRecords.length > 0" variant="outline">
-                    已标注 {{ message.improveRecords.length }}
-                  </Badge>
-                </div>
-                <div v-if="message.role === 'ASSISTANT'" class="flex flex-wrap items-center gap-2">
-                  <Button
-                    v-if="message.improveRecords.length > 0"
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="openMark(message)"
-                  >
-                    <EyeIcon data-icon="inline-start" />
-                    改进标注
-                  </Button>
-                  <Button
-                    v-if="latestImproveRecord(message)"
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    @click="goImproveRecord(latestImproveRecord(message)!)"
-                  >
-                    <ExternalLinkIcon data-icon="inline-start" />
-                    查看分段
-                  </Button>
-                  <Button type="button" size="sm" @click="openImprove(message, index)">
-                    保存至文档
-                  </Button>
-                </div>
-              </div>
-
-              <p class="whitespace-pre-wrap text-sm leading-7 text-foreground">
-                {{ message.content }}
-              </p>
-
-              <div
-                v-if="latestImproveRecord(message)"
-                class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm"
-              >
-                <Badge variant="outline">已标注 {{ message.improveRecords.length }}</Badge>
-                <span class="font-medium">{{ latestImproveRecord(message)!.documentName }}</span>
-                <span class="text-muted-foreground">
-                  分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
-                </span>
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  class="h-auto p-0"
-                  @click="goImproveRecord(latestImproveRecord(message)!)"
-                >
-                  查看分段
-                </Button>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+    <ChatLogDetailSheet
+      v-model:open="drawerOpen"
+      :selected-session="selectedSession"
+      :messages="messages"
+      :message-loading="messageLoading"
+      @open-mark="openMark"
+      @view-improve="goImproveRecord"
+      @save-improve="openImprove"
+    />
 
     <Dialog v-model:open="improveOpen">
       <DialogContent class="sm:max-w-190">
