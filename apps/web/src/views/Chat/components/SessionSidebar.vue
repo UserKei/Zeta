@@ -1,8 +1,23 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ArrowLeft, Plus, Search } from '@element-plus/icons-vue'
+import { ArrowLeftIcon, PlusIcon } from '@lucide/vue'
 import type { Agent } from '@/apis/agents'
 import type { ChatSession } from '@/apis/chat'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInput,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarSeparator,
+} from '@/components/ui/sidebar'
 
 const props = defineProps<{
   agent: Agent | null
@@ -42,95 +57,97 @@ const formatTime = (value: string) =>
 </script>
 
 <template>
-  <aside
-    class="grid min-h-96 overflow-hidden rounded-[24px] border border-(--zeta-line) bg-white/90 backdrop-blur xl:h-full xl:min-h-0 xl:grid-rows-[auto_minmax(0,1fr)]"
-  >
-    <header class="grid gap-4 border-b border-(--zeta-line-soft) p-4">
+  <Sidebar collapsible="offcanvas" class="border-r border-sidebar-border">
+    <SidebarHeader class="gap-4 border-b border-sidebar-border p-4">
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2">
-          <button
-            class="grid size-8 shrink-0 place-items-center rounded-full border border-(--zeta-line) bg-white text-(--zeta-muted) transition hover:border-(--zeta-blue-line) hover:text-(--zeta-blue)"
+          <Button
             type="button"
+            variant="outline"
+            size="icon-sm"
             aria-label="返回 Agent"
             @click="$emit('back')"
           >
-            <el-icon><ArrowLeft /></el-icon>
-          </button>
-          <strong class="truncate text-lg font-extrabold text-(--zeta-ink)">Zeta</strong>
+            <ArrowLeftIcon />
+          </Button>
+          <strong class="truncate text-lg font-semibold text-sidebar-foreground">Zeta</strong>
         </div>
-        <button
-          class="grid size-9 shrink-0 place-items-center rounded-full border-0 bg-(--zeta-blue) text-white shadow-sm transition hover:bg-(--zeta-blue-hover) disabled:cursor-not-allowed disabled:opacity-60"
+        <Button
           type="button"
+          size="icon"
           :disabled="sending"
           aria-label="新会话"
           @click="$emit('newSession')"
         >
-          <el-icon><Plus /></el-icon>
-        </button>
+          <PlusIcon />
+        </Button>
       </div>
 
-      <label
-        class="flex h-10 items-center gap-2 rounded-xl bg-(--zeta-surface-soft) px-3 text-(--zeta-muted) transition focus-within:ring-2 focus-within:ring-(--zeta-blue-line)"
-      >
-        <el-icon><Search /></el-icon>
-        <input
-          v-model="keyword"
-          class="min-w-0 flex-1 border-0 bg-transparent text-sm text-(--zeta-ink) outline-none placeholder:text-(--zeta-subtle)"
-          placeholder="搜索会话"
-          type="search"
-        />
-      </label>
+      <SidebarInput v-model="keyword" placeholder="搜索会话" type="search" />
 
-      <div class="rounded-2xl bg-(--zeta-surface-tint) p-3">
-        <p class="m-0 text-xs font-semibold uppercase text-(--zeta-blue)">Current Agent</p>
-        <h1 class="m-0 mt-1 truncate text-base font-bold text-(--zeta-ink)">
+      <div
+        class="rounded-lg border border-sidebar-border bg-sidebar-accent p-3 text-sidebar-accent-foreground"
+      >
+        <p class="text-xs font-medium text-sidebar-primary">Current Agent</p>
+        <h1 class="mt-1 truncate text-base font-semibold">
           {{ agent?.name || 'Agent 聊天' }}
         </h1>
-        <p class="m-0 mt-1 line-clamp-2 text-xs leading-5 text-(--zeta-muted)">
+        <p class="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
           {{ agent?.description || agent?.openingMessage || '基于知识库回答问题。' }}
         </p>
       </div>
-    </header>
+    </SidebarHeader>
 
-    <section class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-      <div class="flex items-center justify-between px-4 py-3">
-        <h2 class="m-0 text-sm font-bold text-(--zeta-ink)">Threads</h2>
-        <span class="rounded-full bg-(--zeta-info-soft) px-2.5 py-1 text-xs text-(--zeta-muted)">
-          {{ filteredSessions.length }}
-        </span>
-      </div>
-
-      <div class="min-h-0 overflow-auto px-2 pb-3">
-        <div v-if="loading" class="grid min-h-24 place-items-center text-sm text-(--zeta-muted)">
-          会话加载中
-        </div>
-        <div v-else-if="sessions.length === 0" class="grid min-h-24 place-items-center text-sm text-(--zeta-muted)">
-          还没有会话
-        </div>
-        <div v-else-if="filteredSessions.length === 0" class="grid min-h-24 place-items-center text-sm text-(--zeta-muted)">
-          没有匹配会话
+    <SidebarContent>
+      <SidebarGroup>
+        <div class="flex items-center justify-between px-2">
+          <SidebarGroupLabel>会话</SidebarGroupLabel>
+          <Badge variant="secondary">{{ filteredSessions.length }}</Badge>
         </div>
 
-        <button
-          v-for="session in filteredSessions"
-          :key="session.id"
-          :class="[
-            'group grid w-full gap-1 rounded-xl border px-3.5 py-3 text-left transition',
-            session.id === currentSessionId
-              ? 'border-(--zeta-blue-line) bg-(--zeta-blue-soft)'
-              : 'border-transparent bg-transparent opacity-85 hover:border-(--zeta-line-soft) hover:bg-(--zeta-surface-soft) hover:opacity-100',
-          ]"
-          type="button"
-          @click="$emit('selectSession', session)"
-        >
-          <strong class="line-clamp-2 text-sm font-semibold leading-5 text-(--zeta-ink)">
-            {{ session.title || '未命名会话' }}
-          </strong>
-          <span class="text-xs text-(--zeta-muted)">
-            {{ formatTime(session.updatedAt) }}
-          </span>
-        </button>
-      </div>
-    </section>
-  </aside>
+        <SidebarGroupContent>
+          <div
+            v-if="loading"
+            class="grid min-h-24 place-items-center px-2 text-sm text-muted-foreground"
+          >
+            会话加载中
+          </div>
+          <div
+            v-else-if="sessions.length === 0"
+            class="grid min-h-24 place-items-center px-2 text-sm text-muted-foreground"
+          >
+            还没有会话
+          </div>
+          <div
+            v-else-if="filteredSessions.length === 0"
+            class="grid min-h-24 place-items-center px-2 text-sm text-muted-foreground"
+          >
+            没有匹配会话
+          </div>
+
+          <SidebarMenu v-else>
+            <SidebarMenuItem v-for="session in filteredSessions" :key="session.id">
+              <SidebarMenuButton
+                type="button"
+                class="h-auto items-start py-3"
+                :is-active="session.id === currentSessionId"
+                @click="$emit('selectSession', session)"
+              >
+                <div class="grid min-w-0 gap-1">
+                  <strong class="line-clamp-2 text-sm font-medium leading-5">
+                    {{ session.title || '未命名会话' }}
+                  </strong>
+                  <span class="text-xs text-muted-foreground">
+                    {{ formatTime(session.updatedAt) }}
+                  </span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    </SidebarContent>
+
+    <SidebarSeparator />
+  </Sidebar>
 </template>

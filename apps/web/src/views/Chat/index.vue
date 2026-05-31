@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import {
   listChatMessages,
   listChatSessions,
@@ -128,8 +131,7 @@ const send = async () => {
       },
       {
         signal: controller.signal,
-        onEvent: (event) =>
-          handleStreamEvent(event, userTempId, assistantTempId),
+        onEvent: (event) => handleStreamEvent(event, userTempId, assistantTempId),
       },
     )
   } catch (cause) {
@@ -150,11 +152,7 @@ const stopStreaming = () => {
   streamController.value?.abort()
 }
 
-const handleStreamEvent = (
-  event: ChatStreamEvent,
-  userTempId: string,
-  assistantTempId: string,
-) => {
+const handleStreamEvent = (event: ChatStreamEvent, userTempId: string, assistantTempId: string) => {
   if (event.type === 'delta') {
     appendAssistantDelta(assistantTempId, event.content)
     return
@@ -253,9 +251,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div
-    class="grid min-h-screen gap-3 overflow-auto bg-(--zeta-bg) p-3 lg:p-4 xl:h-screen xl:grid-cols-[320px_minmax(0,1fr)] xl:overflow-hidden"
-  >
+  <SidebarProvider class="min-h-screen overflow-hidden bg-background">
     <SessionSidebar
       :agent="agent"
       :current-session-id="sessionId"
@@ -267,44 +263,59 @@ onMounted(load)
       @select-session="loadSession"
     />
 
-    <section
-      class="relative grid min-h-150 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-[24px] bg-white shadow-[0_22px_80px_rgba(24,40,72,0.10)] xl:h-full xl:min-h-0"
-    >
-      <header class="flex items-center justify-between px-7 py-4">
-        <div class="min-w-0">
-          <p class="m-0 truncate text-sm font-medium text-(--zeta-subtle)">
-            {{ agent?.name || 'Agent' }}
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          <span
-            class="rounded-full bg-(--zeta-surface-soft) px-3 py-1.5 text-sm font-medium text-(--zeta-content)"
-          >
-            {{ sessionId ? '当前会话' : '新会话' }}
-          </span>
-        </div>
-      </header>
+    <SidebarInset class="h-screen min-w-0 overflow-hidden bg-background p-3 md:p-4">
+      <section
+        class="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm"
+      >
+        <header
+          class="flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6"
+        >
+          <div class="flex min-w-0 items-center gap-2">
+            <SidebarTrigger class="md:hidden" />
+            <div class="min-w-0">
+              <p class="truncate text-sm font-medium text-muted-foreground">
+                {{ agent?.name || 'Agent' }}
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <Badge variant="secondary">
+              {{ sessionId ? '当前会话' : '新会话' }}
+            </Badge>
+            <Button
+              class="md:hidden"
+              type="button"
+              variant="outline"
+              size="sm"
+              :disabled="sending"
+              @click="startNewSession"
+            >
+              新会话
+            </Button>
+          </div>
+        </header>
 
-      <MessageList
-        :agent-name="agent?.name || 'Agent'"
-        :messages="messages"
-        :opening-message="agent?.openingMessage || agent?.description || ''"
-        :streaming-message-id="streamingMessageId"
-        @ask="applySuggestedQuestion"
-        @open-citations="openCitationDialog"
-      />
+        <MessageList
+          :agent-name="agent?.name || 'Agent'"
+          :messages="messages"
+          :opening-message="agent?.openingMessage || agent?.description || ''"
+          :streaming-message-id="streamingMessageId"
+          @ask="applySuggestedQuestion"
+          @open-citations="openCitationDialog"
+        />
 
-      <ChatComposer
-        v-model:message="form.message"
-        v-model:top-k="form.topK"
-        :disabled="chatUnavailable"
-        disabled-reason="当前 Agent 未配置对话模型，请返回 Agent 页面重新选择模型。"
-        :sending="sending"
-        @stop="stopStreaming"
-        @submit="send"
-      />
-    </section>
+        <ChatComposer
+          v-model:message="form.message"
+          v-model:top-k="form.topK"
+          :disabled="chatUnavailable"
+          disabled-reason="当前 Agent 未配置对话模型，请返回 Agent 页面重新选择模型。"
+          :sending="sending"
+          @stop="stopStreaming"
+          @submit="send"
+        />
+      </section>
+    </SidebarInset>
 
     <CitationDialog v-model:visible="citationDialogVisible" :citations="selectedCitations" />
-  </div>
+  </SidebarProvider>
 </template>
