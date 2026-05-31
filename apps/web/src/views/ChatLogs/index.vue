@@ -3,6 +3,18 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Delete, EditPen, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   deleteChatMessageImprove,
   improveChatMessage,
@@ -15,11 +27,7 @@ import {
   type ChatSession,
 } from '@/apis/chat'
 import { getAgent, type Agent } from '@/apis/agents'
-import {
-  listDocuments,
-  updateDocumentChunk,
-  type KnowledgeDocument,
-} from '@/apis/knowledge-docs'
+import { listDocuments, updateDocumentChunk, type KnowledgeDocument } from '@/apis/knowledge-docs'
 import { isCancelAction, showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
@@ -84,8 +92,7 @@ const filteredSessionRows = computed(() => {
   const keyword = searchText.value.trim().toLowerCase()
 
   return sessionRows.value.filter((session) => {
-    const matchKeyword =
-      !keyword || (session.title || '新会话').toLowerCase().includes(keyword)
+    const matchKeyword = !keyword || (session.title || '新会话').toLowerCase().includes(keyword)
     const matchMark =
       markFilter.value === 'ALL' ||
       (markFilter.value === 'MARKED' && session.improveCount > 0) ||
@@ -117,9 +124,7 @@ const load = async () => {
     ])
     agent.value = agentDetail
     sessions.value = sessionList
-    await loadSessionStats(
-      sessionList.filter((session) => session.agentId === agentId.value),
-    )
+    await loadSessionStats(sessionList.filter((session) => session.agentId === agentId.value))
   } catch (cause) {
     showErrorMessage(cause, '加载对话日志失败')
   } finally {
@@ -183,10 +188,7 @@ const loadMessages = async (sessionId: string, force = false) => {
   }
 }
 
-const setSessionMessages = (
-  sessionId: string,
-  sessionMessages: ChatMessage[],
-) => {
+const setSessionMessages = (sessionId: string, sessionMessages: ChatMessage[]) => {
   messageCache.value = {
     ...messageCache.value,
     [sessionId]: sessionMessages,
@@ -217,13 +219,9 @@ const replaceMessage = (message: ChatMessage) => {
 }
 
 const countImproveRecords = (sessionMessages: ChatMessage[]) =>
-  sessionMessages.reduce(
-    (total, message) => total + message.improveRecords.length,
-    0,
-  )
+  sessionMessages.reduce((total, message) => total + message.improveRecords.length, 0)
 
-const latestImproveRecord = (message: ChatMessage) =>
-  message.improveRecords.at(-1) ?? null
+const latestImproveRecord = (message: ChatMessage) => message.improveRecords.at(-1) ?? null
 
 const openImprove = async (message: ChatMessage, index: number) => {
   const defaultKnowledgeBase = targetKnowledgeBases.value[0]
@@ -355,15 +353,11 @@ const deleteMark = async (record: ChatImproveRecordDetail) => {
   }
 
   try {
-    await ElMessageBox.confirm(
-      '删除后会同步删除对应分段和向量索引，确认继续？',
-      '删除标注',
-      {
-        type: 'warning',
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-      },
-    )
+    await ElMessageBox.confirm('删除后会同步删除对应分段和向量索引，确认继续？', '删除标注', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
   } catch (cause) {
     if (!isCancelAction(cause)) {
       showErrorMessage(cause, '删除标注失败')
@@ -374,14 +368,9 @@ const deleteMark = async (record: ChatImproveRecordDetail) => {
   markSaving.value = true
 
   try {
-    const result = await deleteChatMessageImprove(
-      markMessage.value.id,
-      record.chunkId,
-    )
+    const result = await deleteChatMessageImprove(markMessage.value.id, record.chunkId)
     replaceMessage(result.message)
-    markRecords.value = markRecords.value.filter(
-      (item) => item.chunkId !== record.chunkId,
-    )
+    markRecords.value = markRecords.value.filter((item) => item.chunkId !== record.chunkId)
     ElMessage.success('标注已删除')
   } catch (cause) {
     showErrorMessage(cause, '删除标注失败')
@@ -402,11 +391,7 @@ const findPreviousQuestion = (index: number) => {
   return selectedSession.value?.title ?? ''
 }
 
-const goParagraph = (
-  knowledgeBaseId: string,
-  documentId: string,
-  chunkId?: string,
-) => {
+const goParagraph = (knowledgeBaseId: string, documentId: string, chunkId?: string) => {
   router.push({
     name: 'paragraph',
     params: {
@@ -433,83 +418,96 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-5">
-    <header class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-      <div class="grid gap-1">
-        <el-button class="w-fit" text @click="router.push({ name: 'agents' })">
-          返回 Agent
-        </el-button>
-        <h1 class="m-0 text-[30px] font-bold text-(--zeta-ink)">对话日志</h1>
-        <p class="m-0 text-sm text-(--zeta-muted)">
-          {{ agent?.name || 'Agent' }} 的历史会话、改进标注和知识入库记录
-        </p>
-      </div>
-      <el-button
-        :disabled="!agent?.model"
-        type="primary"
-        @click="router.push({ name: 'agent-chat', params: { agentId } })"
+  <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
+    <Card class="gap-0 overflow-hidden py-0">
+      <div
+        class="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 lg:flex-row lg:items-center lg:justify-between"
       >
-        在线使用
-      </el-button>
-    </header>
-
-    <el-card class="min-h-0 flex-1" body-class="flex h-full min-h-0 flex-col gap-4">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
-          <el-input
-            v-model="searchText"
-            class="max-w-[280px]"
-            clearable
-            placeholder="搜索摘要"
-          />
-          <el-select v-model="markFilter" class="max-w-[180px]">
-            <el-option label="全部日志" value="ALL" />
-            <el-option label="已标注" value="MARKED" />
-            <el-option label="未标注" value="UNMARKED" />
-          </el-select>
+          <Input v-model="searchText" placeholder="搜索摘要" class="w-full md:max-w-70" />
+          <select
+            v-model="markFilter"
+            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:max-w-45"
+          >
+            <option value="ALL">全部日志</option>
+            <option value="MARKED">已标注</option>
+            <option value="UNMARKED">未标注</option>
+          </select>
         </div>
-        <div class="flex flex-wrap items-center gap-2 text-sm text-(--zeta-muted)">
+        <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span>会话 {{ sessionRows.length }}</span>
           <span>标注 {{ totalImproveCount }}</span>
-          <el-button :loading="loading || summaryLoading" @click="load">刷新</el-button>
+          <Button
+            :disabled="!agent?.model"
+            @click="router.push({ name: 'agent-chat', params: { agentId } })"
+          >
+            在线使用
+          </Button>
+          <Button variant="outline" :disabled="loading || summaryLoading" @click="load">
+            {{ loading || summaryLoading ? '刷新中' : '刷新' }}
+          </Button>
         </div>
       </div>
 
-      <el-table
-        v-loading="loading || summaryLoading"
-        class="min-h-0 flex-1"
-        :data="filteredSessionRows"
-        row-key="id"
-        @row-click="openSession"
-      >
-        <el-table-column label="摘要" min-width="260" show-overflow-tooltip>
-          <template #default="{ row }">
-            <strong>{{ row.title || '新会话' }}</strong>
-          </template>
-        </el-table-column>
-        <el-table-column align="right" label="消息数" prop="messageCount" width="110" />
-        <el-table-column align="right" label="改进标注" prop="improveCount" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.improveCount > 0" type="success" effect="light">
-              {{ row.improveCount }}
-            </el-tag>
-            <span v-else class="text-(--zeta-muted)">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近对话时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.updatedAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column align="right" label="操作" width="110">
-          <template #default="{ row }">
-            <el-button text type="primary" @click.stop="openSession(row)">
-              查看
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <CardContent class="p-5">
+        <Table>
+          <TableHeader>
+            <TableRow class="bg-muted/60 hover:bg-muted/60">
+              <TableHead class="w-[45%] min-w-70">摘要</TableHead>
+              <TableHead class="w-24 text-right">消息数</TableHead>
+              <TableHead class="w-28 text-right">改进标注</TableHead>
+              <TableHead class="w-40">最近对话时间</TableHead>
+              <TableHead class="w-24 text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-if="loading || summaryLoading">
+              <TableCell colspan="5" class="h-24 text-center text-muted-foreground">
+                正在加载对话日志...
+              </TableCell>
+            </TableRow>
+            <TableRow v-else-if="filteredSessionRows.length === 0">
+              <TableCell colspan="5" class="h-24 text-center text-muted-foreground">
+                暂无对话日志
+              </TableCell>
+            </TableRow>
+            <template v-else>
+              <TableRow
+                v-for="session in filteredSessionRows"
+                :key="session.id"
+                class="cursor-pointer"
+                @click="openSession(session)"
+              >
+                <TableCell>
+                  <strong class="font-semibold text-foreground">
+                    {{ session.title || '新会话' }}
+                  </strong>
+                </TableCell>
+                <TableCell class="text-right text-muted-foreground">
+                  {{ session.messageCount }}
+                </TableCell>
+                <TableCell class="text-right">
+                  <Badge v-if="session.improveCount > 0">
+                    {{ session.improveCount }}
+                  </Badge>
+                  <span v-else class="text-muted-foreground">-</span>
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ formatTime(session.updatedAt) }}
+                </TableCell>
+                <TableCell>
+                  <div class="flex justify-end">
+                    <Button variant="outline" size="sm" @click.stop="openSession(session)">
+                      查看
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </template>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
 
     <el-drawer v-model="drawerOpen" size="64%" destroy-on-close>
       <template #header>
@@ -534,11 +532,7 @@ onMounted(load)
                 {{ message.role === 'ASSISTANT' ? 'AI 回答' : '用户问题' }}
               </el-tag>
               <span class="text-xs text-(--zeta-muted)">{{ formatTime(message.createdAt) }}</span>
-              <el-tag
-                v-if="message.improveRecords.length > 0"
-                type="success"
-                effect="light"
-              >
+              <el-tag v-if="message.improveRecords.length > 0" type="success" effect="light">
                 已标注 {{ message.improveRecords.length }}
               </el-tag>
             </div>
@@ -560,12 +554,7 @@ onMounted(load)
               >
                 查看分段
               </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                plain
-                @click="openImprove(message, index)"
-              >
+              <el-button size="small" type="primary" plain @click="openImprove(message, index)">
                 保存至文档
               </el-button>
             </div>
@@ -588,11 +577,7 @@ onMounted(load)
             <span class="text-(--zeta-muted)">
               分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
             </span>
-            <el-button
-              link
-              type="primary"
-              @click="goImproveRecord(latestImproveRecord(message)!)"
-            >
+            <el-button link type="primary" @click="goImproveRecord(latestImproveRecord(message)!)">
               查看分段
             </el-button>
           </div>
@@ -644,9 +629,7 @@ onMounted(load)
 
       <template #footer>
         <el-button @click="improveOpen = false">取消</el-button>
-        <el-button :loading="improving" type="primary" @click="saveImprove">
-          保存
-        </el-button>
+        <el-button :loading="improving" type="primary" @click="saveImprove"> 保存 </el-button>
       </template>
     </el-dialog>
 
@@ -672,37 +655,20 @@ onMounted(load)
               >
                 查看分段
               </el-button>
-              <el-button
-                size="small"
-                :icon="EditPen"
-                @click="startEditMark(record)"
-              >
+              <el-button size="small" :icon="EditPen" @click="startEditMark(record)">
                 编辑
               </el-button>
-              <el-button
-                size="small"
-                type="danger"
-                :icon="Delete"
-                @click="deleteMark(record)"
-              >
+              <el-button size="small" type="danger" :icon="Delete" @click="deleteMark(record)">
                 删除
               </el-button>
             </div>
           </div>
 
           <template v-if="markEditingId === record.chunkId">
-            <el-input
-              v-model="markEditingContent"
-              :rows="8"
-              type="textarea"
-            />
+            <el-input v-model="markEditingContent" :rows="8" type="textarea" />
             <div class="mt-3 flex justify-end gap-2">
               <el-button @click="cancelEditMark">取消</el-button>
-              <el-button
-                :loading="markSaving"
-                type="primary"
-                @click="saveMarkEdit(record)"
-              >
+              <el-button :loading="markSaving" type="primary" @click="saveMarkEdit(record)">
                 保存
               </el-button>
             </div>

@@ -47,6 +47,8 @@ export default [
           workspaceTitle: '知识库',
           workspaceSubtitle: '文档、分段与检索管理',
           workspaceBackRoute: 'knowledge-bases',
+          workspaceResourceType: 'knowledgeBase',
+          workspaceResourceIdParam: 'knowledgeBaseId',
         },
         children: [
           {
