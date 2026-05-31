@@ -215,93 +215,97 @@ onMounted(load)
       创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
     </section>
 
-    <Table>
-      <TableHeader>
-        <TableRow class="bg-muted/60 hover:bg-muted/60">
-          <TableHead class="min-w-60">名称</TableHead>
-          <TableHead class="min-w-55">模型</TableHead>
-          <TableHead class="min-w-60">绑定知识库</TableHead>
-          <TableHead class="min-w-24">状态</TableHead>
-          <TableHead class="min-w-36">更新时间</TableHead>
-          <TableHead class="min-w-64 text-right">操作</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        <TableRow v-if="loading">
-          <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
-            正在加载 Agent...
-          </TableCell>
-        </TableRow>
-        <TableRow v-else-if="agents.length === 0">
-          <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
-            还没有 Agent
-          </TableCell>
-        </TableRow>
-        <template v-else>
-          <TableRow v-for="agent in agents" :key="agent.id">
-            <TableCell>
-              <div class="grid gap-1">
-                <strong class="font-semibold text-foreground">{{ agent.name }}</strong>
-                <small class="text-muted-foreground">
-                  {{ agent.description || agent.openingMessage || '暂无描述' }}
-                </small>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div v-if="agent.model" class="grid gap-1">
-                <strong class="font-semibold text-foreground">{{ agent.model.name }}</strong>
-                <small class="text-muted-foreground">
-                  {{ agent.model.provider }} / {{ agent.model.modelName }}
-                </small>
-              </div>
-              <div v-else class="grid gap-1">
-                <Badge variant="outline"> 未配置对话模型 </Badge>
-                <small class="text-muted-foreground">请编辑 Agent 重新选择模型</small>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div class="grid gap-1">
-                <strong class="font-semibold text-foreground">
-                  {{ agent.knowledgeBases.length }} 个知识库
-                </strong>
-                <small class="text-muted-foreground">
-                  {{ agent.knowledgeBases.map((item) => item.name).join('、') || '未绑定' }}
-                </small>
-              </div>
-            </TableCell>
-            <TableCell>
-              <Badge :variant="statusBadgeVariant(agent.status)">
-                {{ statusText(agent.status) }}
-              </Badge>
-            </TableCell>
-            <TableCell class="text-muted-foreground">
-              {{ formatTime(agent.updatedAt) }}
-            </TableCell>
-            <TableCell>
-              <div class="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="!agent.model"
-                  @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
-                >
-                  聊天
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  @click="router.push({ name: 'agent-chat-logs', params: { agentId: agent.id } })"
-                >
-                  日志
-                </Button>
-                <Button variant="outline" size="sm" @click="openEdit(agent)">编辑</Button>
-                <Button variant="destructive" size="sm" @click="remove(agent)">删除</Button>
-              </div>
+    <section
+      class="min-w-0 overflow-hidden rounded-lg border border-border bg-card text-card-foreground"
+    >
+      <Table>
+        <TableHeader>
+          <TableRow class="bg-muted/60 hover:bg-muted/60">
+            <TableHead class="min-w-60">名称</TableHead>
+            <TableHead class="min-w-55">模型</TableHead>
+            <TableHead class="min-w-60">绑定知识库</TableHead>
+            <TableHead class="min-w-24">状态</TableHead>
+            <TableHead class="min-w-36">更新时间</TableHead>
+            <TableHead class="min-w-64 text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-if="loading">
+            <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+              正在加载 Agent...
             </TableCell>
           </TableRow>
-        </template>
-      </TableBody>
-    </Table>
+          <TableRow v-else-if="agents.length === 0">
+            <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+              还没有 Agent
+            </TableCell>
+          </TableRow>
+          <template v-else>
+            <TableRow v-for="agent in agents" :key="agent.id">
+              <TableCell>
+                <div class="grid gap-1">
+                  <strong class="font-semibold text-foreground">{{ agent.name }}</strong>
+                  <small class="text-muted-foreground">
+                    {{ agent.description || agent.openingMessage || '暂无描述' }}
+                  </small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div v-if="agent.model" class="grid gap-1">
+                  <strong class="font-semibold text-foreground">{{ agent.model.name }}</strong>
+                  <small class="text-muted-foreground">
+                    {{ agent.model.provider }} / {{ agent.model.modelName }}
+                  </small>
+                </div>
+                <div v-else class="grid gap-1">
+                  <Badge variant="outline"> 未配置对话模型 </Badge>
+                  <small class="text-muted-foreground">请编辑 Agent 重新选择模型</small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="grid gap-1">
+                  <strong class="font-semibold text-foreground">
+                    {{ agent.knowledgeBases.length }} 个知识库
+                  </strong>
+                  <small class="text-muted-foreground">
+                    {{ agent.knowledgeBases.map((item) => item.name).join('、') || '未绑定' }}
+                  </small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="statusBadgeVariant(agent.status)">
+                  {{ statusText(agent.status) }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ formatTime(agent.updatedAt) }}
+              </TableCell>
+              <TableCell>
+                <div class="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="!agent.model"
+                    @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
+                  >
+                    聊天
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="router.push({ name: 'agent-chat-logs', params: { agentId: agent.id } })"
+                  >
+                    日志
+                  </Button>
+                  <Button variant="outline" size="sm" @click="openEdit(agent)">编辑</Button>
+                  <Button variant="destructive" size="sm" @click="remove(agent)">删除</Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          </template>
+        </TableBody>
+      </Table>
+    </section>
     <el-dialog v-model="formOpen" :title="title" width="760px">
       <el-form label-position="top" @submit.prevent="save">
         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
