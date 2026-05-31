@@ -1,10 +1,38 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -13,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import {
   createKnowledgeBase,
   deleteKnowledgeBase,
@@ -23,7 +52,7 @@ import {
   type KnowledgeBaseStatus,
 } from '@/apis/knowledge-bases'
 import { listModels, type AiModel } from '@/apis/models'
-import { isCancelAction, showErrorMessage } from '@/utils/feedback'
+import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeBasesView',
@@ -34,8 +63,11 @@ const knowledgeBases = ref<KnowledgeBase[]>([])
 const models = ref<AiModel[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
+const deleteOpen = ref(false)
+const deletingKnowledgeBase = ref<KnowledgeBase | null>(null)
 const keyword = ref('')
 const statusFilter = ref<KnowledgeBaseStatus | ''>('')
 
@@ -76,6 +108,20 @@ const filteredKnowledgeBases = computed(() => {
 const activeCount = computed(
   () => knowledgeBases.value.filter((item) => item.status === 'ACTIVE').length,
 )
+
+const statusFilterValue = computed({
+  get: () => statusFilter.value || 'ALL',
+  set: (value: string) => {
+    statusFilter.value = value === 'ALL' ? '' : (value as KnowledgeBaseStatus)
+  },
+})
+
+const descriptionValue = computed({
+  get: () => form.description ?? '',
+  set: (value: string) => {
+    form.description = value
+  },
+})
 
 const load = async () => {
   loading.value = true
@@ -144,21 +190,29 @@ const save = async () => {
   }
 }
 
-const remove = async (knowledgeBase: KnowledgeBase) => {
-  try {
-    await ElMessageBox.confirm(`删除知识库「${knowledgeBase.name}」？`, '删除知识库', {
-      cancelButtonText: '取消',
-      confirmButtonText: '删除',
-      type: 'warning',
-    })
-    await deleteKnowledgeBase(knowledgeBase.id)
-    knowledgeBases.value = knowledgeBases.value.filter((item) => item.id !== knowledgeBase.id)
-  } catch (cause) {
-    if (isCancelAction(cause)) {
-      return
-    }
+const remove = (knowledgeBase: KnowledgeBase) => {
+  deletingKnowledgeBase.value = knowledgeBase
+  deleteOpen.value = true
+}
 
+const confirmRemove = async () => {
+  if (!deletingKnowledgeBase.value) {
+    return
+  }
+
+  deleting.value = true
+
+  try {
+    await deleteKnowledgeBase(deletingKnowledgeBase.value.id)
+    knowledgeBases.value = knowledgeBases.value.filter(
+      (item) => item.id !== deletingKnowledgeBase.value?.id,
+    )
+    deleteOpen.value = false
+    deletingKnowledgeBase.value = null
+  } catch (cause) {
     showErrorMessage(cause, '删除知识库失败')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -176,27 +230,29 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="grid gap-4">
-    <header class="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-end">
+  <Card class="m-4 gap-4 overflow-hidden p-4 lg:m-6 lg:p-6">
+    <CardHeader
+      class="flex flex-col items-start justify-between gap-4 px-0 pt-0 lg:flex-row lg:items-center"
+    >
       <div>
-        <h1 class="m-0 text-2xl font-semibold text-foreground">知识库</h1>
+        <CardTitle class="text-[34px] font-bold text-foreground">知识库</CardTitle>
         <p class="mt-1.5 text-sm text-muted-foreground">
           共 {{ knowledgeBases.length }} 个知识库，{{ activeCount }} 个启用
         </p>
       </div>
       <Button @click="openCreate">创建知识库</Button>
-    </header>
+    </CardHeader>
 
-    <section
+    <Alert
       v-if="embeddingModels.length === 0"
-      class="rounded-lg border border-border bg-muted/40 px-4 py-3.5 text-sm text-muted-foreground"
+      class="border-border bg-muted/40 text-muted-foreground"
     >
-      还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
-    </section>
+      <AlertDescription>
+        还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
+      </AlertDescription>
+    </Alert>
 
-    <section
-      class="min-w-0 overflow-hidden rounded-lg border border-border bg-card text-card-foreground"
-    >
+    <CardContent class="min-w-0 overflow-hidden rounded-lg border border-border p-0">
       <div
         class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3 lg:flex-row lg:items-center"
       >
@@ -210,14 +266,18 @@ onMounted(load)
           </span>
         </div>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-          <select
-            v-model="statusFilter"
-            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-36"
-          >
-            <option value="">全部状态</option>
-            <option value="ACTIVE">启用</option>
-            <option value="DISABLED">停用</option>
-          </select>
+          <Select v-model="statusFilterValue">
+            <SelectTrigger class="w-full sm:w-36">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="ALL">全部状态</SelectItem>
+                <SelectItem value="ACTIVE">启用</SelectItem>
+                <SelectItem value="DISABLED">停用</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
           <Input v-model="keyword" placeholder="搜索知识库" class="w-full sm:w-64" />
         </div>
       </div>
@@ -323,65 +383,124 @@ onMounted(load)
           </template>
         </TableBody>
       </Table>
-    </section>
+    </CardContent>
 
-    <el-dialog v-model="formOpen" :title="title" width="720px">
-      <el-alert
-        v-if="embeddingModels.length === 0"
-        :closable="false"
-        class="mb-4"
-        title="创建知识库前需要先配置一个启用状态的 Embedding 模型。"
-        type="warning"
-      />
+    <Dialog v-model:open="formOpen">
+      <DialogContent class="sm:max-w-[720px]">
+        <DialogHeader>
+          <DialogTitle>{{ title }}</DialogTitle>
+          <DialogDescription>
+            设置知识库基础信息、Embedding 模型和后续导入使用的默认分块参数。
+          </DialogDescription>
+        </DialogHeader>
 
-      <el-form label-position="top" @submit.prevent="save">
-        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-          <el-form-item label="知识库名称">
-            <el-input v-model="form.name" />
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="form.status">
-              <el-option label="启用" value="ACTIVE" />
-              <el-option label="停用" value="DISABLED" />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="描述">
-            <el-input v-model="form.description" placeholder="例如：人事制度、采购流程、IT 支持" />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="Embedding 模型">
-            <el-select
-              v-model="form.embeddingModelId"
-              :disabled="embeddingModels.length === 0"
-              placeholder="请选择 Embedding 模型"
-            >
-              <el-option
-                v-for="model in embeddingModels"
-                :key="model.id"
-                :label="`${model.name} - ${model.provider} / ${model.modelName}`"
-                :value="model.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="分块大小">
-            <el-input-number v-model="form.chunkSize" :min="1" controls-position="right" />
-          </el-form-item>
-          <el-form-item label="重叠长度">
-            <el-input-number v-model="form.chunkOverlap" :min="0" controls-position="right" />
-          </el-form-item>
-        </div>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="formOpen = false">取消</el-button>
-        <el-button
-          :disabled="embeddingModels.length === 0"
-          :loading="saving"
-          type="primary"
-          @click="save"
+        <Alert
+          v-if="embeddingModels.length === 0"
+          class="border-border bg-muted/40 text-muted-foreground"
         >
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-  </div>
+          <AlertDescription>
+            创建知识库前需要先配置一个启用状态的 Embedding 模型。
+          </AlertDescription>
+        </Alert>
+
+        <form class="grid grid-cols-1 gap-3.5 md:grid-cols-2" @submit.prevent="save">
+          <div class="grid gap-2">
+            <Label for="knowledge-base-name">知识库名称</Label>
+            <Input id="knowledge-base-name" v-model="form.name" />
+          </div>
+
+          <div class="grid gap-2">
+            <Label>状态</Label>
+            <Select v-model="form.status">
+              <SelectTrigger class="w-full">
+                <SelectValue placeholder="请选择状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="ACTIVE">启用</SelectItem>
+                  <SelectItem value="DISABLED">停用</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="knowledge-base-description">描述</Label>
+            <Textarea
+              id="knowledge-base-description"
+              v-model="descriptionValue"
+              placeholder="例如：人事制度、采购流程、IT 支持"
+              class="min-h-20"
+            />
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label>Embedding 模型</Label>
+            <Select v-model="form.embeddingModelId" :disabled="embeddingModels.length === 0">
+              <SelectTrigger class="w-full">
+                <SelectValue placeholder="请选择 Embedding 模型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem v-for="model in embeddingModels" :key="model.id" :value="model.id">
+                    {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="knowledge-base-chunk-size">分块大小</Label>
+            <Input
+              id="knowledge-base-chunk-size"
+              v-model.number="form.chunkSize"
+              type="number"
+              min="1"
+            />
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="knowledge-base-chunk-overlap">重叠长度</Label>
+            <Input
+              id="knowledge-base-chunk-overlap"
+              v-model.number="form.chunkOverlap"
+              type="number"
+              min="0"
+            />
+          </div>
+        </form>
+
+        <DialogFooter>
+          <Button variant="outline" @click="formOpen = false">取消</Button>
+          <Button :disabled="embeddingModels.length === 0 || saving" @click="save">
+            {{ saving ? '保存中' : '保存' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog v-model:open="deleteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除知识库</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定删除知识库「{{
+              deletingKnowledgeBase?.name
+            }}」？相关文档、分段、向量和文件都会同步清理。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="deleting"
+            @click.prevent="confirmRemove"
+          >
+            {{ deleting ? '删除中' : '删除' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </Card>
 </template>
