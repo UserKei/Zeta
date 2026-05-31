@@ -2,6 +2,17 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   createAgent,
   deleteAgent,
@@ -175,16 +186,16 @@ const statusText = (status: AgentStatus) =>
     DISABLED: '停用',
   })[status]
 
-const statusTagType = (status: AgentStatus) => {
+const statusBadgeVariant = (status: AgentStatus) => {
   if (status === 'PUBLISHED') {
-    return 'success'
+    return 'default'
   }
 
   if (status === 'DRAFT') {
-    return 'warning'
+    return 'secondary'
   }
 
-  return 'info'
+  return 'outline'
 }
 
 onMounted(load)
@@ -194,9 +205,9 @@ onMounted(load)
   <div class="grid gap-5">
     <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
       <div>
-        <h1 class="m-0 text-[34px] font-bold">专家 Agent</h1>
+        <h1 class="m-0 text-[34px] font-bold text-foreground">专家 Agent</h1>
       </div>
-      <el-button type="primary" @click="openCreate">创建 Agent</el-button>
+      <Button @click="openCreate">创建 Agent</Button>
     </header>
 
     <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
@@ -204,75 +215,99 @@ onMounted(load)
       创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
     </section>
 
-    <section class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
-      <el-table v-loading="loading" :data="agents" empty-text="还没有 Agent">
-        <el-table-column label="名称" min-width="240">
-          <template #default="{ row }: { row: Agent }">
-            <div class="grid gap-1">
-              <strong>{{ row.name }}</strong>
-              <small class="text-(--zeta-muted)">
-                {{ row.description || row.openingMessage || '暂无描述' }}
-              </small>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="模型" min-width="220">
-          <template #default="{ row }: { row: Agent }">
-            <div v-if="row.model" class="grid gap-1">
-              <strong>{{ row.model.name }}</strong>
-              <small class="text-(--zeta-muted)">
-                {{ row.model.provider }} / {{ row.model.modelName }}
-              </small>
-            </div>
-            <div v-else class="grid gap-1">
-              <el-tag type="warning" effect="light">未配置对话模型</el-tag>
-              <small class="text-(--zeta-muted)">请编辑 Agent 重新选择模型</small>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="绑定知识库" min-width="240">
-          <template #default="{ row }: { row: Agent }">
-            <div class="grid gap-1">
-              <strong>{{ row.knowledgeBases.length }} 个知识库</strong>
-              <small class="text-(--zeta-muted)">
-                {{row.knowledgeBases.map((item) => item.name).join('、')}}
-              </small>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" min-width="100">
-          <template #default="{ row }: { row: Agent }">
-            <el-tag :type="statusTagType(row.status)" effect="light">
-              {{ statusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="更新时间" min-width="150">
-          <template #default="{ row }: { row: Agent }">
-            {{ formatTime(row.updatedAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column align="right" fixed="right" label="操作" min-width="260">
-          <template #default="{ row }: { row: Agent }">
-            <el-button
-              :disabled="!row.model"
-              size="small"
-              @click="router.push({ name: 'agent-chat', params: { agentId: row.id } })"
-            >
-              聊天
-            </el-button>
-            <el-button
-              size="small"
-              @click="router.push({ name: 'agent-chat-logs', params: { agentId: row.id } })"
-            >
-              日志
-            </el-button>
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </section>
+    <Card class="min-w-0 overflow-hidden">
+      <CardContent class="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow class="bg-muted/60 hover:bg-muted/60">
+              <TableHead class="min-w-60">名称</TableHead>
+              <TableHead class="min-w-55">模型</TableHead>
+              <TableHead class="min-w-60">绑定知识库</TableHead>
+              <TableHead class="min-w-24">状态</TableHead>
+              <TableHead class="min-w-36">更新时间</TableHead>
+              <TableHead class="min-w-64 text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-if="loading">
+              <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+                正在加载 Agent...
+              </TableCell>
+            </TableRow>
+            <TableRow v-else-if="agents.length === 0">
+              <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+                还没有 Agent
+              </TableCell>
+            </TableRow>
+            <template v-else>
+              <TableRow v-for="agent in agents" :key="agent.id">
+                <TableCell>
+                  <div class="grid gap-1">
+                    <strong class="font-semibold text-foreground">{{ agent.name }}</strong>
+                    <small class="text-muted-foreground">
+                      {{ agent.description || agent.openingMessage || '暂无描述' }}
+                    </small>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div v-if="agent.model" class="grid gap-1">
+                    <strong class="font-semibold text-foreground">{{ agent.model.name }}</strong>
+                    <small class="text-muted-foreground">
+                      {{ agent.model.provider }} / {{ agent.model.modelName }}
+                    </small>
+                  </div>
+                  <div v-else class="grid gap-1">
+                    <Badge variant="outline">
+                      未配置对话模型
+                    </Badge>
+                    <small class="text-muted-foreground">请编辑 Agent 重新选择模型</small>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div class="grid gap-1">
+                    <strong class="font-semibold text-foreground">
+                      {{ agent.knowledgeBases.length }} 个知识库
+                    </strong>
+                    <small class="text-muted-foreground">
+                      {{ agent.knowledgeBases.map((item) => item.name).join('、') || '未绑定' }}
+                    </small>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge :variant="statusBadgeVariant(agent.status)">
+                    {{ statusText(agent.status) }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="text-muted-foreground">
+                  {{ formatTime(agent.updatedAt) }}
+                </TableCell>
+                <TableCell>
+                  <div class="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      :disabled="!agent.model"
+                      @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
+                    >
+                      聊天
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      @click="router.push({ name: 'agent-chat-logs', params: { agentId: agent.id } })"
+                    >
+                      日志
+                    </Button>
+                    <Button variant="outline" size="sm" @click="openEdit(agent)">编辑</Button>
+                    <Button variant="destructive" size="sm" @click="remove(agent)">删除</Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </template>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
     <el-dialog v-model="formOpen" :title="title" width="760px">
       <el-form label-position="top" @submit.prevent="save">
         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
