@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PlusIcon, TrashIcon } from '@lucide/vue'
+import { CheckIcon, PlusIcon, XIcon } from '@lucide/vue'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,14 +14,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogScrollContent,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -49,29 +47,14 @@ import {
   deleteDocument,
   listDocuments,
   updateDocument,
-  type ChunkDraftPayload,
-  type ChunkStatus,
   type DocumentStatus,
   type KnowledgeDocument,
-  type ManualDocumentPayload,
 } from '@/apis/knowledge-docs'
 import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeDocumentsView',
 })
-
-type ChunkForm = {
-  title: string
-  content: string
-  status: ChunkStatus
-}
-
-type DocumentForm = {
-  name: string
-  description: string
-  chunks: ChunkForm[]
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -80,8 +63,6 @@ const knowledgeBaseId = computed(() => String(route.params.knowledgeBaseId ?? ''
 const knowledgeBase = ref<KnowledgeBase | null>(null)
 const documents = ref<KnowledgeDocument[]>([])
 const loading = ref(false)
-const saving = ref(false)
-const formOpen = ref(false)
 const documentKeyword = ref('')
 const documentStatusFilter = ref<DocumentStatus | ''>('')
 const editOpen = ref(false)
@@ -90,18 +71,9 @@ const editSaving = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 const deletingDocument = ref<KnowledgeDocument | null>(null)
-
-const createEmptyChunk = (content = ''): ChunkForm => ({
-  title: '',
-  content,
-  status: 'ACTIVE',
-})
-
-const form = reactive<DocumentForm>({
-  name: '',
-  description: '',
-  chunks: [createEmptyChunk()],
-})
+const quickCreateOpen = ref(false)
+const quickCreateSaving = ref(false)
+const quickDocumentName = ref('')
 
 const editForm = reactive({
   name: '',
@@ -153,12 +125,6 @@ const totalChunks = computed(() =>
   documents.value.reduce((total, document) => total + document.chunkCount, 0),
 )
 
-const canSaveDocument = computed(
-  () =>
-    form.name.trim().length > 0 &&
-    form.chunks.some((chunk) => chunk.status === 'ACTIVE' && chunk.content.trim().length > 0),
-)
-
 const load = async () => {
   loading.value = true
 
@@ -176,15 +142,6 @@ const load = async () => {
   }
 }
 
-const openCreate = () => {
-  Object.assign(form, {
-    name: '',
-    description: '',
-    chunks: [createEmptyChunk()],
-  })
-  formOpen.value = true
-}
-
 const openMarkdownUpload = () => {
   void router.push({
     name: 'knowledge-document-upload',
@@ -194,35 +151,36 @@ const openMarkdownUpload = () => {
   })
 }
 
-const addFormChunk = () => {
-  form.chunks.push(createEmptyChunk())
+const openQuickCreate = () => {
+  quickDocumentName.value = ''
+  quickCreateOpen.value = true
 }
 
-const removeFormChunk = (index: number) => {
-  if (form.chunks.length === 1) {
-    form.chunks[0] = createEmptyChunk()
+const cancelQuickCreate = () => {
+  quickDocumentName.value = ''
+  quickCreateOpen.value = false
+}
+
+const createBlankDocument = async () => {
+  const name = quickDocumentName.value.trim()
+
+  if (!name) {
     return
   }
 
-  form.chunks.splice(index, 1)
-}
-
-const saveDocument = async () => {
-  saving.value = true
+  quickCreateSaving.value = true
 
   try {
-    const payload: ManualDocumentPayload = {
-      name: form.name,
-      description: form.description || undefined,
-      chunks: form.chunks.map(toChunkPayload),
-    }
-    const saved = await createManualDocument(knowledgeBaseId.value, payload)
+    const saved = await createManualDocument(knowledgeBaseId.value, {
+      name,
+      chunks: [],
+    })
     documents.value.unshift(saved)
-    formOpen.value = false
+    cancelQuickCreate()
   } catch (cause) {
-    showErrorMessage(cause, '保存文档失败')
+    showErrorMessage(cause, '创建文档失败')
   } finally {
-    saving.value = false
+    quickCreateSaving.value = false
   }
 }
 
@@ -294,12 +252,6 @@ const openParagraph = (document: KnowledgeDocument) => {
     },
   })
 }
-
-const toChunkPayload = (chunk: ChunkForm): ChunkDraftPayload => ({
-  title: chunk.title || undefined,
-  content: chunk.content,
-  status: chunk.status,
-})
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -375,7 +327,6 @@ onMounted(load)
         class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 p-4 lg:flex-row lg:items-center"
       >
         <div class="flex flex-wrap items-center gap-2">
-          <Button @click="openCreate">新增文本知识</Button>
           <Button variant="outline" @click="openMarkdownUpload">上传文档</Button>
           <Button variant="outline" :disabled="loading" @click="load">
             {{ loading ? '刷新中' : '刷新' }}
@@ -488,118 +439,52 @@ onMounted(load)
           </template>
         </TableBody>
       </Table>
-    </section>
 
-    <Dialog v-model:open="formOpen">
-      <DialogScrollContent class="max-h-[calc(100vh-2rem)] overflow-hidden sm:max-w-280">
-        <DialogHeader>
-          <DialogTitle>新增文本知识</DialogTitle>
-          <DialogDescription>
-            直接录入文本并调整分段，保存后会写入文档、分段和索引。
-          </DialogDescription>
-        </DialogHeader>
-
+      <div class="border-t border-border bg-muted/20 p-3">
         <form
-          class="grid max-h-[calc(100vh-220px)] min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]"
-          @submit.prevent="saveDocument"
+          v-if="quickCreateOpen"
+          class="flex flex-col gap-2 sm:flex-row sm:items-center"
+          @submit.prevent="createBlankDocument"
         >
-          <aside class="grid content-start gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle class="text-base">文档信息</CardTitle>
-              </CardHeader>
-              <CardContent class="grid gap-3">
-                <div class="grid gap-2">
-                  <Label for="manual-document-name">文档名称</Label>
-                  <Input id="manual-document-name" v-model="form.name" />
-                </div>
-                <div class="grid gap-2">
-                  <Label for="manual-document-description">描述</Label>
-                  <Textarea id="manual-document-description" v-model="form.description" rows="3" />
-                </div>
-              </CardContent>
-            </Card>
-          </aside>
-
-          <section
-            class="flex min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-border"
-          >
-            <header
-              class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3 sm:flex-row sm:items-center"
+          <Input
+            v-model="quickDocumentName"
+            autofocus
+            placeholder="请输入文档名称"
+            class="sm:max-w-120"
+          />
+          <div class="flex gap-2">
+            <Button
+              type="submit"
+              :disabled="quickCreateSaving || !quickDocumentName.trim()"
+              size="sm"
             >
-              <div>
-                <h3 class="m-0 text-base font-semibold">分段预览</h3>
-                <p class="m-0 mt-1 text-sm text-muted-foreground">
-                  {{ form.chunks.length }} 个分段
-                </p>
-              </div>
-              <Button type="button" variant="outline" @click="addFormChunk">
-                <PlusIcon data-icon="inline-start" />
-                添加分段
-              </Button>
-            </header>
-
-            <div class="min-h-0 flex-1 overflow-auto">
-              <div class="grid gap-3 p-4">
-                <article
-                  v-for="(chunk, index) in form.chunks"
-                  :key="index"
-                  class="rounded-lg border border-border bg-card p-3"
-                >
-                  <header class="mb-3 flex items-center justify-between gap-3">
-                    <strong>分段 #{{ index + 1 }}</strong>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      :aria-label="`删除分段 ${index + 1}`"
-                      @click="removeFormChunk(index)"
-                    >
-                      <TrashIcon />
-                    </Button>
-                  </header>
-                  <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                    <div class="grid gap-2">
-                      <Label :for="`manual-chunk-title-${index}`">标题</Label>
-                      <Input :id="`manual-chunk-title-${index}`" v-model="chunk.title" />
-                    </div>
-                    <div class="grid gap-2">
-                      <Label :for="`manual-chunk-status-${index}`">状态</Label>
-                      <Select v-model="chunk.status">
-                        <SelectTrigger :id="`manual-chunk-status-${index}`" class="w-full">
-                          <SelectValue placeholder="请选择状态" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectItem value="ACTIVE">启用</SelectItem>
-                            <SelectItem value="DISABLED">停用</SelectItem>
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div class="grid gap-2 md:col-span-2">
-                      <Label :for="`manual-chunk-content-${index}`">内容</Label>
-                      <Textarea
-                        :id="`manual-chunk-content-${index}`"
-                        v-model="chunk.content"
-                        rows="7"
-                      />
-                    </div>
-                  </div>
-                </article>
-              </div>
-            </div>
-          </section>
+              <CheckIcon data-icon="inline-start" />
+              {{ quickCreateSaving ? '创建中...' : '创建' }}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              :disabled="quickCreateSaving"
+              @click="cancelQuickCreate"
+            >
+              <XIcon data-icon="inline-start" />
+              取消
+            </Button>
+          </div>
         </form>
-
-        <DialogFooter>
-          <Button variant="outline" @click="formOpen = false">取消</Button>
-          <Button :disabled="!canSaveDocument || saving" @click="saveDocument">
-            {{ saving ? '保存中...' : '保存并索引' }}
-          </Button>
-        </DialogFooter>
-      </DialogScrollContent>
-    </Dialog>
+        <Button
+          v-else
+          type="button"
+          variant="ghost"
+          class="w-full justify-start"
+          @click="openQuickCreate"
+        >
+          <PlusIcon data-icon="inline-start" />
+          新增文档
+        </Button>
+      </div>
+    </section>
 
     <Dialog v-model:open="editOpen">
       <DialogContent class="sm:max-w-xl">

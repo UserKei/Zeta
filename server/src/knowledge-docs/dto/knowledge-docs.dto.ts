@@ -51,9 +51,11 @@ export class ManualDocumentDto implements ManualDocumentPayload {
   @IsString()
   description?: string;
 
-  @ApiProperty({ type: [ChunkDraftDto], description: '用户确认后的分段列表' })
+  @ApiProperty({
+    type: [ChunkDraftDto],
+    description: '用户确认后的分段列表；空数组表示快速创建空白文档',
+  })
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ChunkDraftDto)
   chunks!: ChunkDraftDto[];
