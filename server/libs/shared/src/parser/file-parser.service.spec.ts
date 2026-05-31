@@ -17,20 +17,35 @@ describe('FileParserService', () => {
     markdownParser,
     new TextParserService(textSplitter),
     new HtmlParserService(textSplitter),
-    new PdfParserService(textSplitter),
+    new PdfParserService(markdownParser),
     new DocxParserService(markdownParser),
     new SpreadsheetParserService(),
   );
 
-  const createPdfBuffer = (text: string) => {
-    const stream = `BT /F1 16 Tf 72 720 Td (${text}) Tj ET`;
-    const objects = [
-      '<< /Type /Catalog /Pages 2 0 R >>',
-      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R >>',
-      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-      `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`,
-    ];
+  const escapePdfText = (text: string) =>
+    text.replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)');
+
+  const createPdfBuffer = (text: string) =>
+    createPdfBufferWithLines([
+      {
+        text,
+        fontSize: 16,
+        x: 72,
+        y: 720,
+      },
+    ]);
+
+  const createPdfContentStream = (
+    lines: Array<{ text: string; fontSize: number; x: number; y: number }>,
+  ) =>
+    lines
+      .map(
+        (line) =>
+          `BT /F1 ${line.fontSize} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ET`,
+      )
+      .join('\n');
+
+  const buildPdfBuffer = (objects: string[]) => {
     let body = '%PDF-1.4\n';
     const offsets: number[] = [];
 
@@ -47,6 +62,82 @@ describe('FileParserService', () => {
     body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
 
     return Buffer.from(body, 'latin1');
+  };
+
+  const createPdfBufferWithLines = (
+    lines: Array<{ text: string; fontSize: number; x: number; y: number }>,
+  ) => {
+    const stream = createPdfContentStream(lines);
+    const objects = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+      `<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`,
+    ];
+
+    return buildPdfBuffer(objects);
+  };
+
+  const createOutlinedPdfBuffer = () => {
+    const pageOneStream = createPdfContentStream([
+      { text: 'Section One Body', fontSize: 12, x: 72, y: 720 },
+      {
+        text: 'VPN access requires manager approval.',
+        fontSize: 12,
+        x: 72,
+        y: 700,
+      },
+    ]);
+    const pageTwoStream = createPdfContentStream([
+      { text: 'Section Two Body', fontSize: 12, x: 72, y: 720 },
+      {
+        text: 'Contracts must be archived within five days.',
+        fontSize: 12,
+        x: 72,
+        y: 700,
+      },
+    ]);
+
+    return buildPdfBuffer([
+      '<< /Type /Catalog /Pages 2 0 R /Outlines 8 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
+      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+      `<< /Length ${Buffer.byteLength(pageOneStream, 'latin1')} >>\nstream\n${pageOneStream}\nendstream`,
+      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 7 0 R >>',
+      `<< /Length ${Buffer.byteLength(pageTwoStream, 'latin1')} >>\nstream\n${pageTwoStream}\nendstream`,
+      '<< /Type /Outlines /First 9 0 R /Last 10 0 R /Count 2 >>',
+      '<< /Title (VPN Chapter) /Parent 8 0 R /Next 10 0 R /Dest [3 0 R /XYZ null null null] >>',
+      '<< /Title (Archive Chapter) /Parent 8 0 R /Prev 9 0 R /Dest [6 0 R /XYZ null null null] >>',
+    ]);
+  };
+
+  const createLinkedPdfBuffer = () => {
+    const tocStream = createPdfContentStream([
+      { text: 'Table of Contents', fontSize: 16, x: 72, y: 720 },
+      { text: 'VPN Rules', fontSize: 12, x: 72, y: 690 },
+    ]);
+    const pageTwoStream = createPdfContentStream([
+      { text: 'VPN Rules', fontSize: 16, x: 72, y: 720 },
+      {
+        text: 'VPN permission becomes effective after approval.',
+        fontSize: 12,
+        x: 72,
+        y: 690,
+      },
+    ]);
+
+    return buildPdfBuffer([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
+      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 5 0 R /Annots [8 0 R] >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+      `<< /Length ${Buffer.byteLength(tocStream, 'latin1')} >>\nstream\n${tocStream}\nendstream`,
+      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /MediaBox [0 0 612 792] /Contents 7 0 R >>',
+      `<< /Length ${Buffer.byteLength(pageTwoStream, 'latin1')} >>\nstream\n${pageTwoStream}\nendstream`,
+      '<< /Type /Annot /Subtype /Link /Rect [72 680 180 705] /Border [0 0 0] /Dest [6 0 R /XYZ null null null] >>',
+    ]);
   };
 
   const createDocxBuffer = () =>
@@ -139,6 +230,99 @@ describe('FileParserService', () => {
       ],
     });
     expect(result.chunks[0]?.content).toContain('Expense approval limit');
+  });
+
+  it('infers pdf sections from larger font sizes', async () => {
+    const result = await service.parse({
+      fileName: '采购制度.pdf',
+      mimeType: 'application/pdf',
+      buffer: createPdfBufferWithLines([
+        { text: 'Procurement Approval', fontSize: 20, x: 72, y: 720 },
+        {
+          text: 'Contracts over 100000 require finance review.',
+          fontSize: 12,
+          x: 72,
+          y: 690,
+        },
+        {
+          text: 'Legal review is required before signing.',
+          fontSize: 12,
+          x: 72,
+          y: 670,
+        },
+        { text: 'Archive Rules', fontSize: 18, x: 72, y: 630 },
+        {
+          text: 'Signed contracts must be archived within 5 days.',
+          fontSize: 12,
+          x: 72,
+          y: 600,
+        },
+        {
+          text: 'The owner keeps the original contract.',
+          fontSize: 12,
+          x: 72,
+          y: 580,
+        },
+      ]),
+    });
+
+    expect(result.sourceFormat).toBe('PDF');
+    expect(result.chunks.length).toBeGreaterThan(1);
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('Procurement Approval') &&
+          chunk.content.includes('finance review'),
+      ),
+    ).toBe(true);
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('Archive Rules') &&
+          chunk.content.includes('archived within 5 days'),
+      ),
+    ).toBe(true);
+  });
+
+  it('uses pdf outline entries as section titles when available', async () => {
+    const result = await service.parse({
+      fileName: '目录文档.pdf',
+      mimeType: 'application/pdf',
+      buffer: createOutlinedPdfBuffer(),
+    });
+
+    expect(result.sourceFormat).toBe('PDF');
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('VPN Chapter') &&
+          chunk.content.includes('manager approval'),
+      ),
+    ).toBe(true);
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('Archive Chapter') &&
+          chunk.content.includes('archived within five days'),
+      ),
+    ).toBe(true);
+  });
+
+  it('uses internal pdf links as section anchors when outline is absent', async () => {
+    const result = await service.parse({
+      fileName: '链接目录.pdf',
+      mimeType: 'application/pdf',
+      buffer: createLinkedPdfBuffer(),
+    });
+
+    expect(result.sourceFormat).toBe('PDF');
+    expect(
+      result.chunks.some(
+        (chunk) =>
+          chunk.title?.includes('VPN Rules') &&
+          chunk.content.includes('effective after approval'),
+      ),
+    ).toBe(true);
   });
 
   it('renders pdf pages as image assets when text cannot be extracted', async () => {
