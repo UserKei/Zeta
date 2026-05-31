@@ -2,16 +2,18 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { Delete, Plus } from '@element-plus/icons-vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
-  ArrowLeft,
-  Delete,
-  DocumentAdd,
-  EditPen,
-  Plus,
-  Refresh,
-  Search,
-  Upload,
-} from '@element-plus/icons-vue'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { getKnowledgeBase, type KnowledgeBase } from '@/apis/knowledge-bases'
 import {
   createManualDocument,
@@ -273,22 +275,28 @@ const statusText = (status: DocumentStatus) =>
     DISABLED: '停用',
   })[status]
 
-const statusClass = (status: DocumentStatus) => {
+const statusBadgeVariant = (
+  status: DocumentStatus,
+): 'default' | 'secondary' | 'destructive' | 'outline' => {
   if (status === 'INDEXED') {
-    return 'success'
+    return 'default'
   }
 
   if (status === 'FAILED' || status === 'DISABLED') {
-    return 'danger'
+    return 'destructive'
   }
 
-  return 'warning'
+  if (status === 'UPLOADED') {
+    return 'outline'
+  }
+
+  return 'secondary'
 }
 
 const sourceText = (document: KnowledgeDocument) =>
   ({
     MANUAL: '手动录入',
-    FILE_UPLOAD: 'Markdown 导入',
+    FILE_UPLOAD: '文件导入',
     AI_EXTRACTED: 'AI 提炼',
     WEB_IMPORT: '网页导入',
   })[document.sourceType]
@@ -300,114 +308,144 @@ onMounted(load)
   <div class="grid gap-4 p-4 lg:p-6">
     <header class="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
       <div class="flex min-w-0 items-start gap-3">
-        <el-button :icon="ArrowLeft" circle @click="router.push({ name: 'knowledge-bases' })" />
+        <Button variant="outline" size="sm" @click="router.push({ name: 'knowledge-bases' })">
+          返回
+        </Button>
         <div class="min-w-0">
-          <p class="m-0 text-sm text-(--zeta-muted)">知识库 / 文档</p>
-          <h1 class="m-0 mt-1 truncate text-2xl font-semibold text-(--zeta-ink)">文档</h1>
+          <p class="m-0 text-sm text-muted-foreground">知识库 / 文档</p>
+          <h1 class="m-0 mt-1 truncate text-2xl font-semibold text-foreground">文档</h1>
           <div class="mt-2 flex flex-wrap gap-2">
-            <el-tag effect="plain">{{ knowledgeBase?.name || '知识库' }}</el-tag>
-            <el-tag effect="plain" type="success">
-              已索引 {{ indexedCount }} / {{ documents.length }}
-            </el-tag>
-            <el-tag effect="plain" type="info">分段 {{ totalChunks }}</el-tag>
+            <Badge variant="outline">{{ knowledgeBase?.name || '知识库' }}</Badge>
+            <Badge variant="secondary">已索引 {{ indexedCount }} / {{ documents.length }}</Badge>
+            <Badge variant="secondary">分段 {{ totalChunks }}</Badge>
           </div>
         </div>
       </div>
     </header>
 
-    <el-card :body-style="{ padding: '0' }" shadow="never" class="overflow-hidden">
+    <section
+      class="min-w-0 overflow-hidden rounded-lg border border-border bg-card text-card-foreground"
+    >
       <div
-        class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) p-4 lg:flex-row lg:items-center"
+        class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 p-4 lg:flex-row lg:items-center"
       >
         <div class="flex flex-wrap items-center gap-2">
-          <el-button :icon="DocumentAdd" type="primary" @click="openCreate">新增文本知识</el-button>
-          <el-button :icon="Upload" @click="openMarkdownUpload">上传文档</el-button>
-          <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-          <el-button @click="router.push({ name: 'knowledge-retrieval', params: { knowledgeBaseId } })">
+          <Button @click="openCreate">新增文本知识</Button>
+          <Button variant="outline" @click="openMarkdownUpload">上传文档</Button>
+          <Button variant="outline" :disabled="loading" @click="load">
+            {{ loading ? '刷新中' : '刷新' }}
+          </Button>
+          <Button
+            variant="outline"
+            @click="router.push({ name: 'knowledge-retrieval', params: { knowledgeBaseId } })"
+          >
             检索测试
-          </el-button>
-          <span class="text-sm text-(--zeta-muted)">
+          </Button>
+          <span class="text-sm text-muted-foreground">
             当前 {{ filteredDocuments.length }} / {{ documents.length }}
           </span>
         </div>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-          <el-select
+          <select
             v-model="documentStatusFilter"
-            clearable
-            placeholder="状态"
-            class="w-full sm:w-32"
+            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-36"
           >
-            <el-option
+            <option value="">全部状态</option>
+            <option
               v-for="status in documentStatusOptions"
               :key="status.value"
-              :label="status.label"
               :value="status.value"
-            />
-          </el-select>
-          <el-input
-            v-model="documentKeyword"
-            :prefix-icon="Search"
-            clearable
-            placeholder="搜索文档"
-            class="w-full sm:w-64"
-          />
+            >
+              {{ status.label }}
+            </option>
+          </select>
+          <Input v-model="documentKeyword" placeholder="搜索文档" class="w-full sm:w-64" />
         </div>
       </div>
 
-      <el-table
-        v-loading="loading"
-        :data="filteredDocuments"
-        empty-text="还没有文档"
-        @row-click="openParagraph"
-      >
-        <el-table-column label="文档名称" min-width="280">
-          <template #default="{ row }: { row: KnowledgeDocument }">
-            <div class="grid gap-1">
-              <el-link type="primary" @click.stop="openParagraph(row)">{{ row.name }}</el-link>
-              <small class="text-(--zeta-muted)">{{ row.description || sourceText(row) }}</small>
-            </div>
+      <Table>
+        <TableHeader>
+          <TableRow class="bg-muted/60 hover:bg-muted/60">
+            <TableHead class="min-w-70">文档名称</TableHead>
+            <TableHead class="min-w-34">状态</TableHead>
+            <TableHead class="min-w-24">字符数</TableHead>
+            <TableHead class="min-w-24">分段数</TableHead>
+            <TableHead class="min-w-30">来源</TableHead>
+            <TableHead class="min-w-36">更新时间</TableHead>
+            <TableHead class="min-w-36 text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-if="loading">
+            <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
+              正在加载文档...
+            </TableCell>
+          </TableRow>
+          <TableRow v-else-if="filteredDocuments.length === 0">
+            <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
+              还没有文档
+            </TableCell>
+          </TableRow>
+          <template v-else>
+            <TableRow
+              v-for="document in filteredDocuments"
+              :key="document.id"
+              class="cursor-pointer"
+              @click="openParagraph(document)"
+            >
+              <TableCell>
+                <div class="grid gap-1">
+                  <button
+                    type="button"
+                    class="w-fit text-left font-semibold text-primary hover:underline"
+                    @click.stop="openParagraph(document)"
+                  >
+                    {{ document.name }}
+                  </button>
+                  <small class="text-muted-foreground">
+                    {{ document.description || sourceText(document) }}
+                  </small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="grid gap-1">
+                  <Badge :variant="statusBadgeVariant(document.status)">
+                    {{ statusText(document.status) }}
+                  </Badge>
+                  <small v-if="document.errorMessage" class="text-destructive">
+                    {{ document.errorMessage }}
+                  </small>
+                </div>
+              </TableCell>
+              <TableCell class="text-muted-foreground">{{ document.charCount }}</TableCell>
+              <TableCell class="text-muted-foreground">{{ document.chunkCount }}</TableCell>
+              <TableCell>
+                <Badge variant="outline">{{ sourceText(document) }}</Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ formatTime(document.updatedAt) }}
+              </TableCell>
+              <TableCell>
+                <div class="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" @click.stop="openEditDocument(document)">
+                    编辑
+                  </Button>
+                  <Button variant="destructive" size="sm" @click.stop="removeDocument(document)">
+                    删除
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
           </template>
-        </el-table-column>
-        <el-table-column label="状态" min-width="120">
-          <template #default="{ row }: { row: KnowledgeDocument }">
-            <div class="grid gap-1">
-              <el-tag :type="statusClass(row.status)" effect="light">
-                {{ statusText(row.status) }}
-              </el-tag>
-              <small v-if="row.errorMessage" class="text-(--zeta-danger)">
-                {{ row.errorMessage }}
-              </small>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="字符数" min-width="110" prop="charCount" />
-        <el-table-column label="分段数" min-width="110" prop="chunkCount" />
-        <el-table-column label="来源" min-width="120">
-          <template #default="{ row }: { row: KnowledgeDocument }">
-            {{ sourceText(row) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="更新时间" min-width="150">
-          <template #default="{ row }: { row: KnowledgeDocument }">
-            {{ formatTime(row.updatedAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column align="right" fixed="right" label="操作" min-width="150">
-          <template #default="{ row }: { row: KnowledgeDocument }">
-            <el-button :icon="EditPen" size="small" @click.stop="openEditDocument(row)" />
-            <el-button :icon="Delete" size="small" type="danger" @click.stop="removeDocument(row)" />
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </TableBody>
+      </Table>
+    </section>
 
-    <el-dialog
-      v-model="formOpen"
-      title="新增文本知识"
-      width="min(1120px, calc(100vw - 32px))"
-    >
+    <el-dialog v-model="formOpen" title="新增文本知识" width="min(1120px, calc(100vw - 32px))">
       <el-form label-position="top" @submit.prevent="saveDocument">
-        <div class="grid max-h-[calc(100vh-220px)] min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div
+          class="grid max-h-[calc(100vh-220px)] min-h-0 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)]"
+        >
           <aside class="grid content-start gap-4">
             <section class="rounded-lg border border-(--zeta-line) p-4">
               <h3 class="m-0 mb-4 text-base font-semibold">文档信息</h3>
@@ -418,18 +456,17 @@ onMounted(load)
                 <el-input v-model="form.description" :rows="3" type="textarea" />
               </el-form-item>
             </section>
-
           </aside>
 
-          <section class="flex min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-(--zeta-line)">
+          <section
+            class="flex min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-(--zeta-line)"
+          >
             <header
               class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center"
             >
               <div>
                 <h3 class="m-0 text-base font-semibold">分段预览</h3>
-                <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
-                  {{ form.chunks.length }} 个分段
-                </p>
+                <p class="m-0 mt-1 text-sm text-(--zeta-muted)">{{ form.chunks.length }} 个分段</p>
               </div>
               <el-button :icon="Plus" @click="addFormChunk">添加分段</el-button>
             </header>
@@ -473,7 +510,12 @@ onMounted(load)
 
       <template #footer>
         <el-button @click="formOpen = false">取消</el-button>
-        <el-button :disabled="!canSaveDocument" :loading="saving" type="primary" @click="saveDocument">
+        <el-button
+          :disabled="!canSaveDocument"
+          :loading="saving"
+          type="primary"
+          @click="saveDocument"
+        >
           保存并索引
         </el-button>
       </template>
@@ -494,6 +536,5 @@ onMounted(load)
         <el-button :loading="editSaving" type="primary" @click="saveDocumentMeta">保存</el-button>
       </template>
     </el-dialog>
-
   </div>
 </template>
