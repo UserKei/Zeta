@@ -18,7 +18,7 @@ import { getAgent, type Agent } from '@/apis/agents'
 import SessionSidebar from './components/SessionSidebar.vue'
 import MessageList from './components/MessageList.vue'
 import ChatComposer from './components/ChatComposer.vue'
-import CitationDialog from './components/CitationDialog.vue'
+import ChatCitationDialog from '@/components/chat/ChatCitationDialog.vue'
 import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
@@ -316,6 +316,6 @@ onMounted(load)
       </section>
     </SidebarInset>
 
-    <CitationDialog v-model:visible="citationDialogVisible" :citations="selectedCitations" />
+    <ChatCitationDialog v-model:visible="citationDialogVisible" :citations="selectedCitations" />
   </SidebarProvider>
 </template>

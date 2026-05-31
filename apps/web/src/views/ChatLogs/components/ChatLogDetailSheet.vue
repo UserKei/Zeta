@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ExternalLinkIcon, EyeIcon } from '@lucide/vue'
+import ChatCitationDialog from '@/components/chat/ChatCitationDialog.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,7 +14,7 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import type { ChatImproveRecord, ChatMessage, ChatSession } from '@/apis/chat'
+import type { ChatCitation, ChatImproveRecord, ChatMessage, ChatSession } from '@/apis/chat'
 
 const props = defineProps<{
   open: boolean
@@ -33,8 +34,28 @@ const openModel = computed({
   get: () => props.open,
   set: (value: boolean) => emit('update:open', value),
 })
+const citationDialogVisible = ref(false)
+const selectedCitations = ref<ChatCitation[]>([])
 
 const latestImproveRecord = (message: ChatMessage) => message.improveRecords.at(-1) ?? null
+
+const getCitationDocuments = (citations: ChatCitation[]) => {
+  const documents = new Map<string, string>()
+
+  citations.forEach((citation) => {
+    documents.set(citation.documentId, citation.documentName)
+  })
+
+  return [...documents.entries()].map(([id, name]) => ({
+    id,
+    name,
+  }))
+}
+
+const openCitationDialog = (citations: ChatCitation[]) => {
+  selectedCitations.value = citations
+  citationDialogVisible.value = true
+}
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -142,29 +163,61 @@ const formatTime = (value: string) =>
                 {{ message.content }}
               </p>
 
-              <Card
-                v-if="latestImproveRecord(message)"
-                class="flex-row flex-wrap items-center gap-2 border-border bg-card/80 px-3 py-2 text-sm shadow-none"
-              >
-                <Badge variant="outline">已标注 {{ message.improveRecords.length }}</Badge>
-                <span class="font-medium">{{ latestImproveRecord(message)!.documentName }}</span>
-                <span class="text-muted-foreground">
-                  分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
-                </span>
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  class="h-auto p-0"
-                  @click="emit('view-improve', latestImproveRecord(message)!)"
+              <template v-if="message.role === 'ASSISTANT'">
+                <Card
+                  v-if="message.citations.length > 0"
+                  class="gap-2 border-border bg-card/80 px-3 py-2 text-sm shadow-none"
                 >
-                  查看分段
-                </Button>
-              </Card>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-muted-foreground">知识来源</span>
+                    <span class="h-3.5 w-px bg-border"></span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      class="h-auto p-0"
+                      @click="openCitationDialog(message.citations)"
+                    >
+                      引用分段 {{ message.citations.length }}
+                    </Button>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <Badge
+                      v-for="document in getCitationDocuments(message.citations)"
+                      :key="document.id"
+                      variant="outline"
+                    >
+                      {{ document.name }}
+                    </Badge>
+                  </div>
+                </Card>
+
+                <Card
+                  v-if="latestImproveRecord(message)"
+                  class="flex-row flex-wrap items-center gap-2 border-border bg-card/80 px-3 py-2 text-sm shadow-none"
+                >
+                  <Badge variant="outline">已标注 {{ message.improveRecords.length }}</Badge>
+                  <span class="font-medium">{{ latestImproveRecord(message)!.documentName }}</span>
+                  <span class="text-muted-foreground">
+                    分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    class="h-auto p-0"
+                    @click="emit('view-improve', latestImproveRecord(message)!)"
+                  >
+                    查看分段
+                  </Button>
+                </Card>
+              </template>
             </article>
           </div>
         </div>
       </div>
     </SheetContent>
   </Sheet>
+
+  <ChatCitationDialog v-model:visible="citationDialogVisible" :citations="selectedCitations" />
 </template>
