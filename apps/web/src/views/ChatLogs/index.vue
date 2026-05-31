@@ -1,12 +1,47 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Delete, EditPen, View } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ExternalLinkIcon, EyeIcon, PencilIcon, TrashIcon } from '@lucide/vue'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -15,6 +50,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import {
   deleteChatMessageImprove,
   improveChatMessage,
@@ -28,7 +64,7 @@ import {
 } from '@/apis/chat'
 import { getAgent, type Agent } from '@/apis/agents'
 import { listDocuments, updateDocumentChunk, type KnowledgeDocument } from '@/apis/knowledge-docs'
-import { isCancelAction, showErrorMessage } from '@/utils/feedback'
+import { getErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'AgentChatLogsView',
@@ -40,6 +76,11 @@ type SessionStats = {
 }
 
 type SessionRow = ChatSession & SessionStats
+type NoticeState = {
+  type: 'success' | 'error'
+  title: string
+  description?: string
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -67,6 +108,10 @@ const markEditingId = ref('')
 const markEditingContent = ref('')
 const markRecords = ref<ChatImproveRecordDetail[]>([])
 const markMessage = ref<ChatMessage | null>(null)
+const deleteMarkOpen = ref(false)
+const deletingMarkRecord = ref<ChatImproveRecordDetail | null>(null)
+const notice = ref<NoticeState | null>(null)
+const AUTO_DOCUMENT_VALUE = '__AUTO_DOCUMENT__'
 
 const form = reactive({
   messageId: '',
@@ -114,6 +159,26 @@ const totalImproveCount = computed(() =>
   sessionRows.value.reduce((total, session) => total + session.improveCount, 0),
 )
 
+const documentSelectValue = computed({
+  get: () => form.documentId || AUTO_DOCUMENT_VALUE,
+  set: (value: string | number | null | undefined) => {
+    const nextValue = String(value ?? '')
+    form.documentId = nextValue === AUTO_DOCUMENT_VALUE ? '' : nextValue
+  },
+})
+
+const showNotice = (type: NoticeState['type'], title: string, description?: string) => {
+  notice.value = { type, title, description }
+}
+
+const showFailure = (cause: unknown, fallback: string) => {
+  showNotice('error', fallback, getErrorMessage(cause, fallback))
+}
+
+const clearNotice = () => {
+  notice.value = null
+}
+
 const load = async () => {
   loading.value = true
 
@@ -126,7 +191,7 @@ const load = async () => {
     sessions.value = sessionList
     await loadSessionStats(sessionList.filter((session) => session.agentId === agentId.value))
   } catch (cause) {
-    showErrorMessage(cause, '加载对话日志失败')
+    showFailure(cause, '加载对话日志失败')
   } finally {
     loading.value = false
   }
@@ -156,7 +221,7 @@ const loadSessionStats = async (agentSessions: ChatSession[]) => {
 
     sessionStats.value = Object.fromEntries(entries)
   } catch (cause) {
-    showErrorMessage(cause, '加载日志统计失败')
+    showFailure(cause, '加载日志统计失败')
   } finally {
     summaryLoading.value = false
   }
@@ -182,7 +247,7 @@ const loadMessages = async (sessionId: string, force = false) => {
     const sessionMessages = await listChatMessages(sessionId)
     setSessionMessages(sessionId, sessionMessages)
   } catch (cause) {
-    showErrorMessage(cause, '加载会话消息失败')
+    showFailure(cause, '加载会话消息失败')
   } finally {
     messageLoading.value = false
   }
@@ -250,20 +315,26 @@ const loadDocuments = async (knowledgeBaseId: string) => {
   try {
     documents.value = await listDocuments(knowledgeBaseId)
   } catch (cause) {
-    showErrorMessage(cause, '加载文档列表失败')
+    showFailure(cause, '加载文档列表失败')
   } finally {
     documentLoading.value = false
   }
 }
 
+const handleKnowledgeBaseChange = async (value: unknown) => {
+  form.knowledgeBaseId = String(value ?? '')
+  form.documentId = ''
+  await loadDocuments(form.knowledgeBaseId)
+}
+
 const saveImprove = async () => {
   if (!form.knowledgeBaseId) {
-    ElMessage.error('请选择目标知识库')
+    showNotice('error', '请选择目标知识库')
     return
   }
 
   if (!form.content.trim()) {
-    ElMessage.error('请输入标注内容')
+    showNotice('error', '请输入标注内容')
     return
   }
 
@@ -280,9 +351,9 @@ const saveImprove = async () => {
 
     replaceMessage(result.message)
     improveOpen.value = false
-    ElMessage.success('已保存至知识库')
+    showNotice('success', '已保存至知识库')
   } catch (cause) {
-    showErrorMessage(cause, '标注入库失败')
+    showFailure(cause, '标注入库失败')
   } finally {
     improving.value = false
   }
@@ -302,7 +373,7 @@ const loadMarks = async (messageId: string) => {
   try {
     markRecords.value = await listChatMessageImproves(messageId)
   } catch (cause) {
-    showErrorMessage(cause, '加载标注失败')
+    showFailure(cause, '加载标注失败')
   } finally {
     markLoading.value = false
   }
@@ -320,7 +391,7 @@ const cancelEditMark = () => {
 
 const saveMarkEdit = async (record: ChatImproveRecordDetail) => {
   if (!markEditingContent.value.trim()) {
-    ElMessage.error('请输入标注内容')
+    showNotice('error', '请输入标注内容')
     return
   }
 
@@ -339,41 +410,40 @@ const saveMarkEdit = async (record: ChatImproveRecordDetail) => {
         : item,
     )
     cancelEditMark()
-    ElMessage.success('标注已更新')
+    showNotice('success', '标注已更新')
   } catch (cause) {
-    showErrorMessage(cause, '更新标注失败')
+    showFailure(cause, '更新标注失败')
   } finally {
     markSaving.value = false
   }
 }
 
-const deleteMark = async (record: ChatImproveRecordDetail) => {
+const requestDeleteMark = (record: ChatImproveRecordDetail) => {
   if (!markMessage.value) {
     return
   }
 
-  try {
-    await ElMessageBox.confirm('删除后会同步删除对应分段和向量索引，确认继续？', '删除标注', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-    })
-  } catch (cause) {
-    if (!isCancelAction(cause)) {
-      showErrorMessage(cause, '删除标注失败')
-    }
+  deletingMarkRecord.value = record
+  deleteMarkOpen.value = true
+}
+
+const confirmDeleteMark = async () => {
+  if (!markMessage.value || !deletingMarkRecord.value) {
     return
   }
 
   markSaving.value = true
+  const record = deletingMarkRecord.value
 
   try {
     const result = await deleteChatMessageImprove(markMessage.value.id, record.chunkId)
     replaceMessage(result.message)
     markRecords.value = markRecords.value.filter((item) => item.chunkId !== record.chunkId)
-    ElMessage.success('标注已删除')
+    deleteMarkOpen.value = false
+    deletingMarkRecord.value = null
+    showNotice('success', '标注已删除')
   } catch (cause) {
-    showErrorMessage(cause, '删除标注失败')
+    showFailure(cause, '删除标注失败')
   } finally {
     markSaving.value = false
   }
@@ -419,20 +489,38 @@ onMounted(load)
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
+    <Alert
+      v-if="notice"
+      :variant="notice.type === 'error' ? 'destructive' : 'default'"
+      class="mb-4"
+    >
+      <AlertTitle>{{ notice.title }}</AlertTitle>
+      <AlertDescription v-if="notice.description && notice.description !== notice.title">
+        {{ notice.description }}
+      </AlertDescription>
+      <AlertAction>
+        <Button type="button" variant="ghost" size="sm" @click="clearNotice">关闭</Button>
+      </AlertAction>
+    </Alert>
+
     <Card class="gap-0 overflow-hidden py-0">
       <div
         class="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 lg:flex-row lg:items-center lg:justify-between"
       >
         <div class="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
           <Input v-model="searchText" placeholder="搜索摘要" class="w-full md:max-w-70" />
-          <select
-            v-model="markFilter"
-            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:max-w-45"
-          >
-            <option value="ALL">全部日志</option>
-            <option value="MARKED">已标注</option>
-            <option value="UNMARKED">未标注</option>
-          </select>
+          <Select v-model="markFilter">
+            <SelectTrigger class="w-full md:max-w-45">
+              <SelectValue placeholder="全部日志" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="ALL">全部日志</SelectItem>
+                <SelectItem value="MARKED">已标注</SelectItem>
+                <SelectItem value="UNMARKED">未标注</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span>会话 {{ sessionRows.length }}</span>
@@ -449,7 +537,7 @@ onMounted(load)
         </div>
       </div>
 
-      <CardContent class="p-5">
+      <CardContent class="p-0">
         <Table>
           <TableHeader>
             <TableRow class="bg-muted/60 hover:bg-muted/60">
@@ -509,177 +597,259 @@ onMounted(load)
       </CardContent>
     </Card>
 
-    <el-drawer v-model="drawerOpen" size="64%" destroy-on-close>
-      <template #header>
-        <div class="grid gap-1">
-          <h2 class="m-0 text-xl font-semibold text-(--zeta-ink)">对话详情</h2>
-          <span class="text-sm text-(--zeta-muted)">
+    <Sheet v-model:open="drawerOpen">
+      <SheetContent
+        side="right"
+        class="w-[calc(100vw-1rem)] p-0 sm:max-w-none md:w-[60vw] md:min-w-180"
+      >
+        <SheetHeader class="border-b border-border px-5 py-4">
+          <SheetTitle>对话详情</SheetTitle>
+          <SheetDescription>
             {{ selectedSession?.title || '新会话' }}
-          </span>
-        </div>
-      </template>
+          </SheetDescription>
+        </SheetHeader>
 
-      <div v-loading="messageLoading" class="flex min-h-0 flex-col gap-4">
-        <article
-          v-for="(message, index) in messages"
-          :key="message.id"
-          class="rounded-lg border border-(--zeta-line-soft) p-4"
-          :class="message.role === 'ASSISTANT' ? 'bg-white' : 'bg-(--zeta-surface)'"
-        >
-          <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <el-tag :type="message.role === 'ASSISTANT' ? 'primary' : 'info'" effect="light">
-                {{ message.role === 'ASSISTANT' ? 'AI 回答' : '用户问题' }}
-              </el-tag>
-              <span class="text-xs text-(--zeta-muted)">{{ formatTime(message.createdAt) }}</span>
-              <el-tag v-if="message.improveRecords.length > 0" type="success" effect="light">
-                已标注 {{ message.improveRecords.length }}
-              </el-tag>
-            </div>
-            <div v-if="message.role === 'ASSISTANT'" class="flex items-center gap-2">
-              <el-button
-                v-if="message.improveRecords.length > 0"
-                size="small"
-                :icon="View"
-                @click="openMark(message)"
-              >
-                改进标注
-              </el-button>
-              <el-button
-                v-if="latestImproveRecord(message)"
-                size="small"
-                type="primary"
-                plain
-                @click="goImproveRecord(latestImproveRecord(message)!)"
-              >
-                查看分段
-              </el-button>
-              <el-button size="small" type="primary" plain @click="openImprove(message, index)">
-                保存至文档
-              </el-button>
-            </div>
+        <div class="min-h-0 flex-1 overflow-auto p-5">
+          <div v-if="messageLoading" class="grid gap-4">
+            <Skeleton v-for="index in 3" :key="index" class="h-34 w-full" />
           </div>
-
-          <p class="m-0 whitespace-pre-wrap text-sm leading-7 text-(--zeta-content)">
-            {{ message.content }}
-          </p>
 
           <div
-            v-if="latestImproveRecord(message)"
-            class="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-(--zeta-blue-line) bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)"
+            v-else-if="messages.length === 0"
+            class="grid min-h-40 place-items-center text-sm text-muted-foreground"
           >
-            <el-tag type="success" effect="light" size="small">
-              已标注 {{ message.improveRecords.length }}
-            </el-tag>
-            <span class="font-medium">
-              {{ latestImproveRecord(message)!.documentName }}
-            </span>
-            <span class="text-(--zeta-muted)">
-              分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
-            </span>
-            <el-button link type="primary" @click="goImproveRecord(latestImproveRecord(message)!)">
-              查看分段
-            </el-button>
+            暂无消息
           </div>
-        </article>
 
-        <el-empty v-if="!messageLoading && messages.length === 0" description="暂无消息" />
-      </div>
-    </el-drawer>
+          <div v-else class="grid gap-4">
+            <Card
+              v-for="(message, index) in messages"
+              :key="message.id"
+              class="gap-3 border-border p-4 shadow-none"
+              :class="message.role === 'ASSISTANT' ? 'bg-card' : 'bg-muted/40'"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge :variant="message.role === 'ASSISTANT' ? 'default' : 'secondary'">
+                    {{ message.role === 'ASSISTANT' ? 'AI 回答' : '用户问题' }}
+                  </Badge>
+                  <span class="text-xs text-muted-foreground">
+                    {{ formatTime(message.createdAt) }}
+                  </span>
+                  <Badge v-if="message.improveRecords.length > 0" variant="outline">
+                    已标注 {{ message.improveRecords.length }}
+                  </Badge>
+                </div>
+                <div v-if="message.role === 'ASSISTANT'" class="flex flex-wrap items-center gap-2">
+                  <Button
+                    v-if="message.improveRecords.length > 0"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    @click="openMark(message)"
+                  >
+                    <EyeIcon data-icon="inline-start" />
+                    改进标注
+                  </Button>
+                  <Button
+                    v-if="latestImproveRecord(message)"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    @click="goImproveRecord(latestImproveRecord(message)!)"
+                  >
+                    <ExternalLinkIcon data-icon="inline-start" />
+                    查看分段
+                  </Button>
+                  <Button type="button" size="sm" @click="openImprove(message, index)">
+                    保存至文档
+                  </Button>
+                </div>
+              </div>
 
-    <el-dialog v-model="improveOpen" title="保存至文档" width="760px">
-      <el-form label-position="top" @submit.prevent="saveImprove">
-        <el-form-item label="目标知识库">
-          <el-select
-            v-model="form.knowledgeBaseId"
-            placeholder="请选择知识库"
-            @change="loadDocuments"
-          >
-            <el-option
-              v-for="knowledgeBase in targetKnowledgeBases"
-              :key="knowledgeBase.id"
-              :label="knowledgeBase.name"
-              :value="knowledgeBase.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="保存至文档">
-          <el-select
-            v-model="form.documentId"
-            :loading="documentLoading"
-            placeholder="自动：聊天补充知识"
-            clearable
-          >
-            <el-option label="自动：聊天补充知识" value="" />
-            <el-option
-              v-for="document in documents"
-              :key="document.id"
-              :label="document.name"
-              :value="document.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="标题">
-          <el-input v-model="form.title" maxlength="512" show-word-limit />
-        </el-form-item>
-        <el-form-item label="内容">
-          <el-input v-model="form.content" :rows="10" type="textarea" />
-        </el-form-item>
-      </el-form>
+              <p class="whitespace-pre-wrap text-sm leading-7 text-foreground">
+                {{ message.content }}
+              </p>
 
-      <template #footer>
-        <el-button @click="improveOpen = false">取消</el-button>
-        <el-button :loading="improving" type="primary" @click="saveImprove"> 保存 </el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="markOpen" title="改进标注" width="760px">
-      <div v-loading="markLoading || markSaving" class="grid gap-4">
-        <section
-          v-for="record in markRecords"
-          :key="record.chunkId"
-          class="rounded-lg border border-(--zeta-line-soft) p-4"
-        >
-          <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div class="grid gap-1">
-              <strong>{{ record.documentName }}</strong>
-              <span class="text-xs text-(--zeta-muted)">
-                分段 #{{ record.chunkPosition + 1 }} · {{ formatTime(record.createdAt) }}
-              </span>
-            </div>
-            <div class="flex items-center gap-2">
-              <el-button
-                size="small"
-                :icon="View"
-                @click="goParagraph(record.knowledgeBaseId, record.documentId, record.chunkId)"
+              <div
+                v-if="latestImproveRecord(message)"
+                class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/60 px-3 py-2 text-sm"
               >
-                查看分段
-              </el-button>
-              <el-button size="small" :icon="EditPen" @click="startEditMark(record)">
-                编辑
-              </el-button>
-              <el-button size="small" type="danger" :icon="Delete" @click="deleteMark(record)">
-                删除
-              </el-button>
-            </div>
+                <Badge variant="outline">已标注 {{ message.improveRecords.length }}</Badge>
+                <span class="font-medium">{{ latestImproveRecord(message)!.documentName }}</span>
+                <span class="text-muted-foreground">
+                  分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
+                </span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  class="h-auto p-0"
+                  @click="goImproveRecord(latestImproveRecord(message)!)"
+                >
+                  查看分段
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+
+    <Dialog v-model:open="improveOpen">
+      <DialogContent class="sm:max-w-190">
+        <DialogHeader>
+          <DialogTitle>保存至文档</DialogTitle>
+          <DialogDescription>将有价值的 AI 回答保存为知识库分段。</DialogDescription>
+        </DialogHeader>
+
+        <form class="grid gap-4" @submit.prevent="saveImprove">
+          <div class="grid gap-2">
+            <Label>目标知识库</Label>
+            <Select v-model="form.knowledgeBaseId" @update:modelValue="handleKnowledgeBaseChange">
+              <SelectTrigger class="w-full">
+                <SelectValue placeholder="请选择知识库" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="knowledgeBase in targetKnowledgeBases"
+                    :key="knowledgeBase.id"
+                    :value="knowledgeBase.id"
+                  >
+                    {{ knowledgeBase.name }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
-          <template v-if="markEditingId === record.chunkId">
-            <el-input v-model="markEditingContent" :rows="8" type="textarea" />
-            <div class="mt-3 flex justify-end gap-2">
-              <el-button @click="cancelEditMark">取消</el-button>
-              <el-button :loading="markSaving" type="primary" @click="saveMarkEdit(record)">
-                保存
-              </el-button>
-            </div>
-          </template>
-          <p v-else class="m-0 whitespace-pre-wrap text-sm leading-7 text-(--zeta-content)">
-            {{ record.content }}
-          </p>
-        </section>
+          <div class="grid gap-2">
+            <Label>保存至文档</Label>
+            <Select v-model="documentSelectValue" :disabled="documentLoading">
+              <SelectTrigger class="w-full">
+                <SelectValue :placeholder="documentLoading ? '文档加载中' : '自动：聊天补充知识'" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem :value="AUTO_DOCUMENT_VALUE">自动：聊天补充知识</SelectItem>
+                  <SelectItem v-for="document in documents" :key="document.id" :value="document.id">
+                    {{ document.name }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
 
-        <el-empty v-if="!markLoading && markRecords.length === 0" description="暂无标注" />
-      </div>
-    </el-dialog>
+          <div class="grid gap-2">
+            <Label for="chat-log-improve-title">标题</Label>
+            <Input id="chat-log-improve-title" v-model="form.title" maxlength="512" />
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="chat-log-improve-content">内容</Label>
+            <Textarea id="chat-log-improve-content" v-model="form.content" class="min-h-60" />
+          </div>
+        </form>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="improveOpen = false">取消</Button>
+          <Button type="button" :disabled="improving" @click="saveImprove">
+            {{ improving ? '保存中' : '保存' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="markOpen">
+      <DialogContent class="sm:max-w-190">
+        <DialogHeader>
+          <DialogTitle>改进标注</DialogTitle>
+          <DialogDescription>查看、编辑或删除这条回答已经保存的知识分段。</DialogDescription>
+        </DialogHeader>
+
+        <div v-if="markLoading || markSaving" class="grid gap-4">
+          <Skeleton v-for="index in 2" :key="index" class="h-34 w-full" />
+        </div>
+
+        <div
+          v-else-if="markRecords.length === 0"
+          class="grid min-h-32 place-items-center text-sm text-muted-foreground"
+        >
+          暂无标注
+        </div>
+
+        <div v-else class="grid max-h-[65vh] gap-4 overflow-auto pr-1">
+          <Card
+            v-for="record in markRecords"
+            :key="record.chunkId"
+            class="gap-3 border-border p-4 shadow-none"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="grid gap-1">
+                <strong>{{ record.documentName }}</strong>
+                <span class="text-xs text-muted-foreground">
+                  分段 #{{ record.chunkPosition + 1 }} · {{ formatTime(record.createdAt) }}
+                </span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  @click="goParagraph(record.knowledgeBaseId, record.documentId, record.chunkId)"
+                >
+                  <EyeIcon data-icon="inline-start" />
+                  查看分段
+                </Button>
+                <Button type="button" variant="outline" size="sm" @click="startEditMark(record)">
+                  <PencilIcon data-icon="inline-start" />
+                  编辑
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  @click="requestDeleteMark(record)"
+                >
+                  <TrashIcon data-icon="inline-start" />
+                  删除
+                </Button>
+              </div>
+            </div>
+
+            <template v-if="markEditingId === record.chunkId">
+              <Textarea v-model="markEditingContent" class="min-h-48" />
+              <div class="flex justify-end gap-2">
+                <Button type="button" variant="outline" @click="cancelEditMark">取消</Button>
+                <Button type="button" :disabled="markSaving" @click="saveMarkEdit(record)">
+                  {{ markSaving ? '保存中' : '保存' }}
+                </Button>
+              </div>
+            </template>
+            <p v-else class="whitespace-pre-wrap text-sm leading-7 text-foreground">
+              {{ record.content }}
+            </p>
+          </Card>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog v-model:open="deleteMarkOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除标注</AlertDialogTitle>
+          <AlertDialogDescription>
+            删除后会同步删除对应分段和向量索引，确认继续？
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="markSaving">取消</AlertDialogCancel>
+          <AlertDialogAction :disabled="markSaving" @click="confirmDeleteMark">
+            {{ markSaving ? '删除中' : '删除' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
