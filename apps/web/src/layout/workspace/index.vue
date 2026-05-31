@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterView, useRoute, useRouter, type RouteRecordName } from 'vue-router'
-import { ArrowLeft, FolderOpened } from '@element-plus/icons-vue'
+import { ArrowLeftIcon, FolderOpenIcon } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 defineOptions({
   name: 'WorkspaceLayout',
@@ -77,71 +79,56 @@ const back = async () => {
 </script>
 
 <template>
-  <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel) lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-none">
-    <aside class="border-b border-(--zeta-line-soft) bg-(--zeta-surface) lg:border-b-0 lg:border-r">
-      <div class="grid gap-3 p-3.5">
+  <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-border bg-card lg:grid-cols-[236px_minmax(0,1fr)] lg:grid-rows-none">
+    <aside class="border-b border-border bg-sidebar text-sidebar-foreground lg:border-b-0 lg:border-r">
+      <div class="flex h-full min-h-0 flex-col gap-5 p-4">
         <div class="flex items-start gap-3">
-          <el-button
+          <Button
             v-if="backRouteName"
-            :icon="ArrowLeft"
-            circle
-            size="small"
+            variant="outline"
+            size="icon"
+            type="button"
+            aria-label="返回"
             @click="back"
-          />
+          >
+            <ArrowLeftIcon />
+          </Button>
           <div class="min-w-0">
-            <p class="m-0 text-xs font-semibold text-(--zeta-blue)">
+            <p class="m-0 text-xs font-semibold text-primary">
               知识库工作区
             </p>
-            <h2 class="m-0 mt-1 truncate text-base font-semibold text-(--zeta-ink)">
+            <h2 class="m-0 mt-1 truncate text-lg font-semibold text-sidebar-foreground">
               {{ workspaceTitle }}
             </h2>
-            <p class="m-0 mt-0.5 text-xs text-(--zeta-muted)">
+            <p class="m-0 mt-0.5 text-sm text-muted-foreground">
               {{ workspaceSubtitle }}
             </p>
           </div>
         </div>
 
-        <el-menu
-          :default-active="activeMenu"
-          background-color="transparent"
-          class="zeta-workspace-menu"
-          text-color="var(--zeta-muted)"
-          active-text-color="var(--zeta-blue)"
-        >
-          <el-menu-item
+        <nav class="flex min-h-0 flex-1 flex-col gap-2" aria-label="工作区导航">
+          <Button
             v-for="menu in workspaceMenus"
             :key="String(menu.name)"
-            :index="String(menu.name)"
+            :variant="activeMenu === menu.name ? 'secondary' : 'ghost'"
+            type="button"
+            :aria-current="activeMenu === menu.name ? 'page' : undefined"
+            :class="cn(
+              'h-11 justify-start px-3 text-base font-semibold',
+              activeMenu === menu.name && 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm',
+              activeMenu !== menu.name && 'text-muted-foreground hover:text-sidebar-foreground',
+            )"
             @click="openMenu(menu)"
           >
-            <el-icon>
-              <component :is="menu.icon || FolderOpened" />
-            </el-icon>
+            <component :is="menu.icon || FolderOpenIcon" data-icon="inline-start" />
             <span>{{ menu.label }}</span>
-          </el-menu-item>
-        </el-menu>
+          </Button>
+        </nav>
       </div>
     </aside>
 
-    <section class="flex min-w-0 min-h-0 flex-col bg-(--zeta-bg)">
+    <section class="flex min-w-0 min-h-0 flex-col bg-muted/40">
       <RouterView />
     </section>
   </div>
 </template>
-
-<style scoped>
-.zeta-workspace-menu {
-  border-right: 0;
-}
-
-.zeta-workspace-menu :deep(.el-menu-item) {
-  height: 40px;
-  margin-bottom: 4px;
-  border-radius: 6px;
-  font-weight: 500;
-}
-
-.zeta-workspace-menu :deep(.el-menu-item.is-active) {
-  background: var(--zeta-blue-soft);
-}
-</style>

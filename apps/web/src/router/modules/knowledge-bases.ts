@@ -1,6 +1,11 @@
 import Layout from '@/layout/index.vue'
 import WorkspaceLayout from '@/layout/workspace/index.vue'
-import { DataAnalysis, Document, Search, Setting } from '@element-plus/icons-vue'
+import {
+  ChartNoAxesColumnIncreasingIcon,
+  FileTextIcon,
+  SearchIcon,
+  SettingsIcon,
+} from '@lucide/vue'
 import type { RouteLocation } from 'vue-router'
 
 export default [
@@ -52,7 +57,7 @@ export default [
               activeMenu: 'knowledge-bases',
               workspaceMenu: true,
               title: '文档管理',
-              icon: Document,
+              icon: FileTextIcon,
             },
             component: () => import('@/views/KnowledgeDocuments/index.vue'),
           },
@@ -64,7 +69,7 @@ export default [
               activeMenu: 'knowledge-bases',
               workspaceMenu: true,
               title: '检索测试',
-              icon: Search,
+              icon: SearchIcon,
             },
             component: () => import('@/views/KnowledgeRetrieval/index.vue'),
           },
@@ -76,7 +81,7 @@ export default [
               activeMenu: 'knowledge-bases',
               workspaceMenu: true,
               title: '知识热度',
-              icon: DataAnalysis,
+              icon: ChartNoAxesColumnIncreasingIcon,
             },
             component: () => import('@/views/KnowledgeUsage/index.vue'),
           },
@@ -88,7 +93,7 @@ export default [
               activeMenu: 'knowledge-bases',
               workspaceMenu: true,
               title: '知识库设置',
-              icon: Setting,
+              icon: SettingsIcon,
             },
             component: () => import('@/views/KnowledgeSettings/index.vue'),
           },
