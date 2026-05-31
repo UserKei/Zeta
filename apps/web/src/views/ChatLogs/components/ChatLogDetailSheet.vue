@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ExternalLinkIcon, EyeIcon } from '@lucide/vue'
-import ChatCitationDialog from '@/components/chat/ChatCitationDialog.vue'
+import ChatCitationDialog from '@/components/ui/ChatCitationDialog.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
