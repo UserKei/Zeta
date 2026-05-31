@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -57,8 +56,7 @@ const chatModels = computed(() =>
 
 const activeKnowledgeBases = computed(() =>
   knowledgeBases.value.filter(
-    (knowledgeBase) =>
-      knowledgeBase.status === 'ACTIVE' && knowledgeBase.embeddingModel,
+    (knowledgeBase) => knowledgeBase.status === 'ACTIVE' && knowledgeBase.embeddingModel,
   ),
 )
 
@@ -210,104 +208,100 @@ onMounted(load)
       <Button @click="openCreate">创建 Agent</Button>
     </header>
 
-    <section v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
-      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)">
+    <section
+      v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
+      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)"
+    >
       创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
     </section>
 
-    <Card class="min-w-0 overflow-hidden">
-      <CardContent class="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow class="bg-muted/60 hover:bg-muted/60">
-              <TableHead class="min-w-60">名称</TableHead>
-              <TableHead class="min-w-55">模型</TableHead>
-              <TableHead class="min-w-60">绑定知识库</TableHead>
-              <TableHead class="min-w-24">状态</TableHead>
-              <TableHead class="min-w-36">更新时间</TableHead>
-              <TableHead class="min-w-64 text-right">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-if="loading">
-              <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
-                正在加载 Agent...
-              </TableCell>
-            </TableRow>
-            <TableRow v-else-if="agents.length === 0">
-              <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
-                还没有 Agent
-              </TableCell>
-            </TableRow>
-            <template v-else>
-              <TableRow v-for="agent in agents" :key="agent.id">
-                <TableCell>
-                  <div class="grid gap-1">
-                    <strong class="font-semibold text-foreground">{{ agent.name }}</strong>
-                    <small class="text-muted-foreground">
-                      {{ agent.description || agent.openingMessage || '暂无描述' }}
-                    </small>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div v-if="agent.model" class="grid gap-1">
-                    <strong class="font-semibold text-foreground">{{ agent.model.name }}</strong>
-                    <small class="text-muted-foreground">
-                      {{ agent.model.provider }} / {{ agent.model.modelName }}
-                    </small>
-                  </div>
-                  <div v-else class="grid gap-1">
-                    <Badge variant="outline">
-                      未配置对话模型
-                    </Badge>
-                    <small class="text-muted-foreground">请编辑 Agent 重新选择模型</small>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div class="grid gap-1">
-                    <strong class="font-semibold text-foreground">
-                      {{ agent.knowledgeBases.length }} 个知识库
-                    </strong>
-                    <small class="text-muted-foreground">
-                      {{ agent.knowledgeBases.map((item) => item.name).join('、') || '未绑定' }}
-                    </small>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge :variant="statusBadgeVariant(agent.status)">
-                    {{ statusText(agent.status) }}
-                  </Badge>
-                </TableCell>
-                <TableCell class="text-muted-foreground">
-                  {{ formatTime(agent.updatedAt) }}
-                </TableCell>
-                <TableCell>
-                  <div class="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      :disabled="!agent.model"
-                      @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
-                    >
-                      聊天
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      @click="router.push({ name: 'agent-chat-logs', params: { agentId: agent.id } })"
-                    >
-                      日志
-                    </Button>
-                    <Button variant="outline" size="sm" @click="openEdit(agent)">编辑</Button>
-                    <Button variant="destructive" size="sm" @click="remove(agent)">删除</Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            </template>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <Table>
+      <TableHeader>
+        <TableRow class="bg-muted/60 hover:bg-muted/60">
+          <TableHead class="min-w-60">名称</TableHead>
+          <TableHead class="min-w-55">模型</TableHead>
+          <TableHead class="min-w-60">绑定知识库</TableHead>
+          <TableHead class="min-w-24">状态</TableHead>
+          <TableHead class="min-w-36">更新时间</TableHead>
+          <TableHead class="min-w-64 text-right">操作</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow v-if="loading">
+          <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+            正在加载 Agent...
+          </TableCell>
+        </TableRow>
+        <TableRow v-else-if="agents.length === 0">
+          <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+            还没有 Agent
+          </TableCell>
+        </TableRow>
+        <template v-else>
+          <TableRow v-for="agent in agents" :key="agent.id">
+            <TableCell>
+              <div class="grid gap-1">
+                <strong class="font-semibold text-foreground">{{ agent.name }}</strong>
+                <small class="text-muted-foreground">
+                  {{ agent.description || agent.openingMessage || '暂无描述' }}
+                </small>
+              </div>
+            </TableCell>
+            <TableCell>
+              <div v-if="agent.model" class="grid gap-1">
+                <strong class="font-semibold text-foreground">{{ agent.model.name }}</strong>
+                <small class="text-muted-foreground">
+                  {{ agent.model.provider }} / {{ agent.model.modelName }}
+                </small>
+              </div>
+              <div v-else class="grid gap-1">
+                <Badge variant="outline"> 未配置对话模型 </Badge>
+                <small class="text-muted-foreground">请编辑 Agent 重新选择模型</small>
+              </div>
+            </TableCell>
+            <TableCell>
+              <div class="grid gap-1">
+                <strong class="font-semibold text-foreground">
+                  {{ agent.knowledgeBases.length }} 个知识库
+                </strong>
+                <small class="text-muted-foreground">
+                  {{ agent.knowledgeBases.map((item) => item.name).join('、') || '未绑定' }}
+                </small>
+              </div>
+            </TableCell>
+            <TableCell>
+              <Badge :variant="statusBadgeVariant(agent.status)">
+                {{ statusText(agent.status) }}
+              </Badge>
+            </TableCell>
+            <TableCell class="text-muted-foreground">
+              {{ formatTime(agent.updatedAt) }}
+            </TableCell>
+            <TableCell>
+              <div class="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="!agent.model"
+                  @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
+                >
+                  聊天
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="router.push({ name: 'agent-chat-logs', params: { agentId: agent.id } })"
+                >
+                  日志
+                </Button>
+                <Button variant="outline" size="sm" @click="openEdit(agent)">编辑</Button>
+                <Button variant="destructive" size="sm" @click="remove(agent)">删除</Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        </template>
+      </TableBody>
+    </Table>
     <el-dialog v-model="formOpen" :title="title" width="760px">
       <el-form label-position="top" @submit.prevent="save">
         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
@@ -325,23 +319,53 @@ onMounted(load)
             <el-input v-model="form.description" placeholder="例如：IT 服务台、采购制度专家" />
           </el-form-item>
           <el-form-item class="md:col-span-2" label="对话模型">
-            <el-select v-model="form.modelId" :disabled="chatModels.length === 0" placeholder="请选择对话模型">
-              <el-option v-for="model in chatModels" :key="model.id"
-                :label="`${model.name} - ${model.provider} / ${model.modelName}`" :value="model.id" />
+            <el-select
+              v-model="form.modelId"
+              :disabled="chatModels.length === 0"
+              placeholder="请选择对话模型"
+            >
+              <el-option
+                v-for="model in chatModels"
+                :key="model.id"
+                :label="`${model.name} - ${model.provider} / ${model.modelName}`"
+                :value="model.id"
+              />
             </el-select>
           </el-form-item>
           <el-form-item class="md:col-span-2" label="绑定知识库">
-            <el-select v-model="form.knowledgeBaseIds" collapse-tags collapse-tags-tooltip
-              :disabled="activeKnowledgeBases.length === 0" multiple placeholder="请选择知识库">
-              <el-option v-for="knowledgeBase in activeKnowledgeBases" :key="knowledgeBase.id"
-                :label="knowledgeBase.name" :value="knowledgeBase.id" />
+            <el-select
+              v-model="form.knowledgeBaseIds"
+              collapse-tags
+              collapse-tags-tooltip
+              :disabled="activeKnowledgeBases.length === 0"
+              multiple
+              placeholder="请选择知识库"
+            >
+              <el-option
+                v-for="knowledgeBase in activeKnowledgeBases"
+                :key="knowledgeBase.id"
+                :label="knowledgeBase.name"
+                :value="knowledgeBase.id"
+              />
             </el-select>
           </el-form-item>
           <el-form-item label="Temperature">
-            <el-input-number v-model="form.temperature" :max="2" :min="0" :step="0.1" controls-position="right" />
+            <el-input-number
+              v-model="form.temperature"
+              :max="2"
+              :min="0"
+              :step="0.1"
+              controls-position="right"
+            />
           </el-form-item>
           <el-form-item label="Top P">
-            <el-input-number v-model="form.topP" :max="1" :min="0" :step="0.1" controls-position="right" />
+            <el-input-number
+              v-model="form.topP"
+              :max="1"
+              :min="0"
+              :step="0.1"
+              controls-position="right"
+            />
           </el-form-item>
           <el-form-item class="md:col-span-2" label="开场白">
             <el-input v-model="form.openingMessage" :rows="3" type="textarea" />
@@ -354,8 +378,12 @@ onMounted(load)
 
       <template #footer>
         <el-button @click="formOpen = false">取消</el-button>
-        <el-button :disabled="chatModels.length === 0 || activeKnowledgeBases.length === 0" :loading="saving"
-          type="primary" @click="save">
+        <el-button
+          :disabled="chatModels.length === 0 || activeKnowledgeBases.length === 0"
+          :loading="saving"
+          type="primary"
+          @click="save"
+        >
           保存
         </el-button>
       </template>

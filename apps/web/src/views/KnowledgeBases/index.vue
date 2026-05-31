@@ -5,7 +5,6 @@ import { ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -59,8 +58,7 @@ const filteredKnowledgeBases = computed(() => {
   const query = keyword.value.trim().toLowerCase()
 
   return knowledgeBases.value.filter((knowledgeBase) => {
-    const matchedStatus =
-      statusFilter.value === '' || knowledgeBase.status === statusFilter.value
+    const matchedStatus = statusFilter.value === '' || knowledgeBase.status === statusFilter.value
     const searchableText = [
       knowledgeBase.name,
       knowledgeBase.description ?? '',
@@ -83,10 +81,7 @@ const load = async () => {
   loading.value = true
 
   try {
-    const [knowledgeBaseList, modelList] = await Promise.all([
-      listKnowledgeBases(),
-      listModels(),
-    ])
+    const [knowledgeBaseList, modelList] = await Promise.all([listKnowledgeBases(), listModels()])
     knowledgeBases.value = knowledgeBaseList
     models.value = modelList
   } catch (cause) {
@@ -175,8 +170,7 @@ const formatTime = (value: string) =>
     minute: '2-digit',
   }).format(new Date(value))
 
-const statusText = (status: KnowledgeBaseStatus) =>
-  status === 'ACTIVE' ? '启用' : '停用'
+const statusText = (status: KnowledgeBaseStatus) => (status === 'ACTIVE' ? '启用' : '停用')
 
 onMounted(load)
 </script>
@@ -193,12 +187,16 @@ onMounted(load)
       <Button @click="openCreate">创建知识库</Button>
     </header>
 
-    <section v-if="embeddingModels.length === 0"
-      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)">
+    <section
+      v-if="embeddingModels.length === 0"
+      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)"
+    >
       还没有可用的 Embedding 模型。请先在模型管理里添加并启用一个 Embedding 模型。
     </section>
 
-    <section class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+    <section
+      class="min-w-0 overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"
+    >
       <div
         class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 lg:flex-row lg:items-center"
       >
@@ -210,12 +208,7 @@ onMounted(load)
           </span>
         </div>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-          <el-select
-            v-model="statusFilter"
-            clearable
-            placeholder="状态"
-            class="w-full sm:w-32"
-          >
+          <el-select v-model="statusFilter" clearable placeholder="状态" class="w-full sm:w-32">
             <el-option label="启用" value="ACTIVE" />
             <el-option label="停用" value="DISABLED" />
           </el-select>
@@ -229,111 +222,107 @@ onMounted(load)
         </div>
       </div>
 
-      <Card class="rounded-none border-0 shadow-none">
-        <CardContent class="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow class="bg-muted/60 hover:bg-muted/60">
-                <TableHead class="min-w-55">名称</TableHead>
-                <TableHead class="min-w-60">Embedding 模型</TableHead>
-                <TableHead class="min-w-32">分块配置</TableHead>
-                <TableHead class="min-w-24">状态</TableHead>
-                <TableHead class="min-w-36">更新时间</TableHead>
-                <TableHead class="min-w-52 text-right">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-if="loading">
-                <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
-                  正在加载知识库...
-                </TableCell>
-              </TableRow>
-              <TableRow v-else-if="filteredKnowledgeBases.length === 0">
-                <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
-                  还没有知识库
-                </TableCell>
-              </TableRow>
-              <template v-else>
-                <TableRow v-for="knowledgeBase in filteredKnowledgeBases" :key="knowledgeBase.id">
-                  <TableCell>
-                    <div class="grid gap-1">
-                      <button
-                        class="w-fit text-left font-semibold text-primary hover:underline"
-                        @click="
-                          router.push({
-                            name: 'knowledge-documents',
-                            params: { knowledgeBaseId: knowledgeBase.id },
-                          })
-                        "
-                      >
-                        {{ knowledgeBase.name }}
-                      </button>
-                      <small class="text-muted-foreground">
-                        {{ knowledgeBase.description || '暂无描述' }}
-                      </small>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div v-if="knowledgeBase.embeddingModel" class="grid gap-1">
-                      <strong class="font-semibold text-foreground">
-                        {{ knowledgeBase.embeddingModel.name }}
-                      </strong>
-                      <small class="text-muted-foreground">
-                        {{ knowledgeBase.embeddingModel.provider }} /
-                        {{ knowledgeBase.embeddingModel.modelName }}
-                      </small>
-                    </div>
-                    <div v-else class="grid gap-1">
-                      <Badge variant="outline">
-                        未配置 Embedding 模型
-                      </Badge>
-                      <small class="text-muted-foreground">请编辑知识库重新选择模型</small>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div class="grid gap-1">
-                      <strong class="font-semibold text-foreground">{{ knowledgeBase.chunkSize }}</strong>
-                      <small class="text-muted-foreground">
-                        重叠长度 {{ knowledgeBase.chunkOverlap }}
-                      </small>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge :variant="knowledgeBase.status === 'ACTIVE' ? 'default' : 'secondary'">
-                      {{ statusText(knowledgeBase.status) }}
-                    </Badge>
-                  </TableCell>
-                  <TableCell class="text-muted-foreground">
-                    {{ formatTime(knowledgeBase.updatedAt) }}
-                  </TableCell>
-                  <TableCell>
-                    <div class="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        @click="
-                          router.push({
-                            name: 'knowledge-documents',
-                            params: { knowledgeBaseId: knowledgeBase.id },
-                          })
-                        "
-                      >
-                        进入
-                      </Button>
-                      <Button variant="outline" size="sm" @click="openEdit(knowledgeBase)">
-                        编辑
-                      </Button>
-                      <Button variant="destructive" size="sm" @click="remove(knowledgeBase)">
-                        删除
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              </template>
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <Table>
+        <TableHeader>
+          <TableRow class="bg-muted/60 hover:bg-muted/60">
+            <TableHead class="min-w-55">名称</TableHead>
+            <TableHead class="min-w-60">Embedding 模型</TableHead>
+            <TableHead class="min-w-32">分块配置</TableHead>
+            <TableHead class="min-w-24">状态</TableHead>
+            <TableHead class="min-w-36">更新时间</TableHead>
+            <TableHead class="min-w-52 text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-if="loading">
+            <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+              正在加载知识库...
+            </TableCell>
+          </TableRow>
+          <TableRow v-else-if="filteredKnowledgeBases.length === 0">
+            <TableCell colspan="6" class="h-24 text-center text-muted-foreground">
+              还没有知识库
+            </TableCell>
+          </TableRow>
+          <template v-else>
+            <TableRow v-for="knowledgeBase in filteredKnowledgeBases" :key="knowledgeBase.id">
+              <TableCell>
+                <div class="grid gap-1">
+                  <button
+                    class="w-fit text-left font-semibold text-primary hover:underline"
+                    @click="
+                      router.push({
+                        name: 'knowledge-documents',
+                        params: { knowledgeBaseId: knowledgeBase.id },
+                      })
+                    "
+                  >
+                    {{ knowledgeBase.name }}
+                  </button>
+                  <small class="text-muted-foreground">
+                    {{ knowledgeBase.description || '暂无描述' }}
+                  </small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div v-if="knowledgeBase.embeddingModel" class="grid gap-1">
+                  <strong class="font-semibold text-foreground">
+                    {{ knowledgeBase.embeddingModel.name }}
+                  </strong>
+                  <small class="text-muted-foreground">
+                    {{ knowledgeBase.embeddingModel.provider }} /
+                    {{ knowledgeBase.embeddingModel.modelName }}
+                  </small>
+                </div>
+                <div v-else class="grid gap-1">
+                  <Badge variant="outline"> 未配置 Embedding 模型 </Badge>
+                  <small class="text-muted-foreground">请编辑知识库重新选择模型</small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div class="grid gap-1">
+                  <strong class="font-semibold text-foreground">{{
+                    knowledgeBase.chunkSize
+                  }}</strong>
+                  <small class="text-muted-foreground">
+                    重叠长度 {{ knowledgeBase.chunkOverlap }}
+                  </small>
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge :variant="knowledgeBase.status === 'ACTIVE' ? 'default' : 'secondary'">
+                  {{ statusText(knowledgeBase.status) }}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-muted-foreground">
+                {{ formatTime(knowledgeBase.updatedAt) }}
+              </TableCell>
+              <TableCell>
+                <div class="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="
+                      router.push({
+                        name: 'knowledge-documents',
+                        params: { knowledgeBaseId: knowledgeBase.id },
+                      })
+                    "
+                  >
+                    进入
+                  </Button>
+                  <Button variant="outline" size="sm" @click="openEdit(knowledgeBase)">
+                    编辑
+                  </Button>
+                  <Button variant="destructive" size="sm" @click="remove(knowledgeBase)">
+                    删除
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          </template>
+        </TableBody>
+      </Table>
     </section>
 
     <el-dialog v-model="formOpen" :title="title" width="720px">
@@ -384,7 +373,12 @@ onMounted(load)
 
       <template #footer>
         <el-button @click="formOpen = false">取消</el-button>
-        <el-button :disabled="embeddingModels.length === 0" :loading="saving" type="primary" @click="save">
+        <el-button
+          :disabled="embeddingModels.length === 0"
+          :loading="saving"
+          type="primary"
+          @click="save"
+        >
           保存
         </el-button>
       </template>

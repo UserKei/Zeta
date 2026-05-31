@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -95,9 +94,7 @@ const openEdit = (model: AiModel) => {
     configJson: model.configJson,
   })
   configJsonText.value =
-    Object.keys(model.configJson).length > 0
-      ? JSON.stringify(model.configJson, null, 2)
-      : ''
+    Object.keys(model.configJson).length > 0 ? JSON.stringify(model.configJson, null, 2) : ''
   formOpen.value = true
 }
 
@@ -183,64 +180,62 @@ onMounted(load)
       <Button @click="openCreate">添加模型</Button>
     </header>
 
-    <Card class="min-w-0 overflow-hidden">
-      <CardContent class="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow class="bg-muted/60 hover:bg-muted/60">
-              <TableHead class="min-w-55">名称</TableHead>
-              <TableHead class="min-w-36">供应商</TableHead>
-              <TableHead class="min-w-34">类型</TableHead>
-              <TableHead class="min-w-45">模型标识</TableHead>
-              <TableHead class="min-w-36">凭证</TableHead>
-              <TableHead class="min-w-24">状态</TableHead>
-              <TableHead class="min-w-36 text-right">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow v-if="loading">
-              <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
-                正在加载模型配置...
-              </TableCell>
-            </TableRow>
-            <TableRow v-else-if="models.length === 0">
-              <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
-                还没有模型配置
-              </TableCell>
-            </TableRow>
-            <template v-else>
-              <TableRow v-for="model in models" :key="model.id">
-                <TableCell>
-                  <div class="grid gap-1">
-                    <strong class="font-semibold text-foreground">{{ model.name }}</strong>
-                    <small class="text-muted-foreground">{{ model.baseUrl || '默认 Base URL' }}</small>
-                  </div>
-                </TableCell>
-                <TableCell class="text-muted-foreground">{{ model.provider }}</TableCell>
-                <TableCell>
-                  <Badge variant="outline">
-                    {{ modelTypes.find((item) => item.value === model.type)?.label }}
-                  </Badge>
-                </TableCell>
-                <TableCell class="font-medium text-foreground">{{ model.modelName }}</TableCell>
-                <TableCell class="text-muted-foreground">{{ model.apiKeyMasked || '未配置' }}</TableCell>
-                <TableCell>
-                  <Badge :variant="model.isEnabled ? 'default' : 'secondary'">
-                    {{ model.isEnabled ? '启用' : '停用' }}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div class="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" @click="openEdit(model)">编辑</Button>
-                    <Button variant="destructive" size="sm" @click="remove(model)">删除</Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            </template>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <Table>
+      <TableHeader>
+        <TableRow class="bg-muted/60 hover:bg-muted/60">
+          <TableHead class="min-w-55">名称</TableHead>
+          <TableHead class="min-w-36">供应商</TableHead>
+          <TableHead class="min-w-34">类型</TableHead>
+          <TableHead class="min-w-45">模型标识</TableHead>
+          <TableHead class="min-w-36">凭证</TableHead>
+          <TableHead class="min-w-24">状态</TableHead>
+          <TableHead class="min-w-36 text-right">操作</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        <TableRow v-if="loading">
+          <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
+            正在加载模型配置...
+          </TableCell>
+        </TableRow>
+        <TableRow v-else-if="models.length === 0">
+          <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
+            还没有模型配置
+          </TableCell>
+        </TableRow>
+        <template v-else>
+          <TableRow v-for="model in models" :key="model.id">
+            <TableCell>
+              <div class="grid gap-1">
+                <strong class="font-semibold text-foreground">{{ model.name }}</strong>
+                <small class="text-muted-foreground">{{ model.baseUrl || '默认 Base URL' }}</small>
+              </div>
+            </TableCell>
+            <TableCell class="text-muted-foreground">{{ model.provider }}</TableCell>
+            <TableCell>
+              <Badge variant="outline">
+                {{ modelTypes.find((item) => item.value === model.type)?.label }}
+              </Badge>
+            </TableCell>
+            <TableCell class="font-medium text-foreground">{{ model.modelName }}</TableCell>
+            <TableCell class="text-muted-foreground">{{
+              model.apiKeyMasked || '未配置'
+            }}</TableCell>
+            <TableCell>
+              <Badge :variant="model.isEnabled ? 'default' : 'secondary'">
+                {{ model.isEnabled ? '启用' : '停用' }}
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <div class="flex justify-end gap-2">
+                <Button variant="outline" size="sm" @click="openEdit(model)">编辑</Button>
+                <Button variant="destructive" size="sm" @click="remove(model)">删除</Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        </template>
+      </TableBody>
+    </Table>
 
     <el-dialog v-model="formOpen" :title="title" width="680px">
       <el-form label-position="top" @submit.prevent="save">
