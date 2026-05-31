@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { Search } from '@element-plus/icons-vue'
+import { SearchIcon } from '@lucide/vue'
 import { useRoute } from 'vue-router'
+import { Badge, type BadgeVariants } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   testKnowledgeBaseRetrieval,
   type RetrievalHit,
@@ -23,6 +27,16 @@ const form = reactive({
   topK: 5,
 })
 
+const normalizedTopK = computed(() => {
+  const value = Number(form.topK)
+
+  if (!Number.isFinite(value)) {
+    return 5
+  }
+
+  return Math.min(20, Math.max(1, Math.trunc(value)))
+})
+
 const canSearch = computed(() => form.question.trim().length > 0 && !loading.value)
 
 const runRetrieval = async () => {
@@ -35,7 +49,7 @@ const runRetrieval = async () => {
   try {
     result.value = await testKnowledgeBaseRetrieval(knowledgeBaseId.value, {
       question: form.question,
-      topK: form.topK,
+      topK: normalizedTopK.value,
     })
   } catch (cause) {
     showErrorMessage(cause, '检索测试失败')
@@ -54,112 +68,124 @@ const matchReasonText = (reason: RetrievalHit['matchReason']) =>
     HYBRID: '混合命中',
   })[reason]
 
-const matchReasonType = (reason: RetrievalHit['matchReason']) =>
+const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants['variant'] =>
   ({
-    VECTOR: 'info',
-    KEYWORD: 'warning',
-    HYBRID: 'success',
-  })[reason]
+    VECTOR: 'secondary',
+    KEYWORD: 'outline',
+    HYBRID: 'default',
+  } as const)[reason]
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
     <header class="mb-4">
-      <h1 class="m-0 text-2xl font-semibold text-(--zeta-ink)">检索测试</h1>
-      <p class="m-0 mt-1.5 text-sm text-(--zeta-muted)">
+      <h1 class="m-0 text-2xl font-semibold text-foreground">检索测试</h1>
+      <p class="m-0 mt-1.5 text-sm text-muted-foreground">
         输入问题，查看知识库分段的命中原因和综合评分。
       </p>
     </header>
 
-    <section class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+    <Card class="min-h-0 flex-1 gap-0 py-0">
       <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div v-if="!result" class="grid min-h-0 flex-1 place-items-center p-6 text-center">
-          <el-empty description="命中分段会显示在这里" />
+          <div class="grid justify-items-center gap-2 text-muted-foreground">
+            <SearchIcon class="size-10" />
+            <p class="m-0 font-medium text-foreground">命中分段会显示在这里</p>
+            <p class="m-0 text-sm">输入问题后可以查看召回原因和评分。</p>
+          </div>
         </div>
 
         <div v-else-if="result.hits.length === 0" class="grid min-h-0 flex-1 place-items-center p-6 text-center">
-          <el-empty description="没有命中的分段" />
+          <div class="grid justify-items-center gap-2 text-muted-foreground">
+            <SearchIcon class="size-10" />
+            <p class="m-0 font-medium text-foreground">没有命中的分段</p>
+            <p class="m-0 text-sm">可以换一个更具体的问题，或检查知识库是否已经完成索引。</p>
+          </div>
         </div>
 
         <div v-else class="min-h-0 flex-1 overflow-auto p-4">
-          <div class="mb-4 flex min-w-0 items-center gap-3 rounded-lg bg-(--zeta-surface) px-4 py-3">
-            <el-avatar :icon="Search" />
+          <div class="mb-4 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+            <span class="grid size-9 shrink-0 place-items-center rounded-full bg-background text-muted-foreground ring-1 ring-border">
+              <SearchIcon class="size-4" />
+            </span>
             <div class="min-w-0">
-              <p class="m-0 truncate font-semibold text-(--zeta-ink)" :title="result.question">
+              <p class="m-0 truncate font-semibold text-foreground" :title="result.question">
                 {{ result.question }}
               </p>
-              <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
+              <p class="m-0 mt-1 text-sm text-muted-foreground">
                 返回 Top {{ result.topK }}，实际命中 {{ result.hits.length }} 个分段
               </p>
             </div>
           </div>
 
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <article
+            <Card
               v-for="(hit, index) in result.hits"
               :key="hit.chunkId"
-              class="flex min-h-0 flex-col rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4"
+              class="min-h-0"
             >
-              <header class="mb-3 flex items-start justify-between gap-3">
+              <CardHeader class="mb-3 flex-row items-start justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-2">
-                  <el-avatar class="avatar-light" :size="24">{{ index + 1 }}</el-avatar>
-                  <strong class="min-w-0 truncate text-(--zeta-ink)" :title="hit.documentName">
+                  <span class="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                    {{ index + 1 }}
+                  </span>
+                  <strong class="min-w-0 truncate text-foreground" :title="hit.documentName">
                     {{ hit.documentName }}
                   </strong>
                 </div>
-                <el-tag effect="light" :type="matchReasonType(hit.matchReason)">
+                <Badge :variant="matchReasonVariant(hit.matchReason)">
                   {{ matchReasonText(hit.matchReason) }}
-                </el-tag>
-              </header>
+                </Badge>
+              </CardHeader>
 
-              <div class="mb-3 grid grid-cols-3 gap-2 text-xs">
-                <span class="rounded bg-(--zeta-panel) px-2 py-1 text-(--zeta-muted)">
-                  综合 {{ formatScore(hit.finalScore) }}
-                </span>
-                <span class="rounded bg-(--zeta-panel) px-2 py-1 text-(--zeta-muted)">
-                  语义 {{ formatScore(hit.vectorScore) }}
-                </span>
-                <span class="rounded bg-(--zeta-panel) px-2 py-1 text-(--zeta-muted)">
-                  关键词 {{ formatScore(hit.keywordScore) }}
-                </span>
-              </div>
+              <CardContent class="flex min-h-0 flex-1 flex-col">
+                <div class="mb-3 grid grid-cols-3 gap-2 text-xs">
+                  <span class="rounded bg-muted px-2 py-1 text-muted-foreground">
+                    综合 {{ formatScore(hit.finalScore) }}
+                  </span>
+                  <span class="rounded bg-muted px-2 py-1 text-muted-foreground">
+                    语义 {{ formatScore(hit.vectorScore) }}
+                  </span>
+                  <span class="rounded bg-muted px-2 py-1 text-muted-foreground">
+                    关键词 {{ formatScore(hit.keywordScore) }}
+                  </span>
+                </div>
 
-              <p class="m-0 max-h-52 overflow-auto whitespace-pre-wrap text-sm leading-6 text-(--zeta-content)">
-                {{ hit.content }}
-              </p>
+                <p class="m-0 max-h-52 overflow-auto whitespace-pre-wrap text-sm leading-6 text-foreground">
+                  {{ hit.content }}
+                </p>
+              </CardContent>
 
-              <footer class="mt-3 border-t border-(--zeta-line-soft) pt-3 text-xs text-(--zeta-muted)">
+              <CardFooter class="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
                 分段 #{{ hit.position + 1 }} · {{ hit.charCount }} 字符
-              </footer>
-            </article>
+              </CardFooter>
+            </Card>
           </div>
         </div>
       </div>
 
-      <div class="border-t border-(--zeta-line-soft) bg-(--zeta-panel) p-4">
-        <el-form class="flex flex-col gap-3 lg:flex-row lg:items-end" label-position="top" @submit.prevent="runRetrieval">
-          <el-form-item class="min-w-0 flex-1" label="检索问题">
-            <el-input
-              v-model="form.question"
-              :autosize="{ minRows: 1, maxRows: 3 }"
-              placeholder="输入一个需要在知识库中检索的问题"
-              type="textarea"
-              @keydown.enter.exact.prevent="runRetrieval"
-            />
-          </el-form-item>
-          <el-form-item label="Top K">
-            <el-input-number
-              v-model="form.topK"
-              :max="20"
-              :min="1"
-              controls-position="right"
-            />
-          </el-form-item>
-          <el-button :disabled="!canSearch" :loading="loading" native-type="submit" type="primary">
-            测试检索
-          </el-button>
-        </el-form>
-      </div>
-    </section>
+      <form class="flex flex-col gap-3 border-t border-border bg-card p-4 lg:flex-row lg:items-end" @submit.prevent="runRetrieval">
+        <label class="grid min-w-0 flex-1 gap-1.5">
+          <span class="text-sm font-medium text-foreground">检索问题</span>
+          <Input
+            v-model="form.question"
+            placeholder="输入一个需要在知识库中检索的问题"
+            @keydown.enter.exact.prevent="runRetrieval"
+          />
+        </label>
+        <label class="grid gap-1.5 lg:w-28">
+          <span class="text-sm font-medium text-foreground">Top K</span>
+          <Input
+            v-model="form.topK"
+            type="number"
+            min="1"
+            max="20"
+          />
+        </label>
+        <Button :disabled="!canSearch" type="submit">
+          {{ loading ? '检索中...' : '测试检索' }}
+        </Button>
+      </form>
+    </Card>
   </div>
 </template>
