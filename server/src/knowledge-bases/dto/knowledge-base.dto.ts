@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,7 @@ import { KnowledgeBaseStatus } from '@libs/shared/generated/prisma/enums';
 import type {
   KnowledgeBasePayload,
   KnowledgeBaseUpdatePayload,
+  KnowledgeUsageRange,
 } from '@zeta/common/knowledge-bases';
 
 export class KnowledgeBaseDto implements KnowledgeBasePayload {
@@ -92,4 +94,15 @@ export class KnowledgeBaseUpdateDto implements KnowledgeBaseUpdatePayload {
   @IsInt()
   @Min(0)
   chunkOverlap?: number;
+}
+
+export class KnowledgeUsageQueryDto {
+  @ApiPropertyOptional({
+    enum: ['7d', '30d', 'all'],
+    default: '30d',
+    description: '知识热度统计时间范围',
+  })
+  @IsOptional()
+  @IsIn(['7d', '30d', 'all'])
+  range?: KnowledgeUsageRange;
 }

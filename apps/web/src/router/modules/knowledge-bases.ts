@@ -1,6 +1,6 @@
 import Layout from '@/layout/index.vue'
 import WorkspaceLayout from '@/layout/workspace/index.vue'
-import { Document, Search, Setting } from '@element-plus/icons-vue'
+import { DataAnalysis, Document, Search, Setting } from '@element-plus/icons-vue'
 import type { RouteLocation } from 'vue-router'
 
 export default [
@@ -67,6 +67,18 @@ export default [
               icon: Search,
             },
             component: () => import('@/views/KnowledgeRetrieval/index.vue'),
+          },
+          {
+            path: 'usage',
+            name: 'knowledge-usage',
+            meta: {
+              requiresAuth: true,
+              activeMenu: 'knowledge-bases',
+              workspaceMenu: true,
+              title: '知识热度',
+              icon: DataAnalysis,
+            },
+            component: () => import('@/views/KnowledgeUsage/index.vue'),
           },
           {
             path: 'settings',

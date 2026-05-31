@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -14,6 +15,7 @@ import { KnowledgeBasesService } from './knowledge-bases.service';
 import {
   KnowledgeBaseDto,
   KnowledgeBaseUpdateDto,
+  KnowledgeUsageQueryDto,
 } from './dto/knowledge-base.dto';
 
 @UseGuards(AuthGuard)
@@ -31,6 +33,11 @@ export class KnowledgeBasesController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.knowledgeBasesService.get(id);
+  }
+
+  @Get(':id/usage')
+  getUsage(@Param('id') id: string, @Query() query: KnowledgeUsageQueryDto) {
+    return this.knowledgeBasesService.getUsage(id, query.range ?? '30d');
   }
 
   @Post()

@@ -9,6 +9,12 @@ import {
   KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
+import type {
+  KnowledgeUsageChunkItem,
+  KnowledgeUsageDocumentItem,
+  KnowledgeUsageRange,
+  KnowledgeUsageSummary,
+} from '@zeta/common/knowledge-bases';
 import { knowledgeBaseSelect } from './knowledge-bases.select';
 
 type KnowledgeBaseInput = {
@@ -19,6 +25,11 @@ type KnowledgeBaseInput = {
   chunkSize?: number;
   chunkOverlap?: number;
 };
+
+const KNOWLEDGE_USAGE_RANGE_DAYS = {
+  '7d': 7,
+  '30d': 30,
+} as const satisfies Partial<Record<KnowledgeUsageRange, number>>;
 
 @Injectable()
 export class KnowledgeBasesService {
@@ -41,6 +52,121 @@ export class KnowledgeBasesService {
       where: { id },
       select: knowledgeBaseSelect,
     });
+  }
+
+  async getUsage(
+    id: string,
+    range: KnowledgeUsageRange = '30d',
+  ): Promise<KnowledgeUsageSummary> {
+    await this.requireKnowledgeBase(id);
+    this.validateUsageRange(range);
+    const rangeStart = this.getUsageRangeStart(range);
+    const where: Prisma.ChatCitationWhereInput = {
+      document: { knowledgeBaseId: id },
+    };
+
+    if (rangeStart) {
+      where.createdAt = { gte: rangeStart };
+    }
+
+    const citations = await this.prisma.chatCitation.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        document: {
+          select: {
+            id: true,
+            name: true,
+            sourceType: true,
+          },
+        },
+        chunk: {
+          select: {
+            id: true,
+            documentId: true,
+            title: true,
+            position: true,
+            content: true,
+          },
+        },
+      },
+    });
+
+    const documentMap = new Map<
+      string,
+      KnowledgeUsageDocumentItem & { chunkIds: Set<string> }
+    >();
+    const chunkMap = new Map<string, KnowledgeUsageChunkItem>();
+    let lastCitedAt: string | null = null;
+
+    for (const citation of citations) {
+      const citedAt = citation.createdAt.toISOString();
+      const document = citation.document;
+      const chunk = citation.chunk;
+
+      if (!lastCitedAt || citedAt > lastCitedAt) {
+        lastCitedAt = citedAt;
+      }
+
+      const documentUsage = documentMap.get(document.id) ?? {
+        documentId: document.id,
+        documentName: document.name,
+        sourceType: document.sourceType,
+        citationCount: 0,
+        citedChunkCount: 0,
+        lastCitedAt: citedAt,
+        chunkIds: new Set<string>(),
+      };
+      documentUsage.citationCount += 1;
+      documentUsage.chunkIds.add(chunk.id);
+
+      if (citedAt > documentUsage.lastCitedAt) {
+        documentUsage.lastCitedAt = citedAt;
+      }
+
+      documentMap.set(document.id, documentUsage);
+
+      const chunkUsage = chunkMap.get(chunk.id) ?? {
+        chunkId: chunk.id,
+        documentId: chunk.documentId,
+        documentName: document.name,
+        chunkPosition: chunk.position,
+        title: chunk.title,
+        preview: this.toUsagePreview(chunk.content),
+        citationCount: 0,
+        lastCitedAt: citedAt,
+      };
+      chunkUsage.citationCount += 1;
+
+      if (citedAt > chunkUsage.lastCitedAt) {
+        chunkUsage.lastCitedAt = citedAt;
+      }
+
+      chunkMap.set(chunk.id, chunkUsage);
+    }
+
+    const topDocuments = Array.from(documentMap.values())
+      .map(({ chunkIds, ...item }) => ({
+        ...item,
+        citedChunkCount: chunkIds.size,
+      }))
+      .sort((left, right) => this.compareUsageItems(left, right));
+
+    const topChunks = Array.from(chunkMap.values()).sort((left, right) =>
+      this.compareUsageItems(left, right),
+    );
+
+    return {
+      range,
+      totalCitations: citations.length,
+      citedDocumentCount: documentMap.size,
+      citedChunkCount: chunkMap.size,
+      lastCitedAt,
+      topDocuments,
+      topChunks,
+    };
   }
 
   async create(input: KnowledgeBaseInput) {
@@ -254,6 +380,39 @@ export class KnowledgeBasesService {
         'chunkOverlap must be a non-negative integer smaller than chunkSize',
       );
     }
+  }
+
+  private validateUsageRange(
+    range: string,
+  ): asserts range is KnowledgeUsageRange {
+    if (!['7d', '30d', 'all'].includes(range)) {
+      throw new BadRequestException('usage range is invalid');
+    }
+  }
+
+  private getUsageRangeStart(range: KnowledgeUsageRange) {
+    const days =
+      range === 'all' ? undefined : KNOWLEDGE_USAGE_RANGE_DAYS[range];
+
+    if (!days) {
+      return null;
+    }
+
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  }
+
+  private toUsagePreview(content: string) {
+    return content.replace(/\s+/g, ' ').trim().slice(0, 160);
+  }
+
+  private compareUsageItems(
+    left: { citationCount: number; lastCitedAt: string },
+    right: { citationCount: number; lastCitedAt: string },
+  ) {
+    return (
+      right.citationCount - left.citationCount ||
+      right.lastCitedAt.localeCompare(left.lastCitedAt)
+    );
   }
 
   private async requireKnowledgeBase(id: string) {

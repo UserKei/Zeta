@@ -1,4 +1,10 @@
 import { responseData, serverApi, type Response } from '..'
+import type {
+  KnowledgeUsageRange,
+  KnowledgeUsageSummary,
+} from '@zeta/common/knowledge-bases'
+
+export type { KnowledgeUsageRange, KnowledgeUsageSummary } from '@zeta/common/knowledge-bases'
 
 export type KnowledgeBaseStatus = 'ACTIVE' | 'DISABLED'
 
@@ -62,4 +68,14 @@ export const deleteKnowledgeBase = (id: string) =>
     serverApi.delete(`/knowledge-bases/${id}`) as Promise<
       Response<{ id: string }>
     >,
+  )
+
+export const getKnowledgeBaseUsage = (
+  id: string,
+  range: KnowledgeUsageRange,
+) =>
+  responseData(
+    serverApi.get(`/knowledge-bases/${id}/usage`, {
+      params: { range },
+    }) as Promise<Response<KnowledgeUsageSummary>>,
   )
