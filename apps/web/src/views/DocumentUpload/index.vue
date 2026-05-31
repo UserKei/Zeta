@@ -1,20 +1,31 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type {
-  UploadFile,
-  UploadFiles,
-  UploadRawFile,
-  UploadUserFile,
-} from 'element-plus'
 import {
-  ArrowLeft,
-  Check,
-  Delete,
-  DocumentChecked,
-  Plus,
-  Upload,
-} from '@element-plus/icons-vue'
+  ArrowLeftIcon,
+  CheckIcon,
+  FileCheckIcon,
+  PlusIcon,
+  TrashIcon,
+  UploadIcon,
+} from '@lucide/vue'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { getKnowledgeBase, type KnowledgeBase } from '@/apis/knowledge-bases'
 import {
   createFileDocuments,
@@ -62,11 +73,12 @@ const activeStep = ref(0)
 const loading = ref(false)
 const previewing = ref(false)
 const saving = ref(false)
+const isDragging = ref(false)
 const uploadMode = ref<UploadMode>('TEXT')
 const selectedFiles = ref<File[]>([])
-const uploadFiles = ref<UploadUserFile[]>([])
 const activeFileIndex = ref(0)
 const savedDocuments = ref<KnowledgeDocument[]>([])
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const forms = ref<UploadForm[]>([])
 
@@ -102,9 +114,7 @@ const canImport = computed(
     forms.value.every(
       (form) =>
         form.name.trim().length > 0 &&
-        form.chunks.some(
-          (chunk) => chunk.status === 'ACTIVE' && chunk.content.trim().length > 0,
-        ),
+        form.chunks.some((chunk) => chunk.status === 'ACTIVE' && chunk.content.trim().length > 0),
     ),
 )
 
@@ -132,10 +142,13 @@ const loadKnowledgeBase = async () => {
 
 const resetUpload = () => {
   selectedFiles.value = []
-  uploadFiles.value = []
   forms.value = []
   activeFileIndex.value = 0
   activeStep.value = 0
+
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
 }
 
 const setUploadMode = (mode: UploadMode) => {
@@ -147,28 +160,33 @@ const setUploadMode = (mode: UploadMode) => {
   resetUpload()
 }
 
-const handleUploadModeChange = (value: string | number | boolean | undefined) => {
+const handleUploadModeChange = (value: unknown) => {
   if (value === 'TEXT' || value === 'TABLE') {
     setUploadMode(value)
   }
 }
 
-const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
-  const rawFiles = files.reduce<UploadRawFile[]>((result, file) => {
-    if (file.raw) {
-      result.push(file.raw)
-    }
+const openFilePicker = () => {
+  fileInput.value?.click()
+}
 
-    return result
-  }, [])
+const handleFileInputChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  await handleSelectedFiles(Array.from(input.files ?? []))
+  input.value = ''
+}
 
-  if (!uploadFile.raw || rawFiles.length === 0) {
+const handleDrop = async (event: DragEvent) => {
+  isDragging.value = false
+  await handleSelectedFiles(Array.from(event.dataTransfer?.files ?? []))
+}
+
+const handleSelectedFiles = async (files: File[]) => {
+  if (files.length === 0) {
     return
   }
 
-  uploadFiles.value = files as UploadUserFile[]
-
-  if (rawFiles.length > MAX_DOCUMENT_FILE_COUNT) {
+  if (files.length > MAX_DOCUMENT_FILE_COUNT) {
     showErrorMessage(
       new Error(`一次最多上传 ${MAX_DOCUMENT_FILE_COUNT} 个文件`),
       '文件数量超出限制',
@@ -177,7 +195,7 @@ const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
     return
   }
 
-  const invalidFile = rawFiles.find((file) => !isSupportedFile(file))
+  const invalidFile = files.find((file) => !isSupportedFile(file))
 
   if (invalidFile) {
     showErrorMessage(
@@ -188,7 +206,7 @@ const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
     return
   }
 
-  const emptyFile = rawFiles.find((file) => file.size === 0)
+  const emptyFile = files.find((file) => file.size === 0)
 
   if (emptyFile) {
     showErrorMessage(new Error('文档文件不能为空'), '文件不能为空')
@@ -196,7 +214,7 @@ const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
     return
   }
 
-  const oversizedFile = rawFiles.find((file) => file.size > MAX_DOCUMENT_FILE_SIZE)
+  const oversizedFile = files.find((file) => file.size > MAX_DOCUMENT_FILE_SIZE)
 
   if (oversizedFile) {
     showErrorMessage(new Error('单个文档文件不能超过 2MB'), '文件过大')
@@ -204,11 +222,11 @@ const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
     return
   }
 
-  selectedFiles.value = rawFiles
+  selectedFiles.value = files
   previewing.value = true
 
   try {
-    const preview = await previewDocumentFiles(knowledgeBaseId.value, rawFiles)
+    const preview = await previewDocumentFiles(knowledgeBaseId.value, files)
     forms.value = preview.files.map((file) => ({
       fileIndex: file.fileIndex,
       fileName: file.fileName,
@@ -225,13 +243,6 @@ const handleFileChange = async (uploadFile: UploadFile, files: UploadFiles) => {
   } finally {
     previewing.value = false
   }
-}
-
-const handleFileExceed = () => {
-  showErrorMessage(
-    new Error(`一次最多上传 ${MAX_DOCUMENT_FILE_COUNT} 个文件`),
-    '文件数量超出限制',
-  )
 }
 
 const addChunk = () => {
@@ -341,195 +352,269 @@ onMounted(loadKnowledgeBase)
 </script>
 
 <template>
-  <div class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 pb-20" v-loading="loading">
-    <header class="flex min-w-0 items-center gap-2">
-      <el-button :icon="ArrowLeft" text @click="goBack" />
-      <h1 class="m-0 truncate text-xl font-semibold text-(--zeta-ink)">上传文档</h1>
-    </header>
-
-    <el-card :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }" shadow="never"
-      class="min-h-0 overflow-hidden">
-      <div v-if="activeStep === 0" class="flex min-h-0 flex-1 flex-col p-6">
-        <section class="mx-auto flex min-h-0 w-full max-w-280 flex-col gap-5 py-3">
-          <div>
-            <h2 class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)">
-              上传文档
-            </h2>
-          </div>
-
-          <el-radio-group :model-value="uploadMode" @change="handleUploadModeChange">
-            <el-radio-button value="TEXT">文本文件</el-radio-button>
-            <el-radio-button value="TABLE">表格</el-radio-button>
-          </el-radio-group>
-
-          <div class="rounded-md bg-(--zeta-blue-soft) px-4 py-3 text-sm leading-6 text-(--zeta-content)">
-            {{ uploadModeDescription }}
-          </div>
-
-          <div
-            v-if="imageUnderstandingNotice"
-            class="rounded-md border border-(--zeta-line-soft) bg-(--zeta-panel) px-4 py-3 text-sm leading-6 text-(--zeta-muted)"
-          >
-            {{ imageUnderstandingNotice }}
-          </div>
-
-          <el-upload v-model:file-list="uploadFiles" :accept="acceptedFileAccept" action="#" drag multiple
-            class="zeta-upload-dropzone mx-auto flex min-h-80 flex-1 w-full lg:w-[70%]" :auto-upload="false"
-            :limit="MAX_DOCUMENT_FILE_COUNT"
-            :on-change="handleFileChange" :on-exceed="handleFileExceed" :on-remove="resetUpload">
-            <div class="grid h-full min-h-80 content-center justify-items-center gap-3 py-8">
-              <el-icon class="text-4xl text-(--zeta-blue)">
-                <Upload />
-              </el-icon>
-              <div class="text-base font-medium text-(--zeta-ink)">
-                拖入文档文件，或点击选择
-              </div>
-              <small class="text-(--zeta-muted)">{{ uploadModeHint }}</small>
-            </div>
-          </el-upload>
-        </section>
-
-        <el-empty v-if="previewing" description="正在解析文档..." />
-      </div>
-
-      <div v-else-if="activeStep === 1"
-        class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-none"
-        v-loading="previewing">
-        <aside
-          class="flex min-h-0 flex-col border-b border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-5 lg:border-b-0 lg:border-r">
-          <h2 class="m-0 text-lg font-semibold text-(--zeta-ink)">文件列表</h2>
-          <p class="m-0 mt-2 text-sm text-(--zeta-muted)">
-            选择文件后，在右侧调整文档信息和分段内容。
+  <div class="flex min-h-0 flex-1 flex-col bg-background p-4 pb-24 text-foreground lg:p-6">
+    <Card class="min-h-0 flex-1 overflow-hidden">
+      <CardHeader class="flex flex-row items-center gap-3 border-b border-border">
+        <Button variant="ghost" size="icon" aria-label="返回文档列表" @click="goBack">
+          <ArrowLeftIcon />
+        </Button>
+        <div class="min-w-0">
+          <CardTitle class="truncate text-xl">上传文档</CardTitle>
+          <p class="mt-1 text-sm text-muted-foreground">
+            {{ knowledgeBase?.name ?? '知识库' }} · 导入文件并确认分段后入库
           </p>
+        </div>
+      </CardHeader>
 
-          <div class="mt-5 min-h-0 flex-1 overflow-auto">
-            <button v-for="(item, index) in forms" :key="item.fileIndex"
-              class="mb-2 grid w-full gap-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors"
-              :class="index === activeFileIndex
-                ? 'border-(--zeta-blue-line) bg-(--zeta-blue-soft) text-(--zeta-ink)'
-                : 'border-(--zeta-line-soft) bg-(--zeta-panel) text-(--zeta-content) hover:border-(--zeta-blue-line)'"
-              type="button" @click="activeFileIndex = index">
-              <span class="truncate font-medium">{{ item.name || item.fileName }}</span>
-              <span class="flex items-center justify-between gap-2 text-xs text-(--zeta-muted)">
-                <span class="truncate">{{ item.fileName }}</span>
-                <el-tag size="small" effect="light">{{ sourceFormatText(item.sourceFormat) }}</el-tag>
-              </span>
-            </button>
-          </div>
+      <CardContent class="min-h-0 flex-1 overflow-hidden p-0">
+        <div v-if="loading" class="grid gap-4 p-6">
+          <Skeleton class="h-10 w-48" />
+          <Skeleton class="h-80 w-full" />
+        </div>
 
-          <div class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3 text-sm text-(--zeta-muted)">
-            <p class="m-0">文件数量：{{ forms.length }}</p>
-            <p class="m-0 mt-1">当前分段：{{ currentForm?.chunks.length ?? 0 }}</p>
-            <p class="m-0 mt-1">
-              启用分段：{{ activeChunkCount }}
-            </p>
-          </div>
-        </aside>
-
-        <section v-if="currentForm" class="flex min-w-0 min-h-0 flex-col">
-          <header
-            class="flex flex-col justify-between gap-3 border-b border-(--zeta-line-soft) bg-(--zeta-surface) px-4 py-3 sm:flex-row sm:items-center">
-            <div>
-              <h2 class="m-0 text-base font-semibold text-(--zeta-ink)">分段草稿</h2>
-              <p class="m-0 mt-1 text-sm text-(--zeta-muted)">
-                当前文件：{{ currentForm.fileName }} · {{ sourceFormatText(currentForm.sourceFormat) }}
+        <div v-else-if="activeStep === 0" class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+          <section class="mx-auto flex w-full max-w-280 flex-col gap-5 py-3">
+            <div class="flex flex-col gap-2">
+              <h2 class="m-0 text-lg font-semibold">上传文档</h2>
+              <p class="m-0 text-sm text-muted-foreground">
+                选择文本文件或表格文件，系统会先解析为可编辑分段草稿。
               </p>
             </div>
-            <el-button :icon="Plus" @click="addChunk">添加分段</el-button>
-          </header>
 
-          <div class="min-h-0 flex-1 overflow-auto">
-            <div class="grid gap-3 p-4">
-              <el-form class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3" label-position="top">
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-                  <el-form-item label="文档名称">
-                    <el-input v-model="currentForm.name" />
-                  </el-form-item>
-                  <el-form-item label="来源类型">
-                    <el-input :model-value="sourceFormatText(currentForm.sourceFormat)" disabled />
-                  </el-form-item>
-                  <el-form-item class="md:col-span-2" label="描述">
-                    <el-input v-model="currentForm.description" :rows="2" type="textarea" />
-                  </el-form-item>
-                </div>
-              </el-form>
+            <ToggleGroup
+              :model-value="uploadMode"
+              type="single"
+              variant="outline"
+              class="w-fit"
+              @update:model-value="handleUploadModeChange"
+            >
+              <ToggleGroupItem value="TEXT">文本文件</ToggleGroupItem>
+              <ToggleGroupItem value="TABLE">表格</ToggleGroupItem>
+            </ToggleGroup>
 
-              <article v-for="(chunk, index) in currentForm.chunks" :key="`${currentForm.fileIndex}-${index}`"
-                class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-panel) p-3">
-                <header class="mb-3 flex items-center justify-between gap-3">
-                  <strong>分段 #{{ index + 1 }}</strong>
-                  <el-button :icon="Delete" size="small" type="danger" @click="removeChunk(index)" />
-                </header>
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-                  <el-form-item label="标题">
-                    <el-input v-model="chunk.title" />
-                  </el-form-item>
-                  <el-form-item label="状态">
-                    <el-select v-model="chunk.status">
-                      <el-option label="启用" value="ACTIVE" />
-                      <el-option label="停用" value="DISABLED" />
-                    </el-select>
-                  </el-form-item>
-                  <el-form-item class="md:col-span-2" label="内容">
-                    <el-input v-model="chunk.content" :rows="7" type="textarea" />
-                  </el-form-item>
-                </div>
-              </article>
+            <Alert>
+              <AlertTitle>{{
+                uploadMode === 'TABLE' ? '表格解析规则' : '文本文件解析规则'
+              }}</AlertTitle>
+              <AlertDescription>{{ uploadModeDescription }}</AlertDescription>
+            </Alert>
+
+            <Alert v-if="imageUnderstandingNotice" variant="default">
+              <AlertTitle>图片理解</AlertTitle>
+              <AlertDescription>{{ imageUnderstandingNotice }}</AlertDescription>
+            </Alert>
+
+            <button
+              type="button"
+              class="mx-auto grid min-h-80 w-full content-center justify-items-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-8 text-center transition-colors hover:border-primary hover:bg-muted/50 lg:w-[70%]"
+              :class="isDragging ? 'border-primary bg-muted/60' : ''"
+              @click="openFilePicker"
+              @dragenter.prevent="isDragging = true"
+              @dragover.prevent="isDragging = true"
+              @dragleave.prevent="isDragging = false"
+              @drop.prevent="handleDrop"
+            >
+              <UploadIcon class="size-10 text-primary" />
+              <span class="text-base font-medium">拖入文档文件，或点击选择</span>
+              <span class="text-sm text-muted-foreground">{{ uploadModeHint }}</span>
+              <span
+                v-if="selectedFiles.length > 0"
+                class="max-w-full truncate text-xs text-muted-foreground"
+              >
+                已选择 {{ selectedFiles.length }} 个文件
+              </span>
+            </button>
+
+            <input
+              ref="fileInput"
+              class="sr-only"
+              type="file"
+              multiple
+              :accept="acceptedFileAccept"
+              @change="handleFileInputChange"
+            />
+
+            <div v-if="previewing" class="grid gap-3 rounded-lg border border-border p-4">
+              <Skeleton class="h-4 w-32" />
+              <Skeleton class="h-4 w-full" />
+              <Skeleton class="h-4 w-2/3" />
+            </div>
+          </section>
+        </div>
+
+        <div
+          v-else-if="activeStep === 1"
+          class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-none"
+        >
+          <aside
+            class="flex min-h-0 flex-col border-b border-border bg-muted/30 p-5 lg:border-b-0 lg:border-r"
+          >
+            <h2 class="m-0 text-lg font-semibold">文件列表</h2>
+            <p class="m-0 mt-2 text-sm text-muted-foreground">
+              选择文件后，在右侧调整文档信息和分段内容。
+            </p>
+
+            <div class="mt-5 min-h-0 flex-1 overflow-auto">
+              <Button
+                v-for="(item, index) in forms"
+                :key="item.fileIndex"
+                type="button"
+                variant="outline"
+                class="mb-2 h-auto w-full justify-start rounded-lg px-3 py-2 text-left"
+                :class="
+                  index === activeFileIndex ? 'border-primary bg-muted text-foreground' : 'bg-card'
+                "
+                @click="activeFileIndex = index"
+              >
+                <span class="grid min-w-0 flex-1 gap-1">
+                  <span class="truncate font-medium">{{ item.name || item.fileName }}</span>
+                  <span
+                    class="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground"
+                  >
+                    <span class="truncate">{{ item.fileName }}</span>
+                    <Badge variant="secondary">{{ sourceFormatText(item.sourceFormat) }}</Badge>
+                  </span>
+                </span>
+              </Button>
+            </div>
+
+            <div class="rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+              <p class="m-0">文件数量：{{ forms.length }}</p>
+              <p class="m-0 mt-1">当前分段：{{ currentForm?.chunks.length ?? 0 }}</p>
+              <p class="m-0 mt-1">启用分段：{{ activeChunkCount }}</p>
+            </div>
+          </aside>
+
+          <section v-if="currentForm" class="flex min-w-0 min-h-0 flex-col">
+            <header
+              class="flex flex-col justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:flex-row sm:items-center"
+            >
+              <div>
+                <h2 class="m-0 text-base font-semibold">分段草稿</h2>
+                <p class="m-0 mt-1 text-sm text-muted-foreground">
+                  当前文件：{{ currentForm.fileName }} ·
+                  {{ sourceFormatText(currentForm.sourceFormat) }}
+                </p>
+              </div>
+              <Button variant="outline" @click="addChunk">
+                <PlusIcon data-icon="inline-start" />
+                添加分段
+              </Button>
+            </header>
+
+            <div class="min-h-0 flex-1 overflow-auto">
+              <div class="grid gap-3 p-4">
+                <section class="rounded-lg border border-border bg-card p-3">
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                    <div class="grid gap-2">
+                      <Label for="document-name">文档名称</Label>
+                      <Input id="document-name" v-model="currentForm.name" />
+                    </div>
+                    <div class="grid gap-2">
+                      <Label for="source-format">来源类型</Label>
+                      <Input
+                        id="source-format"
+                        :model-value="sourceFormatText(currentForm.sourceFormat)"
+                        disabled
+                      />
+                    </div>
+                    <div class="grid gap-2 md:col-span-2">
+                      <Label for="document-description">描述</Label>
+                      <Textarea
+                        id="document-description"
+                        v-model="currentForm.description"
+                        rows="2"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <article
+                  v-for="(chunk, index) in currentForm.chunks"
+                  :key="`${currentForm.fileIndex}-${index}`"
+                  class="rounded-lg border border-border bg-card p-3"
+                >
+                  <header class="mb-3 flex items-center justify-between gap-3">
+                    <strong>分段 #{{ index + 1 }}</strong>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      type="button"
+                      :aria-label="`删除分段 ${index + 1}`"
+                      @click="removeChunk(index)"
+                    >
+                      <TrashIcon />
+                    </Button>
+                  </header>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+                    <div class="grid gap-2">
+                      <Label :for="`chunk-title-${index}`">标题</Label>
+                      <Input :id="`chunk-title-${index}`" v-model="chunk.title" />
+                    </div>
+                    <div class="grid gap-2">
+                      <Label :for="`chunk-status-${index}`">状态</Label>
+                      <Select v-model="chunk.status">
+                        <SelectTrigger :id="`chunk-status-${index}`" class="w-full">
+                          <SelectValue placeholder="请选择状态" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="ACTIVE">启用</SelectItem>
+                            <SelectItem value="DISABLED">停用</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div class="grid gap-2 md:col-span-2">
+                      <Label :for="`chunk-content-${index}`">内容</Label>
+                      <Textarea :id="`chunk-content-${index}`" v-model="chunk.content" rows="7" />
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div v-else class="grid min-h-0 flex-1 place-items-center p-6">
+          <div class="grid max-w-md justify-items-center gap-4 text-center">
+            <div class="grid size-16 place-items-center rounded-full bg-primary/10 text-primary">
+              <CheckIcon class="size-8" />
+            </div>
+            <div>
+              <h2 class="m-0 text-2xl font-semibold">文档已入库</h2>
+              <p class="m-0 mt-2 text-sm text-muted-foreground">
+                已保存 {{ savedDocuments.length }} 个文档，后续可在文档列表或分段页继续维护。
+              </p>
+            </div>
+            <div class="flex flex-wrap justify-center gap-2">
+              <Button variant="outline" @click="goBack">返回文档列表</Button>
+              <Button @click="viewParagraph">
+                <FileCheckIcon data-icon="inline-start" />
+                查看分段
+              </Button>
             </div>
           </div>
-        </section>
-      </div>
-
-      <div v-else class="grid min-h-0 flex-1 place-items-center p-6">
-        <div class="grid max-w-md justify-items-center gap-4 text-center">
-          <div class="grid size-16 place-items-center rounded-full bg-(--zeta-success-soft) text-(--zeta-success)">
-            <el-icon class="text-3xl">
-              <Check />
-            </el-icon>
-          </div>
-          <div>
-            <h2 class="m-0 text-2xl font-semibold text-(--zeta-ink)">文档已入库</h2>
-            <p class="m-0 mt-2 text-sm text-(--zeta-muted)">
-              已保存 {{ savedDocuments.length }} 个文档，后续可在文档列表或分段页继续维护。
-            </p>
-          </div>
-          <div class="flex flex-wrap justify-center gap-2">
-            <el-button @click="goBack">返回文档列表</el-button>
-            <el-button :icon="DocumentChecked" type="primary" @click="viewParagraph">
-              查看分段
-            </el-button>
-          </div>
         </div>
-      </div>
-    </el-card>
+      </CardContent>
+    </Card>
 
-    <footer v-if="activeStep !== 2"
-      class="fixed inset-x-0 bottom-0 z-30 flex justify-end gap-2 border-t border-(--zeta-line-soft) bg-(--zeta-panel) px-6 py-4">
-      <el-button @click="goBack">取消</el-button>
-      <el-button v-if="activeStep === 1" @click="activeStep = 0">上一步</el-button>
-      <el-button v-if="activeStep === 0" :disabled="forms.length === 0" :loading="previewing" type="primary"
-        @click="activeStep = 1">
-        下一步
-      </el-button>
-      <el-button v-else :disabled="!canImport" :loading="saving" type="primary" @click="importDocument">
-        确认入库
-      </el-button>
+    <footer
+      v-if="activeStep !== 2"
+      class="fixed inset-x-0 bottom-0 z-30 flex justify-end gap-2 border-t border-border bg-card px-6 py-4"
+    >
+      <Button variant="outline" @click="goBack">取消</Button>
+      <Button v-if="activeStep === 1" variant="outline" @click="activeStep = 0">上一步</Button>
+      <Button
+        v-if="activeStep === 0"
+        :disabled="forms.length === 0 || previewing"
+        @click="activeStep = 1"
+      >
+        {{ previewing ? '解析中...' : '下一步' }}
+      </Button>
+      <Button v-else :disabled="!canImport || saving" @click="importDocument">
+        {{ saving ? '保存中...' : '确认入库' }}
+      </Button>
     </footer>
   </div>
 </template>
-
-<style scoped>
-.zeta-upload-dropzone :deep(.el-upload) {
-  display: flex;
-  flex: 1;
-  width: 100%;
-}
-
-.zeta-upload-dropzone :deep(.el-upload-dragger) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  width: 100%;
-}
-</style>
