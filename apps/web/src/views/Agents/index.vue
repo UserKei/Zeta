@@ -1,9 +1,39 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -12,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import {
   createAgent,
   deleteAgent,
@@ -23,7 +54,7 @@ import {
 } from '@/apis/agents'
 import { listModels, type AiModel } from '@/apis/models'
 import { listKnowledgeBases, type KnowledgeBase } from '@/apis/knowledge-bases'
-import { isCancelAction, showErrorMessage } from '@/utils/feedback'
+import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'AgentsView',
@@ -35,8 +66,11 @@ const models = ref<AiModel[]>([])
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const deleting = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
+const deleteOpen = ref(false)
+const deletingAgent = ref<Agent | null>(null)
 
 const form = reactive<AgentPayload>({
   name: '',
@@ -61,6 +95,34 @@ const activeKnowledgeBases = computed(() =>
 )
 
 const title = computed(() => (editingId.value ? '编辑 Agent' : '创建 Agent'))
+
+const descriptionValue = computed({
+  get: () => form.description ?? '',
+  set: (value: string) => {
+    form.description = value
+  },
+})
+
+const openingMessageValue = computed({
+  get: () => form.openingMessage ?? '',
+  set: (value: string) => {
+    form.openingMessage = value
+  },
+})
+
+const temperatureValue = computed<string | number>({
+  get: () => form.temperature ?? '',
+  set: (value) => {
+    form.temperature = value === '' ? null : Number(value)
+  },
+})
+
+const topPValue = computed<string | number>({
+  get: () => form.topP ?? '',
+  set: (value) => {
+    form.topP = value === '' ? null : Number(value)
+  },
+})
 
 const load = async () => {
   loading.value = true
@@ -143,22 +205,40 @@ const save = async () => {
   }
 }
 
-const remove = async (agent: Agent) => {
+const remove = (agent: Agent) => {
+  deletingAgent.value = agent
+  deleteOpen.value = true
+}
+
+const confirmRemove = async () => {
+  if (!deletingAgent.value) {
+    return
+  }
+
+  deleting.value = true
+
   try {
-    await ElMessageBox.confirm(`删除 Agent「${agent.name}」？`, '删除 Agent', {
-      cancelButtonText: '取消',
-      confirmButtonText: '删除',
-      type: 'warning',
-    })
-    await deleteAgent(agent.id)
-    agents.value = agents.value.filter((item) => item.id !== agent.id)
+    await deleteAgent(deletingAgent.value.id)
+    agents.value = agents.value.filter((item) => item.id !== deletingAgent.value?.id)
+    deleteOpen.value = false
+    deletingAgent.value = null
   } catch (cause) {
-    if (isCancelAction(cause)) {
-      return
+    showErrorMessage(cause, '删除 Agent 失败')
+  } finally {
+    deleting.value = false
+  }
+}
+
+const toggleKnowledgeBase = (knowledgeBaseId: string, checked: boolean | 'indeterminate') => {
+  if (checked === true) {
+    if (!form.knowledgeBaseIds.includes(knowledgeBaseId)) {
+      form.knowledgeBaseIds.push(knowledgeBaseId)
     }
 
-    showErrorMessage(cause, '删除 Agent 失败')
+    return
   }
+
+  form.knowledgeBaseIds = form.knowledgeBaseIds.filter((id) => id !== knowledgeBaseId)
 }
 
 const normalizeOptionalNumber = (value: unknown) => {
@@ -200,24 +280,26 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="grid gap-5">
-    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
+  <Card class="m-4 gap-4 overflow-hidden p-4 lg:m-6 lg:p-6">
+    <CardHeader
+      class="flex flex-col items-start justify-between gap-4 px-0 pt-0 lg:flex-row lg:items-center"
+    >
       <div>
-        <h1 class="m-0 text-[34px] font-bold text-foreground">专家 Agent</h1>
+        <CardTitle class="text-[34px] font-bold text-foreground">专家 Agent</CardTitle>
       </div>
       <Button @click="openCreate">创建 Agent</Button>
-    </header>
+    </CardHeader>
 
-    <section
+    <Alert
       v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
-      class="rounded-lg border border-(--zeta-warning-line) bg-(--zeta-warning-soft) px-4 py-3.5 text-(--zeta-warning)"
+      class="border-border bg-muted/40 text-muted-foreground"
     >
-      创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
-    </section>
+      <AlertDescription>
+        创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
+      </AlertDescription>
+    </Alert>
 
-    <section
-      class="min-w-0 overflow-hidden rounded-lg border border-border bg-card text-card-foreground"
-    >
+    <CardContent class="min-w-0 overflow-hidden rounded-lg border border-border p-0">
       <Table>
         <TableHeader>
           <TableRow class="bg-muted/60 hover:bg-muted/60">
@@ -305,92 +387,157 @@ onMounted(load)
           </template>
         </TableBody>
       </Table>
-    </section>
-    <el-dialog v-model="formOpen" :title="title" width="760px">
-      <el-form label-position="top" @submit.prevent="save">
-        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-          <el-form-item label="Agent 名称">
-            <el-input v-model="form.name" />
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="form.status">
-              <el-option label="草稿" value="DRAFT" />
-              <el-option label="已发布" value="PUBLISHED" />
-              <el-option label="停用" value="DISABLED" />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="描述">
-            <el-input v-model="form.description" placeholder="例如：IT 服务台、采购制度专家" />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="对话模型">
-            <el-select
-              v-model="form.modelId"
-              :disabled="chatModels.length === 0"
-              placeholder="请选择对话模型"
+    </CardContent>
+
+    <Dialog v-model:open="formOpen">
+      <DialogContent class="sm:max-w-190">
+        <DialogHeader>
+          <DialogTitle>{{ title }}</DialogTitle>
+          <DialogDescription>
+            设置 Agent 的对话模型、绑定知识库、开场白和系统提示词。
+          </DialogDescription>
+        </DialogHeader>
+
+        <form class="grid grid-cols-1 gap-3.5 md:grid-cols-2" @submit.prevent="save">
+          <div class="grid gap-2">
+            <Label for="agent-name">Agent 名称</Label>
+            <Input id="agent-name" v-model="form.name" />
+          </div>
+
+          <div class="grid gap-2">
+            <Label>状态</Label>
+            <Select v-model="form.status">
+              <SelectTrigger class="w-full">
+                <SelectValue placeholder="请选择状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="DRAFT">草稿</SelectItem>
+                  <SelectItem value="PUBLISHED">已发布</SelectItem>
+                  <SelectItem value="DISABLED">停用</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="agent-description">描述</Label>
+            <Textarea
+              id="agent-description"
+              v-model="descriptionValue"
+              placeholder="例如：IT 服务台、采购制度专家"
+              class="min-h-20"
+            />
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label>对话模型</Label>
+            <Select v-model="form.modelId" :disabled="chatModels.length === 0">
+              <SelectTrigger class="w-full">
+                <SelectValue placeholder="请选择对话模型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem v-for="model in chatModels" :key="model.id" :value="model.id">
+                    {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label>绑定知识库</Label>
+            <div
+              class="grid max-h-44 gap-2 overflow-auto rounded-lg border border-border bg-background p-3"
             >
-              <el-option
-                v-for="model in chatModels"
-                :key="model.id"
-                :label="`${model.name} - ${model.provider} / ${model.modelName}`"
-                :value="model.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="绑定知识库">
-            <el-select
-              v-model="form.knowledgeBaseIds"
-              collapse-tags
-              collapse-tags-tooltip
-              :disabled="activeKnowledgeBases.length === 0"
-              multiple
-              placeholder="请选择知识库"
-            >
-              <el-option
+              <label
                 v-for="knowledgeBase in activeKnowledgeBases"
                 :key="knowledgeBase.id"
-                :label="knowledgeBase.name"
-                :value="knowledgeBase.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="Temperature">
-            <el-input-number
-              v-model="form.temperature"
-              :max="2"
-              :min="0"
-              :step="0.1"
-              controls-position="right"
-            />
-          </el-form-item>
-          <el-form-item label="Top P">
-            <el-input-number
-              v-model="form.topP"
-              :max="1"
-              :min="0"
-              :step="0.1"
-              controls-position="right"
-            />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="开场白">
-            <el-input v-model="form.openingMessage" :rows="3" type="textarea" />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="Prompt">
-            <el-input v-model="form.systemPrompt" :rows="7" type="textarea" />
-          </el-form-item>
-        </div>
-      </el-form>
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+              >
+                <Checkbox
+                  :checked="form.knowledgeBaseIds.includes(knowledgeBase.id)"
+                  :disabled="activeKnowledgeBases.length === 0"
+                  @update:checked="toggleKnowledgeBase(knowledgeBase.id, $event)"
+                />
+                <span class="font-medium text-foreground">{{ knowledgeBase.name }}</span>
+              </label>
+              <p
+                v-if="activeKnowledgeBases.length === 0"
+                class="px-2 py-1.5 text-sm text-muted-foreground"
+              >
+                还没有可绑定的启用知识库
+              </p>
+            </div>
+          </div>
 
-      <template #footer>
-        <el-button @click="formOpen = false">取消</el-button>
-        <el-button
-          :disabled="chatModels.length === 0 || activeKnowledgeBases.length === 0"
-          :loading="saving"
-          type="primary"
-          @click="save"
-        >
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-  </div>
+          <div class="grid gap-2">
+            <Label for="agent-temperature">Temperature</Label>
+            <Input
+              id="agent-temperature"
+              v-model.number="temperatureValue"
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
+            />
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="agent-top-p">Top P</Label>
+            <Input
+              id="agent-top-p"
+              v-model.number="topPValue"
+              type="number"
+              min="0"
+              max="1"
+              step="0.1"
+            />
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="agent-opening-message">开场白</Label>
+            <Textarea id="agent-opening-message" v-model="openingMessageValue" class="min-h-24" />
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="agent-system-prompt">Prompt</Label>
+            <Textarea id="agent-system-prompt" v-model="form.systemPrompt" class="min-h-44" />
+          </div>
+        </form>
+
+        <DialogFooter>
+          <Button variant="outline" @click="formOpen = false">取消</Button>
+          <Button
+            :disabled="chatModels.length === 0 || activeKnowledgeBases.length === 0 || saving"
+            @click="save"
+          >
+            {{ saving ? '保存中' : '保存' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog v-model:open="deleteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除 Agent</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定删除 Agent「{{ deletingAgent?.name }}」？相关会话和绑定关系会同步清理。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="deleting"
+            @click.prevent="confirmRemove"
+          >
+            {{ deleting ? '删除中' : '删除' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </Card>
 </template>
