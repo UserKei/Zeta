@@ -14,11 +14,20 @@ export type KnowledgeBase = {
   description: string | null
   status: KnowledgeBaseStatus
   embeddingModelId: string | null
+  visionModelId: string | null
   chunkSize: number
   chunkOverlap: number
+  metadata: Record<string, unknown>
   createdAt: string
   updatedAt: string
   embeddingModel: {
+    id: string
+    name: string
+    provider: string
+    modelName: string
+    isEnabled: boolean
+  } | null
+  visionModel: {
     id: string
     name: string
     provider: string
@@ -32,6 +41,8 @@ export type KnowledgeBasePayload = {
   description?: string | null
   status: KnowledgeBaseStatus
   embeddingModelId: string
+  visionModelId?: string | null
+  imageUnderstandingPrompt?: string | null
   chunkSize: number
   chunkOverlap: number
 }

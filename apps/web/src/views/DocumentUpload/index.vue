@@ -78,13 +78,22 @@ const acceptedFileAccept = computed(() => acceptedExtensions.value.join(','))
 const uploadModeDescription = computed(() =>
   uploadMode.value === 'TABLE'
     ? '支持 .csv / .xlsx / .xls 表格文件，最多 10 个，每个最大 2MB。第一行作为表头，后续每行会转换为可检索分段。'
-    : '支持 .md / .markdown / .txt / .html / .htm / .pdf / .docx 文件，最多 10 个，每个最大 2MB。PDF 首版仅支持文本型文件，扫描件后续进入 OCR 处理。',
+    : '支持 .md / .markdown / .txt / .html / .htm / .pdf / .docx 文件，最多 10 个，每个最大 2MB。PDF 文本优先结构化解析；扫描件会保留页面图，配置视觉模型后生成图片理解分段。',
 )
 const uploadModeHint = computed(() =>
   uploadMode.value === 'TABLE'
     ? '最多 10 个，每个最大 2MB，第一行作为表头'
-    : '最多 10 个，每个最大 2MB，PDF 扫描件暂不支持',
+    : '最多 10 个，每个最大 2MB，支持图片资产保留',
 )
+const imageUnderstandingNotice = computed(() => {
+  if (uploadMode.value !== 'TEXT') {
+    return ''
+  }
+
+  return knowledgeBase.value?.visionModel
+    ? `已启用图片理解模型：${knowledgeBase.value.visionModel.name}。DOCX 图片和扫描 PDF 页面图会生成额外分段。`
+    : '当前知识库未配置图片理解模型：DOCX 图片和扫描 PDF 页面图会保留并可预览，但不会生成图片理解分段。'
+})
 
 const canImport = computed(
   () =>
@@ -355,6 +364,13 @@ onMounted(loadKnowledgeBase)
 
           <div class="rounded-md bg-(--zeta-blue-soft) px-4 py-3 text-sm leading-6 text-(--zeta-content)">
             {{ uploadModeDescription }}
+          </div>
+
+          <div
+            v-if="imageUnderstandingNotice"
+            class="rounded-md border border-(--zeta-line-soft) bg-(--zeta-panel) px-4 py-3 text-sm leading-6 text-(--zeta-muted)"
+          >
+            {{ imageUnderstandingNotice }}
           </div>
 
           <el-upload v-model:file-list="uploadFiles" :accept="acceptedFileAccept" action="#" drag multiple

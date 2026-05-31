@@ -2,6 +2,7 @@ export const AiModelType = {
   CHAT: 'CHAT',
   EMBEDDING: 'EMBEDDING',
   RERANKER: 'RERANKER',
+  IMAGE: 'IMAGE',
 } as const;
 
 export type AiModelType = (typeof AiModelType)[keyof typeof AiModelType];

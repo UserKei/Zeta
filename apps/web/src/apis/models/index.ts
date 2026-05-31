@@ -1,6 +1,6 @@
 import { responseData, serverApi, type Response } from '..'
 
-export type AiModelType = 'CHAT' | 'EMBEDDING' | 'RERANKER'
+export type AiModelType = 'CHAT' | 'EMBEDDING' | 'RERANKER' | 'IMAGE'
 
 export type AiModel = {
   id: string

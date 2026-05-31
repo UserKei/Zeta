@@ -23,3 +23,5 @@ export * from './text-splitter/text-splitter.service';
 export * from './text-splitter/text-splitter.types';
 export * from './file-storage/file-storage.module';
 export * from './file-storage/file-storage.service';
+export * from './image-understanding/image-understanding.module';
+export * from './image-understanding/image-understanding.service';

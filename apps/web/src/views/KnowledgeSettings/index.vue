@@ -31,12 +31,21 @@ const form = reactive<KnowledgeBasePayload>({
   description: '',
   status: 'ACTIVE',
   embeddingModelId: '',
+  visionModelId: null,
+  imageUnderstandingPrompt: '',
   chunkSize: 800,
   chunkOverlap: 100,
 })
 
+const defaultImageUnderstandingPrompt =
+  '请先提取图片中的可读文字；如果图片不是纯文字内容，请用中文总结图片表达的业务信息，突出对知识检索有价值的事实。'
+
 const embeddingModels = computed(() =>
   models.value.filter((model) => model.type === 'EMBEDDING' && model.isEnabled),
+)
+
+const visionModels = computed(() =>
+  models.value.filter((model) => model.type === 'IMAGE' && model.isEnabled),
 )
 
 const canSave = computed(
@@ -63,6 +72,11 @@ const load = async () => {
       description: knowledgeBaseDetail.description ?? '',
       status: knowledgeBaseDetail.status,
       embeddingModelId: knowledgeBaseDetail.embeddingModelId ?? '',
+      visionModelId: knowledgeBaseDetail.visionModelId ?? null,
+      imageUnderstandingPrompt:
+        typeof knowledgeBaseDetail.metadata.imageUnderstandingPrompt === 'string'
+          ? knowledgeBaseDetail.metadata.imageUnderstandingPrompt
+          : defaultImageUnderstandingPrompt,
       chunkSize: knowledgeBaseDetail.chunkSize,
       chunkOverlap: knowledgeBaseDetail.chunkOverlap,
     })
@@ -86,6 +100,8 @@ const save = async () => {
       description: String(form.description ?? '').trim() || null,
       status: form.status,
       embeddingModelId: form.embeddingModelId,
+      visionModelId: form.visionModelId || null,
+      imageUnderstandingPrompt: String(form.imageUnderstandingPrompt ?? '').trim() || null,
       chunkSize: form.chunkSize,
       chunkOverlap: form.chunkOverlap,
     })
@@ -213,6 +229,42 @@ onMounted(load)
                 />
               </el-form-item>
             </div>
+          </el-form>
+        </section>
+
+        <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
+          <h2 class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)">
+            图片理解
+          </h2>
+          <p class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)">
+            未配置视觉模型时，DOCX 图片和扫描 PDF 页面图会保留并可预览，但不会生成图片理解分段。
+          </p>
+          <el-form class="mt-4" label-position="top" @submit.prevent="save">
+            <el-form-item label="图片理解模型">
+              <el-select
+                v-model="form.visionModelId"
+                clearable
+                filterable
+                placeholder="可选：请选择启用的视觉模型"
+              >
+                <el-option
+                  v-for="model in visionModels"
+                  :key="model.id"
+                  :label="modelLabel(model)"
+                  :value="model.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="图片理解提示词">
+              <el-input
+                v-model="form.imageUnderstandingPrompt"
+                :rows="5"
+                maxlength="1000"
+                placeholder="用于指导视觉模型提取图片中的知识信息"
+                show-word-limit
+                type="textarea"
+              />
+            </el-form-item>
           </el-form>
         </section>
 

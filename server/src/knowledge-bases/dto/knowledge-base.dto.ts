@@ -40,6 +40,16 @@ export class KnowledgeBaseDto implements KnowledgeBasePayload {
   @MinLength(1)
   embeddingModelId!: string;
 
+  @ApiPropertyOptional({ description: '图片理解模型 ID', nullable: true })
+  @IsOptional()
+  @IsString()
+  visionModelId?: string | null;
+
+  @ApiPropertyOptional({ description: '图片理解提示词', nullable: true })
+  @IsOptional()
+  @IsString()
+  imageUnderstandingPrompt?: string | null;
+
   @ApiPropertyOptional({ example: 800, description: '默认分块长度' })
   @IsOptional()
   @Type(() => Number)
@@ -80,6 +90,16 @@ export class KnowledgeBaseUpdateDto implements KnowledgeBaseUpdatePayload {
   @IsString()
   @MinLength(1)
   embeddingModelId?: string;
+
+  @ApiPropertyOptional({ description: '图片理解模型 ID', nullable: true })
+  @IsOptional()
+  @IsString()
+  visionModelId?: string | null;
+
+  @ApiPropertyOptional({ description: '图片理解提示词', nullable: true })
+  @IsOptional()
+  @IsString()
+  imageUnderstandingPrompt?: string | null;
 
   @ApiPropertyOptional({ example: 800 })
   @IsOptional()

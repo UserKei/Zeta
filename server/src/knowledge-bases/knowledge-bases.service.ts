@@ -22,6 +22,8 @@ type KnowledgeBaseInput = {
   description?: string | null;
   status?: KnowledgeBaseStatus;
   embeddingModelId?: string;
+  visionModelId?: string | null;
+  imageUnderstandingPrompt?: string | null;
   chunkSize?: number;
   chunkOverlap?: number;
 };
@@ -179,8 +181,8 @@ export class KnowledgeBasesService {
   }
 
   async update(id: string, input: KnowledgeBaseInput) {
-    await this.requireKnowledgeBase(id);
-    const data = await this.updateData(input);
+    const knowledgeBase = await this.requireKnowledgeBase(id);
+    const data = await this.updateData(input, knowledgeBase.metadata);
 
     if (Object.keys(data).length === 0) {
       throw new BadRequestException(
@@ -306,13 +308,16 @@ export class KnowledgeBasesService {
       description: input.description?.trim() || null,
       status: input.status ?? KnowledgeBaseStatus.ACTIVE,
       embeddingModel: { connect: { id: embeddingModelId } },
+      ...(await this.createVisionModelData(input.visionModelId)),
       chunkSize,
       chunkOverlap,
+      metadata: this.createMetadata(input.imageUnderstandingPrompt),
     };
   }
 
   private async updateData(
     input: KnowledgeBaseInput,
+    currentMetadata: Prisma.JsonValue,
   ): Promise<Prisma.KnowledgeBaseUpdateInput> {
     const data: Prisma.KnowledgeBaseUpdateInput = {};
     const chunkSize = input.chunkSize;
@@ -351,6 +356,17 @@ export class KnowledgeBasesService {
       data.embeddingModel = { connect: { id: embeddingModelId } };
     }
 
+    if (input.visionModelId !== undefined) {
+      data.visionModel = await this.toVisionModelUpdate(input.visionModelId);
+    }
+
+    if (input.imageUnderstandingPrompt !== undefined) {
+      data.metadata = this.updateMetadata(
+        currentMetadata,
+        input.imageUnderstandingPrompt,
+      );
+    }
+
     if (chunkSize !== undefined || chunkOverlap !== undefined) {
       if (chunkSize === undefined || chunkOverlap === undefined) {
         throw new BadRequestException(
@@ -364,6 +380,69 @@ export class KnowledgeBasesService {
     }
 
     return data;
+  }
+
+  private createMetadata(imageUnderstandingPrompt: string | null | undefined) {
+    const prompt = imageUnderstandingPrompt?.trim();
+
+    return prompt ? { imageUnderstandingPrompt: prompt } : {};
+  }
+
+  private updateMetadata(
+    currentMetadata: Prisma.JsonValue,
+    imageUnderstandingPrompt: string | null | undefined,
+  ): Prisma.InputJsonValue {
+    const metadata =
+      currentMetadata &&
+      typeof currentMetadata === 'object' &&
+      !Array.isArray(currentMetadata)
+        ? { ...(currentMetadata as Record<string, Prisma.JsonValue>) }
+        : {};
+    const prompt = imageUnderstandingPrompt?.trim();
+
+    if (prompt) {
+      metadata.imageUnderstandingPrompt = prompt;
+    } else {
+      delete metadata.imageUnderstandingPrompt;
+    }
+
+    return metadata;
+  }
+
+  private async createVisionModelData(
+    visionModelId: string | null | undefined,
+  ): Promise<Pick<Prisma.KnowledgeBaseCreateInput, 'visionModel'>> {
+    if (!visionModelId) {
+      return {};
+    }
+
+    const normalizedVisionModelId = visionModelId.trim();
+
+    if (!normalizedVisionModelId) {
+      return {};
+    }
+
+    await this.requireVisionModel(normalizedVisionModelId);
+
+    return { visionModel: { connect: { id: normalizedVisionModelId } } };
+  }
+
+  private async toVisionModelUpdate(
+    visionModelId: string | null,
+  ): Promise<Prisma.KnowledgeBaseUpdateInput['visionModel']> {
+    if (visionModelId === null) {
+      return { disconnect: true };
+    }
+
+    const normalizedVisionModelId = visionModelId.trim();
+
+    if (!normalizedVisionModelId) {
+      return { disconnect: true };
+    }
+
+    await this.requireVisionModel(normalizedVisionModelId);
+
+    return { connect: { id: normalizedVisionModelId } };
   }
 
   private validateChunkConfig(chunkSize: number, chunkOverlap: number) {
@@ -418,12 +497,14 @@ export class KnowledgeBasesService {
   private async requireKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, metadata: true },
     });
 
     if (!knowledgeBase) {
       throw new NotFoundException('knowledge base does not exist');
     }
+
+    return knowledgeBase;
   }
 
   private async requireEmbeddingModel(id: string) {
@@ -439,6 +520,23 @@ export class KnowledgeBasesService {
     if (!model) {
       throw new BadRequestException(
         'embeddingModelId must point to an enabled embedding model',
+      );
+    }
+  }
+
+  private async requireVisionModel(id: string) {
+    const model = await this.prisma.aiModel.findFirst({
+      where: {
+        id,
+        type: AiModelType.IMAGE,
+        isEnabled: true,
+      },
+      select: { id: true },
+    });
+
+    if (!model) {
+      throw new BadRequestException(
+        'visionModelId must point to an enabled vision model',
       );
     }
   }

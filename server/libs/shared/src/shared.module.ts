@@ -11,6 +11,7 @@ import { ParserModule } from './parser/parser.module';
 import { TextSplitterModule } from './text-splitter/text-splitter.module';
 import { FileStorageModule } from './file-storage/file-storage.module';
 import { getZetaEnvFilePath } from './env/load-env';
+import { ImageUnderstandingModule } from './image-understanding/image-understanding.module';
 
 const envFilePath = getZetaEnvFilePath();
 
@@ -28,6 +29,7 @@ const envFilePath = getZetaEnvFilePath();
     ParserModule,
     TextSplitterModule,
     FileStorageModule,
+    ImageUnderstandingModule,
   ],
   imports: [
     PrismaModule,
@@ -37,6 +39,7 @@ const envFilePath = getZetaEnvFilePath();
     ParserModule,
     TextSplitterModule,
     FileStorageModule,
+    ImageUnderstandingModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: envFilePath ? [envFilePath] : [],

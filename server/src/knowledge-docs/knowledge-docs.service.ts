@@ -9,6 +9,7 @@ import {
   EmbeddingService,
   FileParserService,
   FileStorageService,
+  ImageUnderstandingService,
   PrismaService,
   RetrievalService,
   type EmbeddingInput,
@@ -68,6 +69,12 @@ type DocumentAssetMetadata = {
   reference: string;
 };
 
+type ImageUnderstandingWarning = {
+  fileId: string;
+  fileName: string;
+  message: string;
+};
+
 export type UploadedDocumentFile = {
   originalname: string;
   mimetype?: string;
@@ -100,6 +107,9 @@ const LATIN1_MOJIBAKE_PATTERN = /[\u0080-\u009f]/;
 export const DOCUMENT_FILE_SIZE_LIMIT = 2 * 1024 * 1024;
 export const DOCUMENT_FILE_COUNT_LIMIT = 10;
 export const MARKDOWN_FILE_SIZE_LIMIT = DOCUMENT_FILE_SIZE_LIMIT;
+const IMAGE_UNDERSTANDING_ASSET_LIMIT = 10;
+const DEFAULT_IMAGE_UNDERSTANDING_PROMPT =
+  '请先提取图片中的可读文字；如果图片不是纯文字内容，请用中文总结图片表达的业务信息，突出对知识检索有价值的事实。';
 
 @Injectable()
 export class KnowledgeDocsService {
@@ -109,6 +119,7 @@ export class KnowledgeDocsService {
     private readonly fileStorageService: FileStorageService,
     private readonly fileParser: FileParserService,
     private readonly retrievalService: RetrievalService,
+    private readonly imageUnderstandingService: ImageUnderstandingService,
   ) {}
 
   async listByKnowledgeBase(knowledgeBaseId: string) {
@@ -403,9 +414,25 @@ export class KnowledgeDocsService {
         sourceFile.id,
         parsedFile,
       );
+      const imageUnderstandingWarnings: ImageUnderstandingWarning[] = [];
 
       if (assets.length > 0) {
         chunks = this.rewriteAssetReferences(chunks, assets);
+      }
+
+      if (assets.length > 0) {
+        const imageUnderstandingResult =
+          await this.createImageUnderstandingChunks(
+            knowledgeBase,
+            assets,
+            chunks,
+          );
+
+        chunks = [...chunks, ...imageUnderstandingResult.chunks];
+        imageUnderstandingWarnings.push(...imageUnderstandingResult.warnings);
+      }
+
+      if (assets.length > 0 || imageUnderstandingWarnings.length > 0) {
         this.assertDocumentChunks(chunks);
 
         await this.prisma.document.update({
@@ -415,7 +442,10 @@ export class KnowledgeDocsService {
             chunkCount: chunks.length,
             metadata: {
               ...documentMetadata,
-              assets,
+              ...(assets.length > 0 ? { assets } : {}),
+              ...(imageUnderstandingWarnings.length > 0
+                ? { imageUnderstandingWarnings }
+                : {}),
             },
           },
         });
@@ -796,6 +826,137 @@ export class KnowledgeDocsService {
     }
 
     return savedAssets;
+  }
+
+  private async createImageUnderstandingChunks(
+    knowledgeBase: IndexableKnowledgeBaseWithEmbedding,
+    assets: DocumentAssetMetadata[],
+    sourceChunks: ChunkDraft[],
+  ): Promise<{
+    chunks: ChunkDraft[];
+    warnings: ImageUnderstandingWarning[];
+  }> {
+    const visionModel = this.getUsableVisionModel(knowledgeBase);
+
+    if (!visionModel) {
+      return { chunks: [], warnings: [] };
+    }
+
+    const remainingChunkSlots = MAX_CHUNK_COUNT - sourceChunks.length;
+
+    if (remainingChunkSlots <= 0) {
+      return { chunks: [], warnings: [] };
+    }
+
+    const prompt = this.getImageUnderstandingPrompt(knowledgeBase.metadata);
+    const imageAssets = assets
+      .filter((asset) => this.isImageUnderstandingAsset(asset))
+      .slice(0, Math.min(IMAGE_UNDERSTANDING_ASSET_LIMIT, remainingChunkSlots));
+    const chunks: ChunkDraft[] = [];
+    const warnings: ImageUnderstandingWarning[] = [];
+
+    for (const asset of imageAssets) {
+      try {
+        const file = await this.fileStorageService.readBuffer(asset.fileId);
+        const content = await this.imageUnderstandingService.understandImage(
+          visionModel,
+          {
+            dataUrl: this.toDataUrl(
+              file.mimeType || asset.mimeType || 'application/octet-stream',
+              file.buffer,
+            ),
+            prompt,
+          },
+        );
+        const position = sourceChunks.length + chunks.length;
+
+        chunks.push({
+          id: randomUUID(),
+          title: this.getImageUnderstandingTitle(asset, sourceChunks),
+          content,
+          status: ChunkStatus.ACTIVE,
+          position,
+          charCount: content.length,
+          metadata: {
+            contentKind: 'IMAGE_UNDERSTANDING',
+            assetFileId: asset.fileId,
+            assetSource: asset.source,
+          },
+        });
+      } catch (cause) {
+        warnings.push({
+          fileId: asset.fileId,
+          fileName: asset.fileName,
+          message:
+            cause instanceof Error
+              ? cause.message
+              : 'image understanding failed',
+        });
+      }
+    }
+
+    return { chunks, warnings };
+  }
+
+  private getUsableVisionModel(knowledgeBase: IndexableKnowledgeBase) {
+    const visionModel = knowledgeBase.visionModel;
+
+    if (
+      !visionModel ||
+      visionModel.type !== AiModelType.IMAGE ||
+      !visionModel.isEnabled
+    ) {
+      return null;
+    }
+
+    return visionModel;
+  }
+
+  private getImageUnderstandingPrompt(metadata: Prisma.JsonValue) {
+    const metadataObject = this.toMetadataObject(metadata);
+    const prompt = metadataObject.imageUnderstandingPrompt;
+
+    return typeof prompt === 'string' && prompt.trim()
+      ? prompt.trim()
+      : DEFAULT_IMAGE_UNDERSTANDING_PROMPT;
+  }
+
+  private isImageUnderstandingAsset(asset: DocumentAssetMetadata) {
+    return (
+      asset.source === 'DOCX_IMAGE' || asset.source === 'PDF_PAGE_SCREENSHOT'
+    );
+  }
+
+  private getImageUnderstandingTitle(
+    asset: DocumentAssetMetadata,
+    chunks: ChunkDraft[],
+  ) {
+    if (asset.source === 'PDF_PAGE_SCREENSHOT') {
+      const pageNumber = this.findAssetPageNumber(asset.fileId, chunks);
+
+      if (pageNumber !== null) {
+        return `图片理解 / 第 ${pageNumber} 页`;
+      }
+    }
+
+    return `图片理解 / ${asset.fileName}`;
+  }
+
+  private findAssetPageNumber(fileId: string, chunks: ChunkDraft[]) {
+    for (const chunk of chunks) {
+      const metadata = this.toMetadataObject(
+        chunk.metadata as Prisma.JsonValue,
+      );
+
+      if (
+        metadata.assetFileId === fileId &&
+        typeof metadata.pageNumber === 'number'
+      ) {
+        return metadata.pageNumber;
+      }
+    }
+
+    return null;
   }
 
   private rewriteAssetReferences(
@@ -1588,7 +1749,19 @@ export class KnowledgeDocsService {
   private readonly indexableKnowledgeBaseSelect = {
     id: true,
     status: true,
+    metadata: true,
     embeddingModel: {
+      select: {
+        id: true,
+        type: true,
+        isEnabled: true,
+        modelName: true,
+        baseUrl: true,
+        apiKey: true,
+        configJson: true,
+      },
+    },
+    visionModel: {
       select: {
         id: true,
         type: true,
@@ -1605,8 +1778,15 @@ export class KnowledgeDocsService {
 type IndexableKnowledgeBase = {
   id: string;
   status: KnowledgeBaseStatus;
+  metadata: Prisma.JsonValue;
   embeddingModel:
     | (EmbeddingModelConfig & {
+        type: AiModelType;
+        isEnabled: boolean;
+      })
+    | null;
+  visionModel:
+    | (ImageUnderstandingModelConfig & {
         type: AiModelType;
         isEnabled: boolean;
       })
@@ -1627,3 +1807,5 @@ type EmbeddingModelConfig = {
   apiKey: string | null;
   configJson: Prisma.JsonValue;
 };
+
+type ImageUnderstandingModelConfig = EmbeddingModelConfig;

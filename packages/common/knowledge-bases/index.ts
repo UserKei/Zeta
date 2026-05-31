@@ -11,6 +11,8 @@ export type KnowledgeBasePayload = {
   description?: string | null;
   status?: KnowledgeBaseStatus;
   embeddingModelId: string;
+  visionModelId?: string | null;
+  imageUnderstandingPrompt?: string | null;
   chunkSize?: number;
   chunkOverlap?: number;
 };

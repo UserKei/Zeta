@@ -27,6 +27,7 @@ const modelTypes: { value: AiModelType; label: string }[] = [
   { value: 'CHAT', label: '对话模型' },
   { value: 'EMBEDDING', label: 'Embedding' },
   { value: 'RERANKER', label: 'Reranker' },
+  { value: 'IMAGE', label: '视觉模型' },
 ]
 
 const form = reactive<ModelPayload>({

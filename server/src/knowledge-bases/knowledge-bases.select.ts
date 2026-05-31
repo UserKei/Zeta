@@ -6,11 +6,22 @@ export const knowledgeBaseSelect = {
   description: true,
   status: true,
   embeddingModelId: true,
+  visionModelId: true,
   chunkSize: true,
   chunkOverlap: true,
+  metadata: true,
   createdAt: true,
   updatedAt: true,
   embeddingModel: {
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      modelName: true,
+      isEnabled: true,
+    },
+  },
+  visionModel: {
     select: {
       id: true,
       name: true,
