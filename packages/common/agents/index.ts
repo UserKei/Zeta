@@ -1,7 +1,7 @@
 export const AgentStatus = {
-  DRAFT: 'DRAFT',
-  PUBLISHED: 'PUBLISHED',
-  DISABLED: 'DISABLED',
+  DRAFT: "DRAFT",
+  PUBLISHED: "PUBLISHED",
+  DISABLED: "DISABLED",
 } as const;
 
 export type AgentStatus = (typeof AgentStatus)[keyof typeof AgentStatus];
@@ -17,7 +17,7 @@ export type AgentModelSummary = {
 export type AgentKnowledgeBaseSummary = {
   id: string;
   name: string;
-  status: 'ACTIVE' | 'DISABLED';
+  status: "ACTIVE" | "DISABLED";
 };
 
 export type Agent = {
@@ -38,12 +38,12 @@ export type Agent = {
 
 export type AgentPayload = {
   name: string;
-  description?: string;
-  modelId: string;
-  knowledgeBaseIds: string[];
-  systemPrompt: string;
-  openingMessage?: string;
-  status: AgentStatus;
+  description?: string | null;
+  modelId?: string | null;
+  knowledgeBaseIds?: string[];
+  systemPrompt?: string;
+  openingMessage?: string | null;
+  status?: AgentStatus;
   temperature?: number | null;
   topP?: number | null;
 };

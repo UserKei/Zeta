@@ -1,6 +1,6 @@
 import Layout from '@/layout/index.vue'
 import WorkspaceLayout from '@/layout/workspace/index.vue'
-import { MessageCircleIcon } from '@lucide/vue'
+import { MessageCircleIcon, SettingsIcon } from '@lucide/vue'
 import type { RouteLocation } from 'vue-router'
 
 export default [
@@ -24,7 +24,7 @@ export default [
         path: ':agentId',
         component: WorkspaceLayout,
         redirect: (to: RouteLocation) => ({
-          name: 'agent-chat-logs',
+          name: 'agent-settings',
           params: to.params,
         }),
         meta: {
@@ -32,6 +32,20 @@ export default [
           activeMenu: 'agents',
         },
         children: [
+          {
+            path: 'settings',
+            name: 'agent-settings',
+            meta: {
+              requiresAuth: true,
+              activeMenu: 'agents',
+              workspaceMenu: true,
+              title: '设置',
+              icon: SettingsIcon,
+              breadcrumb: [{ label: '专家 Agent', to: { name: 'agents' } }, { label: '设置' }],
+              breadcrumbBack: { name: 'agents' },
+            },
+            component: () => import('@/views/AgentSettings/index.vue'),
+          },
           {
             path: 'chat-logs',
             name: 'agent-chat-logs',

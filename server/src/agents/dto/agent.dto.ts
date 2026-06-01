@@ -1,5 +1,4 @@
 import {
-  ArrayMinSize,
   IsArray,
   IsEnum,
   IsNumber,
@@ -24,30 +23,33 @@ export class AgentDto implements AgentPayload {
   @IsString()
   description?: string;
 
-  @ApiProperty({ description: '对话模型 ID' })
+  @ApiPropertyOptional({ description: '对话模型 ID', nullable: true })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  modelId!: string;
+  modelId?: string | null;
 
-  @ApiProperty({ type: [String], description: '绑定知识库 ID 列表' })
+  @ApiPropertyOptional({ type: [String], description: '绑定知识库 ID 列表' })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @IsString({ each: true })
-  knowledgeBaseIds!: string[];
+  knowledgeBaseIds?: string[];
 
-  @ApiProperty({ example: '你是企业内部知识库问答专家。' })
+  @ApiPropertyOptional({ example: '你是企业内部知识库问答专家。' })
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  systemPrompt!: string;
+  systemPrompt?: string;
 
   @ApiPropertyOptional({ example: '你好，我可以回答 IT 服务相关问题。' })
   @IsOptional()
   @IsString()
   openingMessage?: string;
 
-  @ApiProperty({ enum: AgentStatus, example: AgentStatus.PUBLISHED })
+  @ApiPropertyOptional({ enum: AgentStatus, example: AgentStatus.PUBLISHED })
+  @IsOptional()
   @IsEnum(AgentStatus)
-  status!: AgentStatus;
+  status?: AgentStatus;
 
   @ApiPropertyOptional({ example: 0.7, nullable: true })
   @IsOptional()
@@ -80,12 +82,11 @@ export class AgentUpdateDto implements Partial<AgentPayload> {
   @IsOptional()
   @IsString()
   @MinLength(1)
-  modelId?: string;
+  modelId?: string | null;
 
   @ApiPropertyOptional({ type: [String], description: '绑定知识库 ID 列表' })
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @IsString({ each: true })
   knowledgeBaseIds?: string[];
 

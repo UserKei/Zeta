@@ -15,7 +15,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -27,14 +26,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Table,
   TableBody,
   TableCell,
@@ -43,17 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  createAgent,
-  deleteAgent,
-  listAgents,
-  updateAgent,
-  type Agent,
-  type AgentPayload,
-  type AgentStatus,
-} from '@/apis/agents'
-import { listModels, type AiModel } from '@/apis/models'
-import { listKnowledgeBases, type KnowledgeBase } from '@/apis/knowledge-bases'
+import { createAgent, deleteAgent, listAgents, type Agent, type AgentStatus } from '@/apis/agents'
 import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
@@ -62,80 +43,25 @@ defineOptions({
 
 const router = useRouter()
 const agents = ref<Agent[]>([])
-const models = ref<AiModel[]>([])
-const knowledgeBases = ref<KnowledgeBase[]>([])
 const loading = ref(false)
-const saving = ref(false)
+const creating = ref(false)
 const deleting = ref(false)
-const editingId = ref<string | null>(null)
-const formOpen = ref(false)
+const createOpen = ref(false)
 const deleteOpen = ref(false)
 const deletingAgent = ref<Agent | null>(null)
 
-const form = reactive<AgentPayload>({
+const createForm = reactive({
   name: '',
   description: '',
-  modelId: '',
-  knowledgeBaseIds: [],
-  systemPrompt: '你是企业知识库专家，请基于知识库上下文回答问题，并在回答末尾列出引用。',
-  openingMessage: '你好，我可以基于已绑定知识库回答问题。',
-  status: 'PUBLISHED',
-  temperature: 0.2,
-  topP: 0.8,
 })
 
-const chatModels = computed(() =>
-  models.value.filter((model) => model.type === 'CHAT' && model.isEnabled),
-)
-
-const activeKnowledgeBases = computed(() =>
-  knowledgeBases.value.filter(
-    (knowledgeBase) => knowledgeBase.status === 'ACTIVE' && knowledgeBase.embeddingModel,
-  ),
-)
-
-const title = computed(() => (editingId.value ? '编辑 Agent' : '创建 Agent'))
-
-const descriptionValue = computed({
-  get: () => form.description ?? '',
-  set: (value: string) => {
-    form.description = value
-  },
-})
-
-const openingMessageValue = computed({
-  get: () => form.openingMessage ?? '',
-  set: (value: string) => {
-    form.openingMessage = value
-  },
-})
-
-const temperatureValue = computed<string | number>({
-  get: () => form.temperature ?? '',
-  set: (value) => {
-    form.temperature = value === '' ? null : Number(value)
-  },
-})
-
-const topPValue = computed<string | number>({
-  get: () => form.topP ?? '',
-  set: (value) => {
-    form.topP = value === '' ? null : Number(value)
-  },
-})
+const canCreate = computed(() => createForm.name.trim().length > 0)
 
 const load = async () => {
   loading.value = true
 
   try {
-    const [agentList, modelList, knowledgeBaseList] = await Promise.all([
-      listAgents(),
-      listModels(),
-      listKnowledgeBases(),
-    ])
-    agents.value = agentList
-    models.value = modelList
-    knowledgeBases.value = knowledgeBaseList
+    agents.value = await listAgents()
   } catch (cause) {
     showErrorMessage(cause, '加载 Agent 失败')
   } finally {
@@ -144,65 +70,37 @@ const load = async () => {
 }
 
 const openCreate = () => {
-  editingId.value = null
-  Object.assign(form, {
+  Object.assign(createForm, {
     name: '',
     description: '',
-    modelId: chatModels.value[0]?.id ?? '',
-    knowledgeBaseIds: activeKnowledgeBases.value[0] ? [activeKnowledgeBases.value[0].id] : [],
-    systemPrompt: '你是企业知识库专家，请基于知识库上下文回答问题，并在回答末尾列出引用。',
-    openingMessage: '你好，我可以基于已绑定知识库回答问题。',
-    status: 'PUBLISHED' as AgentStatus,
-    temperature: 0.2,
-    topP: 0.8,
   })
-  formOpen.value = true
+  createOpen.value = true
 }
 
-const openEdit = (agent: Agent) => {
-  editingId.value = agent.id
-  Object.assign(form, {
-    name: agent.name,
-    description: agent.description ?? '',
-    modelId: agent.modelId ?? '',
-    knowledgeBaseIds: agent.knowledgeBases.map((knowledgeBase) => knowledgeBase.id),
-    systemPrompt: agent.systemPrompt,
-    openingMessage: agent.openingMessage ?? '',
-    status: agent.status,
-    temperature: agent.temperature,
-    topP: agent.topP,
-  })
-  formOpen.value = true
-}
+const create = async () => {
+  if (!canCreate.value) {
+    return
+  }
 
-const save = async () => {
-  saving.value = true
+  creating.value = true
 
   try {
-    const payload = {
-      ...form,
-      description: form.description || undefined,
-      openingMessage: form.openingMessage || undefined,
-      temperature: normalizeOptionalNumber(form.temperature),
-      topP: normalizeOptionalNumber(form.topP),
-    }
-    const saved = editingId.value
-      ? await updateAgent(editingId.value, payload)
-      : await createAgent(payload)
-    const index = agents.value.findIndex((agent) => agent.id === saved.id)
-
-    if (index >= 0) {
-      agents.value[index] = saved
-    } else {
-      agents.value.unshift(saved)
-    }
-
-    formOpen.value = false
+    const saved = await createAgent({
+      name: createForm.name.trim(),
+      description: createForm.description.trim() || null,
+    })
+    agents.value.unshift(saved)
+    createOpen.value = false
+    await router.push({ name: 'agent-settings', params: { agentId: saved.id } })
   } catch (cause) {
-    showErrorMessage(cause, '保存 Agent 失败')
+    showErrorMessage(cause, '创建 Agent 失败')
   } finally {
-    saving.value = false
+    creating.value = false
   }
+}
+
+const openSettings = (agent: Agent) => {
+  router.push({ name: 'agent-settings', params: { agentId: agent.id } })
 }
 
 const remove = (agent: Agent) => {
@@ -229,25 +127,7 @@ const confirmRemove = async () => {
   }
 }
 
-const toggleKnowledgeBase = (knowledgeBaseId: string, checked: boolean | 'indeterminate') => {
-  if (checked === true) {
-    if (!form.knowledgeBaseIds.includes(knowledgeBaseId)) {
-      form.knowledgeBaseIds.push(knowledgeBaseId)
-    }
-
-    return
-  }
-
-  form.knowledgeBaseIds = form.knowledgeBaseIds.filter((id) => id !== knowledgeBaseId)
-}
-
-const normalizeOptionalNumber = (value: unknown) => {
-  if (value === '' || value === null || value === undefined) {
-    return null
-  }
-
-  return Number(value)
-}
+const canChat = (agent: Agent) => Boolean(agent.model) && agent.knowledgeBases.length > 0
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -290,12 +170,9 @@ onMounted(load)
       <Button @click="openCreate">创建 Agent</Button>
     </CardHeader>
 
-    <Alert
-      v-if="chatModels.length === 0 || activeKnowledgeBases.length === 0"
-      class="border-border bg-muted/40 text-muted-foreground"
-    >
+    <Alert class="border-border bg-muted/40 text-muted-foreground">
       <AlertDescription>
-        创建 Agent 需要至少一个启用的对话模型和一个启用的知识库。
+        Agent 可以先创建为草稿，随后进入设置页配置模型、知识库和回答策略。
       </AlertDescription>
     </Alert>
 
@@ -340,8 +217,8 @@ onMounted(load)
                   </small>
                 </div>
                 <div v-else class="grid gap-1">
-                  <Badge variant="outline"> 未配置对话模型 </Badge>
-                  <small class="text-muted-foreground">请编辑 Agent 重新选择模型</small>
+                  <Badge variant="outline">未配置对话模型</Badge>
+                  <small class="text-muted-foreground">进入设置页选择模型</small>
                 </div>
               </TableCell>
               <TableCell>
@@ -367,7 +244,7 @@ onMounted(load)
                   <Button
                     variant="outline"
                     size="sm"
-                    :disabled="!agent.model"
+                    :disabled="!canChat(agent)"
                     @click="router.push({ name: 'agent-chat', params: { agentId: agent.id } })"
                   >
                     聊天
@@ -379,7 +256,7 @@ onMounted(load)
                   >
                     日志
                   </Button>
-                  <Button variant="outline" size="sm" @click="openEdit(agent)">编辑</Button>
+                  <Button variant="outline" size="sm" @click="openSettings(agent)">编辑</Button>
                   <Button variant="destructive" size="sm" @click="remove(agent)">删除</Button>
                 </div>
               </TableCell>
@@ -389,131 +266,42 @@ onMounted(load)
       </Table>
     </CardContent>
 
-    <Dialog v-model:open="formOpen">
-      <DialogContent class="sm:max-w-190">
+    <Dialog v-model:open="createOpen">
+      <DialogContent class="sm:max-w-160">
         <DialogHeader>
-          <DialogTitle>{{ title }}</DialogTitle>
+          <DialogTitle>创建 Agent</DialogTitle>
           <DialogDescription>
-            设置 Agent 的对话模型、绑定知识库、开场白和系统提示词。
+            先填写名称和描述，创建后进入设置页完善模型、知识库和 Prompt。
           </DialogDescription>
         </DialogHeader>
 
-        <form class="grid grid-cols-1 gap-3.5 md:grid-cols-2" @submit.prevent="save">
+        <form class="grid gap-4" @submit.prevent="create">
           <div class="grid gap-2">
-            <Label for="agent-name">Agent 名称</Label>
-            <Input id="agent-name" v-model="form.name" />
+            <Label for="agent-name">名称</Label>
+            <Input
+              id="agent-name"
+              v-model="createForm.name"
+              maxlength="64"
+              placeholder="请输入 Agent 名称"
+            />
           </div>
 
           <div class="grid gap-2">
-            <Label>状态</Label>
-            <Select v-model="form.status">
-              <SelectTrigger class="w-full">
-                <SelectValue placeholder="请选择状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="DRAFT">草稿</SelectItem>
-                  <SelectItem value="PUBLISHED">已发布</SelectItem>
-                  <SelectItem value="DISABLED">停用</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="grid gap-2 md:col-span-2">
             <Label for="agent-description">描述</Label>
             <Textarea
               id="agent-description"
-              v-model="descriptionValue"
-              placeholder="例如：IT 服务台、采购制度专家"
-              class="min-h-20"
+              v-model="createForm.description"
+              maxlength="256"
+              placeholder="描述该 Agent 的应用场景和用途"
+              class="min-h-28"
             />
-          </div>
-
-          <div class="grid gap-2 md:col-span-2">
-            <Label>对话模型</Label>
-            <Select v-model="form.modelId" :disabled="chatModels.length === 0">
-              <SelectTrigger class="w-full">
-                <SelectValue placeholder="请选择对话模型" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem v-for="model in chatModels" :key="model.id" :value="model.id">
-                    {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="grid gap-2 md:col-span-2">
-            <Label>绑定知识库</Label>
-            <div
-              class="grid max-h-44 gap-2 overflow-auto rounded-lg border border-border bg-background p-3"
-            >
-              <label
-                v-for="knowledgeBase in activeKnowledgeBases"
-                :key="knowledgeBase.id"
-                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-              >
-                <Checkbox
-                  :checked="form.knowledgeBaseIds.includes(knowledgeBase.id)"
-                  :disabled="activeKnowledgeBases.length === 0"
-                  @update:checked="toggleKnowledgeBase(knowledgeBase.id, $event)"
-                />
-                <span class="font-medium text-foreground">{{ knowledgeBase.name }}</span>
-              </label>
-              <p
-                v-if="activeKnowledgeBases.length === 0"
-                class="px-2 py-1.5 text-sm text-muted-foreground"
-              >
-                还没有可绑定的启用知识库
-              </p>
-            </div>
-          </div>
-
-          <div class="grid gap-2">
-            <Label for="agent-temperature">Temperature</Label>
-            <Input
-              id="agent-temperature"
-              v-model.number="temperatureValue"
-              type="number"
-              min="0"
-              max="2"
-              step="0.1"
-            />
-          </div>
-
-          <div class="grid gap-2">
-            <Label for="agent-top-p">Top P</Label>
-            <Input
-              id="agent-top-p"
-              v-model.number="topPValue"
-              type="number"
-              min="0"
-              max="1"
-              step="0.1"
-            />
-          </div>
-
-          <div class="grid gap-2 md:col-span-2">
-            <Label for="agent-opening-message">开场白</Label>
-            <Textarea id="agent-opening-message" v-model="openingMessageValue" class="min-h-24" />
-          </div>
-
-          <div class="grid gap-2 md:col-span-2">
-            <Label for="agent-system-prompt">Prompt</Label>
-            <Textarea id="agent-system-prompt" v-model="form.systemPrompt" class="min-h-44" />
           </div>
         </form>
 
         <DialogFooter>
-          <Button variant="outline" @click="formOpen = false">取消</Button>
-          <Button
-            :disabled="chatModels.length === 0 || activeKnowledgeBases.length === 0 || saving"
-            @click="save"
-          >
-            {{ saving ? '保存中' : '保存' }}
+          <Button variant="outline" :disabled="creating" @click="createOpen = false">取消</Button>
+          <Button :disabled="!canCreate || creating" @click="create">
+            {{ creating ? '创建中...' : '创建' }}
           </Button>
         </DialogFooter>
       </DialogContent>

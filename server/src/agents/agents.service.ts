@@ -15,6 +15,9 @@ import { agentSelect } from './agents.select';
 
 type AgentRecord = Prisma.AgentGetPayload<{ select: typeof agentSelect }>;
 
+const DEFAULT_AGENT_SYSTEM_PROMPT =
+  '你是企业知识库专家，请基于知识库上下文回答问题。';
+
 @Injectable()
 export class AgentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -131,24 +134,39 @@ export class AgentsService {
     input: AgentPayload,
   ): Promise<Prisma.AgentCreateInput> {
     const name = input.name?.trim();
-    const modelId = input.modelId?.trim();
-    const systemPrompt = input.systemPrompt?.trim();
 
-    if (!name || !modelId || !systemPrompt) {
-      throw new BadRequestException(
-        'name, modelId and systemPrompt are required',
-      );
+    if (!name) {
+      throw new BadRequestException('name is required');
     }
 
-    const knowledgeBaseIds = await this.validateKnowledgeBases(
-      input.knowledgeBaseIds,
-    );
-    await this.requireChatModel(modelId);
+    const modelId =
+      typeof input.modelId === 'string' ? input.modelId.trim() : null;
 
-    return {
+    if (input.modelId !== undefined && input.modelId !== null && !modelId) {
+      throw new BadRequestException('modelId cannot be empty');
+    }
+
+    if (modelId) {
+      await this.requireChatModel(modelId);
+    }
+
+    const systemPrompt =
+      input.systemPrompt === undefined
+        ? DEFAULT_AGENT_SYSTEM_PROMPT
+        : input.systemPrompt.trim();
+
+    if (!systemPrompt) {
+      throw new BadRequestException('systemPrompt cannot be empty');
+    }
+
+    const knowledgeBaseIds =
+      input.knowledgeBaseIds === undefined
+        ? []
+        : await this.validateKnowledgeBases(input.knowledgeBaseIds);
+
+    const data: Prisma.AgentCreateInput = {
       name,
       description: input.description?.trim() || null,
-      model: { connect: { id: modelId } },
       systemPrompt,
       openingMessage: input.openingMessage?.trim() || null,
       status: this.parseStatus(input.status ?? AgentStatus.DRAFT),
@@ -158,12 +176,21 @@ export class AgentsService {
         2,
       ),
       topP: this.parseOptionalDecimal(input.topP, 'topP', 1),
-      agentKnowledgeBases: {
+    };
+
+    if (modelId) {
+      data.model = { connect: { id: modelId } };
+    }
+
+    if (knowledgeBaseIds.length > 0) {
+      data.agentKnowledgeBases = {
         create: knowledgeBaseIds.map((knowledgeBaseId) => ({
           knowledgeBase: { connect: { id: knowledgeBaseId } },
         })),
-      },
-    };
+      };
+    }
+
+    return data;
   }
 
   private async updateData(
@@ -186,14 +213,18 @@ export class AgentsService {
     }
 
     if (input.modelId !== undefined) {
-      const modelId = input.modelId.trim();
+      if (input.modelId === null) {
+        data.model = { disconnect: true };
+      } else {
+        const modelId = input.modelId.trim();
 
-      if (!modelId) {
-        throw new BadRequestException('modelId cannot be empty');
+        if (!modelId) {
+          throw new BadRequestException('modelId cannot be empty');
+        }
+
+        await this.requireChatModel(modelId);
+        data.model = { connect: { id: modelId } };
       }
-
-      await this.requireChatModel(modelId);
-      data.model = { connect: { id: modelId } };
     }
 
     if (input.systemPrompt !== undefined) {
@@ -263,9 +294,7 @@ export class AgentsService {
     ].filter(Boolean);
 
     if (uniqueIds.length === 0) {
-      throw new BadRequestException(
-        'agent must bind at least one knowledge base',
-      );
+      return [];
     }
 
     const knowledgeBases = await this.prisma.knowledgeBase.findMany({
