@@ -1,6 +1,46 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import {
   createModel,
   deleteModel,
@@ -10,7 +50,7 @@ import {
   type AiModelType,
   type ModelPayload,
 } from '@/apis/models'
-import { isCancelAction, showErrorMessage } from '@/utils/feedback'
+import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'ModelsView',
@@ -21,6 +61,9 @@ const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
+const deleteOpen = ref(false)
+const deleting = ref(false)
+const deletingModel = ref<AiModel | null>(null)
 const configJsonText = ref('')
 
 const modelTypes: { value: AiModelType; label: string }[] = [
@@ -84,9 +127,7 @@ const openEdit = (model: AiModel) => {
     configJson: model.configJson,
   })
   configJsonText.value =
-    Object.keys(model.configJson).length > 0
-      ? JSON.stringify(model.configJson, null, 2)
-      : ''
+    Object.keys(model.configJson).length > 0 ? JSON.stringify(model.configJson, null, 2) : ''
   formOpen.value = true
 }
 
@@ -143,20 +184,26 @@ const parseConfigJson = () => {
 }
 
 const remove = async (model: AiModel) => {
-  try {
-    await ElMessageBox.confirm(`删除模型「${model.name}」？`, '删除模型', {
-      cancelButtonText: '取消',
-      confirmButtonText: '删除',
-      type: 'warning',
-    })
-    await deleteModel(model.id)
-    models.value = models.value.filter((item) => item.id !== model.id)
-  } catch (cause) {
-    if (isCancelAction(cause)) {
-      return
-    }
+  deletingModel.value = model
+  deleteOpen.value = true
+}
 
+const confirmRemove = async () => {
+  if (!deletingModel.value) {
+    return
+  }
+
+  deleting.value = true
+
+  try {
+    await deleteModel(deletingModel.value.id)
+    models.value = models.value.filter((item) => item.id !== deletingModel.value?.id)
+    deleteOpen.value = false
+    deletingModel.value = null
+  } catch (cause) {
     showErrorMessage(cause, '删除模型失败')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -164,106 +211,178 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="grid gap-5">
-    <header class="flex flex-col items-start justify-between gap-4.5 lg:flex-row lg:items-end">
-      <div>
-        <h1 class="m-0 text-[34px] font-bold">模型管理</h1>
-      </div>
-      <el-button type="primary" @click="openCreate">添加模型</el-button>
-    </header>
-
-    <section
-      class="min-w-0 rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"
+  <Card class="m-4 gap-4 overflow-hidden p-4 lg:m-6 lg:p-6">
+    <CardHeader
+      class="flex flex-col items-start justify-between gap-4 px-0 pt-0 lg:flex-row lg:items-center"
     >
-      <el-table v-loading="loading" :data="models" empty-text="还没有模型配置">
-        <el-table-column label="名称" min-width="220">
-          <template #default="{ row }: { row: AiModel }">
-            <div class="grid gap-1">
-              <strong>{{ row.name }}</strong>
-              <small class="text-(--zeta-muted)">{{ row.baseUrl || '默认 Base URL' }}</small>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="供应商" min-width="140" prop="provider" />
-        <el-table-column label="类型" min-width="140">
-          <template #default="{ row }: { row: AiModel }">
-            {{ modelTypes.find((item) => item.value === row.type)?.label }}
-          </template>
-        </el-table-column>
-        <el-table-column label="模型标识" min-width="180" prop="modelName" />
-        <el-table-column label="凭证" min-width="150">
-          <template #default="{ row }: { row: AiModel }">
-            {{ row.apiKeyMasked || '未配置' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" min-width="100">
-          <template #default="{ row }: { row: AiModel }">
-            <el-tag :type="row.isEnabled ? 'success' : 'info'" effect="light">
-              {{ row.isEnabled ? '启用' : '停用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column align="right" fixed="right" label="操作" min-width="150">
-          <template #default="{ row }: { row: AiModel }">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </section>
+      <CardTitle class="text-[34px] font-bold text-foreground">模型管理</CardTitle>
+      <Button @click="openCreate">添加模型</Button>
+    </CardHeader>
 
-    <el-dialog v-model="formOpen" :title="title" width="680px">
-      <el-form label-position="top" @submit.prevent="save">
-        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-          <el-form-item label="配置名称">
-            <el-input v-model="form.name" />
-          </el-form-item>
-          <el-form-item label="供应商">
-            <el-input v-model="form.provider" placeholder="OpenAI / DeepSeek" />
-          </el-form-item>
-          <el-form-item label="模型类型">
-            <el-select v-model="form.type">
-              <el-option
-                v-for="type in modelTypes"
-                :key="type.value"
-                :label="type.label"
-                :value="type.value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="模型标识">
-            <el-input v-model="form.modelName" placeholder="gpt-4.1-mini" />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="Base URL">
-            <el-input v-model="form.baseUrl" placeholder="https://api.example.com/v1" />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="API Key">
-            <el-input
+    <CardContent class="min-w-0 overflow-hidden rounded-lg border border-border p-0">
+      <Table>
+        <TableHeader>
+          <TableRow class="bg-muted/60 hover:bg-muted/60">
+            <TableHead class="min-w-55">名称</TableHead>
+            <TableHead class="min-w-36">供应商</TableHead>
+            <TableHead class="min-w-34">类型</TableHead>
+            <TableHead class="min-w-45">模型标识</TableHead>
+            <TableHead class="min-w-36">凭证</TableHead>
+            <TableHead class="min-w-24">状态</TableHead>
+            <TableHead class="min-w-36 text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-if="loading">
+            <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
+              正在加载模型配置...
+            </TableCell>
+          </TableRow>
+          <TableRow v-else-if="models.length === 0">
+            <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
+              还没有模型配置
+            </TableCell>
+          </TableRow>
+          <template v-else>
+            <TableRow v-for="model in models" :key="model.id">
+              <TableCell>
+                <div class="grid gap-1">
+                  <strong class="font-semibold text-foreground">{{ model.name }}</strong>
+                  <small class="text-muted-foreground">{{
+                    model.baseUrl || '默认 Base URL'
+                  }}</small>
+                </div>
+              </TableCell>
+              <TableCell class="text-muted-foreground">{{ model.provider }}</TableCell>
+              <TableCell>
+                <Badge variant="outline">
+                  {{ modelTypes.find((item) => item.value === model.type)?.label }}
+                </Badge>
+              </TableCell>
+              <TableCell class="font-medium text-foreground">{{ model.modelName }}</TableCell>
+              <TableCell class="text-muted-foreground">{{
+                model.apiKeyMasked || '未配置'
+              }}</TableCell>
+              <TableCell>
+                <Badge :variant="model.isEnabled ? 'default' : 'secondary'">
+                  {{ model.isEnabled ? '启用' : '停用' }}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <div class="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" @click="openEdit(model)">编辑</Button>
+                  <Button variant="destructive" size="sm" @click="remove(model)">删除</Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          </template>
+        </TableBody>
+      </Table>
+    </CardContent>
+
+    <Dialog v-model:open="formOpen">
+      <DialogContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ title }}</DialogTitle>
+          <DialogDescription> 配置模型供应商、模型标识和调用凭证。 </DialogDescription>
+        </DialogHeader>
+
+        <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="save">
+          <div class="grid gap-2">
+            <Label for="model-name">配置名称</Label>
+            <Input id="model-name" v-model="form.name" />
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="model-provider">供应商</Label>
+            <Input id="model-provider" v-model="form.provider" placeholder="OpenAI / DeepSeek" />
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="model-type">模型类型</Label>
+            <Select v-model="form.type">
+              <SelectTrigger id="model-type" class="w-full">
+                <SelectValue placeholder="选择模型类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem v-for="type in modelTypes" :key="type.value" :value="type.value">
+                    {{ type.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="model-id">模型标识</Label>
+            <Input id="model-id" v-model="form.modelName" placeholder="gpt-4.1-mini" />
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="model-base-url">Base URL</Label>
+            <Input
+              id="model-base-url"
+              v-model="form.baseUrl"
+              placeholder="https://api.example.com/v1"
+            />
+          </div>
+
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="model-api-key">API Key</Label>
+            <Input
+              id="model-api-key"
               v-model="form.apiKey"
               autocomplete="off"
               :placeholder="editingId ? '留空表示保持原凭证' : '可留空'"
-              show-password
               type="password"
             />
-          </el-form-item>
-          <el-form-item class="md:col-span-2" label="高级配置 JSON">
-            <el-input
-              v-model="configJsonText"
-              :rows="5"
-              placeholder='例如：{"protocol":"dashscope-multimodal","dimension":1024}'
-              type="textarea"
-            />
-          </el-form-item>
-          <el-form-item class="md:col-span-2">
-            <el-checkbox v-model="form.isEnabled">启用这个模型配置</el-checkbox>
-          </el-form-item>
-        </div>
-      </el-form>
+          </div>
 
-      <template #footer>
-        <el-button @click="formOpen = false">取消</el-button>
-        <el-button :loading="saving" type="primary" @click="save">保存</el-button>
-      </template>
-    </el-dialog>
-  </div>
+          <div class="grid gap-2 md:col-span-2">
+            <Label for="model-config-json">高级配置 JSON</Label>
+            <Textarea
+              id="model-config-json"
+              v-model="configJsonText"
+              class="min-h-32"
+              placeholder='例如：{"protocol":"dashscope-multimodal","dimension":1024}'
+            />
+          </div>
+
+          <div class="flex items-center gap-2 md:col-span-2">
+            <Checkbox id="model-enabled" v-model:checked="form.isEnabled" />
+            <Label for="model-enabled">启用这个模型配置</Label>
+          </div>
+        </form>
+
+        <DialogFooter>
+          <Button variant="outline" @click="formOpen = false">取消</Button>
+          <Button :disabled="saving" @click="save">
+            {{ saving ? '保存中...' : '保存' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog v-model:open="deleteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除模型</AlertDialogTitle>
+          <AlertDialogDescription>
+            删除模型「{{ deletingModel?.name }}」？相关知识库或 Agent 会保留为未配置模型状态。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="deleting"
+            @click.prevent="confirmRemove"
+          >
+            {{ deleting ? '删除中...' : '删除' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </Card>
 </template>

@@ -199,14 +199,19 @@ export class KnowledgeDocsService {
       throw new BadRequestException('name is required');
     }
 
-    this.assertDocumentChunks(chunks);
+    if (chunks.length > 0) {
+      this.assertDocumentChunks(chunks);
+    }
 
     const document = await this.prisma.document.create({
       data: {
         knowledgeBase: { connect: { id: knowledgeBase.id } },
         name,
         sourceType: DocumentSourceType.MANUAL,
-        status: DocumentStatus.CHUNKING,
+        status:
+          chunks.length === 0
+            ? DocumentStatus.INDEXED
+            : DocumentStatus.CHUNKING,
         charCount: this.countChars(chunks),
         chunkCount: chunks.length,
         metadata: {
@@ -215,6 +220,10 @@ export class KnowledgeDocsService {
       },
       select: documentSelect,
     });
+
+    if (chunks.length === 0) {
+      return this.toDocumentResponse(document);
+    }
 
     try {
       await this.createChunks(knowledgeBase.id, document.id, chunks);

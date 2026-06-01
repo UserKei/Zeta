@@ -1,0 +1,223 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { ExternalLinkIcon, EyeIcon } from '@lucide/vue'
+import ChatCitationDialog from '@/components/chat/ChatCitationDialog.vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
+import type { ChatCitation, ChatImproveRecord, ChatMessage, ChatSession } from '@/apis/chat'
+
+const props = defineProps<{
+  open: boolean
+  selectedSession: ChatSession | null | undefined
+  messages: ChatMessage[]
+  messageLoading: boolean
+}>()
+
+const emit = defineEmits<{
+  'update:open': [value: boolean]
+  'open-mark': [message: ChatMessage]
+  'view-improve': [record: ChatImproveRecord]
+  'save-improve': [message: ChatMessage, index: number]
+}>()
+
+const openModel = computed({
+  get: () => props.open,
+  set: (value: boolean) => emit('update:open', value),
+})
+const citationDialogVisible = ref(false)
+const selectedCitations = ref<ChatCitation[]>([])
+
+const latestImproveRecord = (message: ChatMessage) => message.improveRecords.at(-1) ?? null
+
+const getCitationDocuments = (citations: ChatCitation[]) => {
+  const documents = new Map<string, string>()
+
+  citations.forEach((citation) => {
+    documents.set(citation.documentId, citation.documentName)
+  })
+
+  return [...documents.entries()].map(([id, name]) => ({
+    id,
+    name,
+  }))
+}
+
+const openCitationDialog = (citations: ChatCitation[]) => {
+  selectedCitations.value = citations
+  citationDialogVisible.value = true
+}
+
+const formatTime = (value: string) =>
+  new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+</script>
+
+<template>
+  <Sheet v-model:open="openModel">
+    <SheetContent
+      side="right"
+      class="w-[calc(100vw-1rem)] p-0 sm:max-w-none md:w-[60vw] md:min-w-180"
+    >
+      <SheetHeader class="border-b border-border px-5 py-4">
+        <SheetTitle>对话详情</SheetTitle>
+        <SheetDescription>
+          {{ selectedSession?.title || '新会话' }}
+        </SheetDescription>
+      </SheetHeader>
+
+      <div class="min-h-0 flex-1 overflow-auto p-5">
+        <div v-if="messageLoading" class="grid gap-4">
+          <Skeleton v-for="index in 3" :key="index" class="h-34 w-full" />
+        </div>
+
+        <div
+          v-else-if="messages.length === 0"
+          class="grid min-h-40 place-items-center text-sm text-muted-foreground"
+        >
+          暂无消息
+        </div>
+
+        <div v-else class="grid gap-4">
+          <div
+            v-for="(message, index) in messages"
+            :key="message.id"
+            :class="cn('flex w-full', message.role === 'USER' ? 'justify-end' : 'justify-start')"
+          >
+            <article
+              :class="
+                cn(
+                  'grid max-w-[min(680px,100%)] gap-3 rounded-2xl px-4 py-3.5 text-sm leading-7 shadow-sm',
+                  message.role === 'USER'
+                    ? 'rounded-br-md bg-primary text-primary-foreground'
+                    : 'rounded-bl-md border border-border bg-muted/50 text-foreground',
+                )
+              "
+            >
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge :variant="message.role === 'ASSISTANT' ? 'default' : 'secondary'">
+                    {{ message.role === 'ASSISTANT' ? 'AI 回答' : '用户问题' }}
+                  </Badge>
+                  <span
+                    :class="
+                      cn(
+                        'text-xs',
+                        message.role === 'USER'
+                          ? 'text-primary-foreground/70'
+                          : 'text-muted-foreground',
+                      )
+                    "
+                  >
+                    {{ formatTime(message.createdAt) }}
+                  </span>
+                  <Badge
+                    v-if="message.improveRecords.length > 0"
+                    :variant="message.role === 'USER' ? 'secondary' : 'outline'"
+                  >
+                    已标注 {{ message.improveRecords.length }}
+                  </Badge>
+                </div>
+
+                <div v-if="message.role === 'ASSISTANT'" class="flex flex-wrap items-center gap-2">
+                  <Button
+                    v-if="message.improveRecords.length > 0"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    @click="emit('open-mark', message)"
+                  >
+                    <EyeIcon data-icon="inline-start" />
+                    改进标注
+                  </Button>
+                  <Button
+                    v-if="latestImproveRecord(message)"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    @click="emit('view-improve', latestImproveRecord(message)!)"
+                  >
+                    <ExternalLinkIcon data-icon="inline-start" />
+                    查看分段
+                  </Button>
+                  <Button type="button" size="sm" @click="emit('save-improve', message, index)">
+                    保存至文档
+                  </Button>
+                </div>
+              </div>
+
+              <p class="whitespace-pre-wrap break-words">
+                {{ message.content }}
+              </p>
+
+              <template v-if="message.role === 'ASSISTANT'">
+                <Card
+                  v-if="message.citations.length > 0"
+                  class="gap-2 border-border bg-card/80 px-3 py-2 text-sm shadow-none"
+                >
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-muted-foreground">知识来源</span>
+                    <span class="h-3.5 w-px bg-border"></span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      class="h-auto p-0"
+                      @click="openCitationDialog(message.citations)"
+                    >
+                      引用分段 {{ message.citations.length }}
+                    </Button>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <Badge
+                      v-for="document in getCitationDocuments(message.citations)"
+                      :key="document.id"
+                      variant="outline"
+                    >
+                      {{ document.name }}
+                    </Badge>
+                  </div>
+                </Card>
+
+                <Card
+                  v-if="latestImproveRecord(message)"
+                  class="flex-row flex-wrap items-center gap-2 border-border bg-card/80 px-3 py-2 text-sm shadow-none"
+                >
+                  <Badge variant="outline">已标注 {{ message.improveRecords.length }}</Badge>
+                  <span class="font-medium">{{ latestImproveRecord(message)!.documentName }}</span>
+                  <span class="text-muted-foreground">
+                    分段 #{{ latestImproveRecord(message)!.chunkPosition + 1 }}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    class="h-auto p-0"
+                    @click="emit('view-improve', latestImproveRecord(message)!)"
+                  >
+                    查看分段
+                  </Button>
+                </Card>
+              </template>
+            </article>
+          </div>
+        </div>
+      </div>
+    </SheetContent>
+  </Sheet>
+
+  <ChatCitationDialog v-model:visible="citationDialogVisible" :citations="selectedCitations" />
+</template>

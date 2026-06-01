@@ -24,16 +24,18 @@
 ## Tailwind 与 CSS
 
 - 页面外层布局、间距、边框、背景优先使用 Tailwind。
-- 颜色优先使用 Zeta 语义变量，例如 `bg-(--zeta-panel)`、`text-(--zeta-muted)`、`border-(--zeta-line)`。
-- 避免在页面里散落硬编码颜色；确实需要新增颜色时，先补充 `--zeta-*` 语义变量。
+- 新迁移页面优先使用 shadcn-vue 语义 token，例如 `bg-background`、`bg-card`、`text-foreground`、`text-muted-foreground`、`border-border`、`bg-primary`。
+- `--zeta-*` 只作为旧页面过渡兼容层；不要在新迁移代码里继续新增 `--zeta-*` 引用。
+- 避免在页面里散落硬编码颜色；确实需要品牌语义时，先判断 shadcn token 是否足够表达，无法表达时再补少量品牌变量。
 - 少量复杂状态、第三方组件覆盖或 Markdown 内容样式，可以保留 scoped CSS。
 - 不为了“纯 Tailwind”牺牲可读性；模板 class 过长时，可以用语义化容器和局部 CSS 收口。
 
-## Element Plus
+## Element Plus 与 shadcn-vue
 
-- 后台管理页优先使用 Element Plus 的原生组件能力，而不是强行覆盖内部结构。
-- 导航、表格、表单、弹窗、确认框、Tag、Message 等优先使用 Element Plus。
-- 避免对 `el-button`、`el-menu` 等组件写大量 `!`、`[&>span]`、深层 display 覆盖。
+- 新迁移页面的展示型组件优先使用 shadcn-vue，例如 Button、Table、Badge、Card、Input、Select。
+- Element Plus 暂时保留在复杂表单、弹窗、上传控件、消息提示和确认框。
+- 不为了迁移而一次性重写复杂交互页面；优先按展示区、表单区、弹窗区分批迁移。
+- 避免对 Element Plus 组件写大量 `!`、`[&>span]`、深层 display 覆盖。
 - 只有在组件 API 无法表达必要样式时，才使用 `:deep(...)`，并把范围限制在当前页面或组件内。
 
 ## 页面类型

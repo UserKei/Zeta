@@ -1,4 +1,7 @@
 import Layout from '@/layout/index.vue'
+import WorkspaceLayout from '@/layout/workspace/index.vue'
+import { MessageCircleIcon } from '@lucide/vue'
+import type { RouteLocation } from 'vue-router'
 
 export default [
   {
@@ -17,14 +20,35 @@ export default [
         component: () => import('@/views/Agents/index.vue'),
       },
       {
-        path: ':agentId/chat-logs',
-        name: 'agent-chat-logs',
+        path: ':agentId',
+        component: WorkspaceLayout,
+        redirect: (to: RouteLocation) => ({
+          name: 'agent-chat-logs',
+          params: to.params,
+        }),
         meta: {
           requiresAuth: true,
           activeMenu: 'agents',
-          title: '聊天日志',
+          workspaceTitle: '专家 Agent',
+          workspaceSubtitle: '对话日志与知识反哺',
+          workspaceBackRoute: 'agents',
+          workspaceResourceType: 'agent',
+          workspaceResourceIdParam: 'agentId',
         },
-        component: () => import('@/views/ChatLogs/index.vue'),
+        children: [
+          {
+            path: 'chat-logs',
+            name: 'agent-chat-logs',
+            meta: {
+              requiresAuth: true,
+              activeMenu: 'agents',
+              workspaceMenu: true,
+              title: '对话日志',
+              icon: MessageCircleIcon,
+            },
+            component: () => import('@/views/ChatLogs/index.vue'),
+          },
+        ],
       },
     ],
   },

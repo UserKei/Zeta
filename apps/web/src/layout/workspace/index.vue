@@ -1,147 +1,188 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterView, useRoute, useRouter, type RouteRecordName } from 'vue-router'
-import { ArrowLeft, FolderOpened } from '@element-plus/icons-vue'
+import type { RouteRecordName } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
+import { ArrowLeftIcon, FolderOpenIcon } from '@lucide/vue'
+
+import { getAgent } from '@/apis/agents'
+import { getKnowledgeBase } from '@/apis/knowledge-bases'
+import { Button } from '@/components/ui/button'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+} from '@/components/ui/sidebar'
+
+type WorkspaceResourceType = 'knowledgeBase' | 'agent'
 
 defineOptions({
   name: 'WorkspaceLayout',
 })
 
-type WorkspaceMenu = {
-  name: RouteRecordName
-  label: string
-  icon?: unknown
-}
-
 const route = useRoute()
 const router = useRouter()
 
 const workspaceRoute = computed(() =>
-  [...route.matched]
-    .reverse()
-    .find((record) => record.children.some((child) => child.meta?.workspaceMenu === true)),
+  route.matched.find((record) => record.children?.some((child) => child.meta?.workspaceMenu)),
 )
 
-const workspaceTitle = computed(() => {
-  const title = workspaceRoute.value?.meta.workspaceTitle
+const fallbackWorkspaceTitle = computed(() =>
+  String(workspaceRoute.value?.meta?.workspaceTitle || '工作区'),
+)
+const workspaceSubtitle = computed(() =>
+  String(workspaceRoute.value?.meta?.workspaceSubtitle || ''),
+)
+const backRouteName = computed(
+  () => workspaceRoute.value?.meta?.workspaceBackRoute as RouteRecordName | undefined,
+)
 
-  return typeof title === 'string' ? title : '工作区'
+const workspaceResourceType = computed<WorkspaceResourceType | ''>(() => {
+  const value = workspaceRoute.value?.meta?.workspaceResourceType
+  return value === 'knowledgeBase' || value === 'agent' ? value : ''
 })
 
-const workspaceSubtitle = computed(() => {
-  const subtitle = workspaceRoute.value?.meta.workspaceSubtitle
-
-  return typeof subtitle === 'string' ? subtitle : '资源配置与管理'
+const workspaceResourceIdParam = computed(() => {
+  const value = workspaceRoute.value?.meta?.workspaceResourceIdParam
+  return typeof value === 'string' ? value : ''
 })
 
-const backRouteName = computed(() => {
-  const name = workspaceRoute.value?.meta.workspaceBackRoute
+const workspaceResourceId = computed(() => {
+  const param = workspaceResourceIdParam.value
+  if (!param) return ''
 
-  return typeof name === 'string' ? name : undefined
+  const value = route.params[param]
+  return Array.isArray(value) ? value[0] || '' : value || ''
 })
 
-const workspaceMenus = computed<WorkspaceMenu[]>(() => {
-  const children = workspaceRoute.value?.children ?? []
+const workspaceLabel = computed(() => {
+  const value = workspaceRoute.value?.meta?.workspaceLabel
+  if (typeof value === 'string' && value.trim()) return value
+  if (workspaceResourceType.value === 'agent') return 'Agent 工作区'
+  if (workspaceResourceType.value === 'knowledgeBase') return '知识库工作区'
+  return '工作区'
+})
 
-  return children
-    .filter((child) => child.meta?.workspaceMenu === true && child.name)
+const resourceTitle = ref('')
+let resourceRequestId = 0
+
+watch(
+  [workspaceResourceType, workspaceResourceId],
+  async ([type, id]) => {
+    const requestId = ++resourceRequestId
+    resourceTitle.value = ''
+
+    if (!type || !id) return
+
+    try {
+      const resource = type === 'knowledgeBase' ? await getKnowledgeBase(id) : await getAgent(id)
+      if (requestId === resourceRequestId) {
+        resourceTitle.value = resource.name
+      }
+    } catch {
+      if (requestId === resourceRequestId) {
+        resourceTitle.value = ''
+      }
+    }
+  },
+  { immediate: true },
+)
+
+const workspaceTitle = computed(() => resourceTitle.value || fallbackWorkspaceTitle.value)
+
+const workspaceMenus = computed(() => {
+  const parent = workspaceRoute.value
+  if (!parent) return []
+
+  return parent.children
+    .filter((child) => child.meta?.workspaceMenu)
     .map((child) => ({
       name: child.name as RouteRecordName,
-      label: typeof child.meta?.title === 'string' ? child.meta.title : String(child.name),
+      label: String(child.meta?.title || child.name),
       icon: child.meta?.icon,
     }))
 })
 
-const activeMenu = computed(() => {
-  const activeWorkspaceMenu = route.meta.activeWorkspaceMenu
+const activeMenu = computed(
+  () => (route.meta.activeWorkspaceMenu as RouteRecordName | undefined) || route.name,
+)
 
-  if (typeof activeWorkspaceMenu === 'string') {
-    return activeWorkspaceMenu
+function goBack() {
+  if (backRouteName.value) {
+    router.push({ name: backRouteName.value })
+    return
   }
 
-  return typeof route.name === 'string' ? route.name : ''
-})
-
-const openMenu = async (menu: WorkspaceMenu) => {
-  await router.push({
-    name: menu.name,
-    params: route.params,
-  })
+  router.back()
 }
 
-const back = async () => {
-  if (backRouteName.value) {
-    await router.push({ name: backRouteName.value })
-  }
+function openMenu(menu: { name: RouteRecordName }) {
+  router.push({ name: menu.name, params: route.params })
 }
 </script>
 
 <template>
-  <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-(--zeta-line) bg-(--zeta-panel) lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-none">
-    <aside class="border-b border-(--zeta-line-soft) bg-(--zeta-surface) lg:border-b-0 lg:border-r">
-      <div class="grid gap-3 p-3.5">
-        <div class="flex items-start gap-3">
-          <el-button
-            v-if="backRouteName"
-            :icon="ArrowLeft"
-            circle
-            size="small"
-            @click="back"
-          />
+  <SidebarProvider
+    class="min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background md:flex-row"
+  >
+    <Sidebar
+      collapsible="none"
+      class="h-auto w-full shrink-0 border-b border-sidebar-border md:h-full md:w-(--sidebar-width) md:border-b-0 md:border-r"
+    >
+      <SidebarHeader class="gap-3 p-4">
+        <div class="flex items-center gap-3">
+          <Button v-if="backRouteName" type="button" variant="outline" size="icon" @click="goBack">
+            <ArrowLeftIcon />
+          </Button>
+
           <div class="min-w-0">
-            <p class="m-0 text-xs font-semibold text-(--zeta-blue)">
-              知识库工作区
+            <p class="text-xs font-medium text-sidebar-primary">
+              {{ workspaceLabel }}
             </p>
-            <h2 class="m-0 mt-1 truncate text-base font-semibold text-(--zeta-ink)">
+            <h1 class="truncate text-lg font-semibold text-sidebar-foreground">
               {{ workspaceTitle }}
-            </h2>
-            <p class="m-0 mt-0.5 text-xs text-(--zeta-muted)">
+            </h1>
+            <p v-if="workspaceSubtitle" class="mt-1 line-clamp-2 text-sm text-muted-foreground">
               {{ workspaceSubtitle }}
             </p>
           </div>
         </div>
+      </SidebarHeader>
 
-        <el-menu
-          :default-active="activeMenu"
-          background-color="transparent"
-          class="zeta-workspace-menu"
-          text-color="var(--zeta-muted)"
-          active-text-color="var(--zeta-blue)"
-        >
-          <el-menu-item
-            v-for="menu in workspaceMenus"
-            :key="String(menu.name)"
-            :index="String(menu.name)"
-            @click="openMenu(menu)"
-          >
-            <el-icon>
-              <component :is="menu.icon || FolderOpened" />
-            </el-icon>
-            <span>{{ menu.label }}</span>
-          </el-menu-item>
-        </el-menu>
-      </div>
-    </aside>
+      <SidebarSeparator />
 
-    <section class="flex min-w-0 min-h-0 flex-col bg-(--zeta-bg)">
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>菜单</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem v-for="menu in workspaceMenus" :key="String(menu.name)">
+                <SidebarMenuButton
+                  type="button"
+                  size="lg"
+                  :is-active="activeMenu === menu.name"
+                  @click="openMenu(menu)"
+                >
+                  <component :is="menu.icon || FolderOpenIcon" />
+                  <span>{{ menu.label }}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+
+    <SidebarInset class="min-h-0 min-w-0 overflow-auto bg-muted/40">
       <RouterView />
-    </section>
-  </div>
+    </SidebarInset>
+  </SidebarProvider>
 </template>
-
-<style scoped>
-.zeta-workspace-menu {
-  border-right: 0;
-}
-
-.zeta-workspace-menu :deep(.el-menu-item) {
-  height: 40px;
-  margin-bottom: 4px;
-  border-radius: 6px;
-  font-weight: 500;
-}
-
-.zeta-workspace-menu :deep(.el-menu-item.is-active) {
-  background: var(--zeta-blue-soft);
-}
-</style>

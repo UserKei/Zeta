@@ -279,3 +279,97 @@ describe('KnowledgeDocsService image understanding chunks', () => {
     );
   });
 });
+
+describe('KnowledgeDocsService manual documents', () => {
+  it('creates a blank manual document without chunks or embeddings', async () => {
+    type BlankDocumentCreateArgs = {
+      data: {
+        status: string;
+        charCount: number;
+        chunkCount: number;
+      };
+    };
+    const documentCreate = jest
+      .fn<Promise<unknown>, [BlankDocumentCreateArgs]>()
+      .mockResolvedValue({
+        id: 'doc-blank',
+        knowledgeBaseId: 'kb-1',
+        sourceFileId: null,
+        name: '空白文档',
+        sourceType: 'MANUAL',
+        status: 'INDEXED',
+        charCount: 0,
+        chunkCount: 0,
+        errorMessage: null,
+        metadata: { description: null },
+        createdAt: new Date('2026-05-31T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+      });
+    const documentUpdate = jest.fn();
+    const prisma = {
+      knowledgeBase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'kb-1',
+          status: 'ACTIVE',
+          embeddingModel: {
+            id: 'embedding-1',
+            type: 'EMBEDDING',
+            isEnabled: true,
+            modelName: 'text-embedding-v4',
+            baseUrl: 'https://embedding.example.com/v1',
+            apiKey: 'sk-embedding',
+            configJson: {},
+          },
+        }),
+      },
+      document: {
+        create: documentCreate,
+        update: documentUpdate,
+      },
+      chunk: {
+        createMany: jest.fn(),
+        findMany: jest.fn(),
+      },
+      chunkEmbedding: {
+        deleteMany: jest.fn(),
+      },
+      $executeRaw: jest.fn(),
+    };
+    const embeddingService = {
+      embedInputs: jest.fn(),
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      embeddingService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const document = await service.createManual('kb-1', {
+      name: '空白文档',
+      chunks: [],
+    });
+
+    expect(document).toEqual(
+      expect.objectContaining({
+        id: 'doc-blank',
+        name: '空白文档',
+        status: 'INDEXED',
+        chunkCount: 0,
+        charCount: 0,
+      }),
+    );
+    expect(documentCreate.mock.calls[0]?.[0]).toMatchObject({
+      data: {
+        status: 'INDEXED',
+        charCount: 0,
+        chunkCount: 0,
+      },
+    });
+    expect(prisma.chunk.createMany).not.toHaveBeenCalled();
+    expect(embeddingService.embedInputs).not.toHaveBeenCalled();
+    expect(documentUpdate).not.toHaveBeenCalled();
+  });
+});

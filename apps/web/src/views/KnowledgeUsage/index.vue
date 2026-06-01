@@ -1,7 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DataAnalysis, Document, Link, Timer } from '@element-plus/icons-vue'
+import {
+  ChartNoAxesColumnIncreasingIcon,
+  ClockIcon,
+  FileTextIcon,
+  LinkIcon,
+} from '@lucide/vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   getKnowledgeBaseUsage,
   type KnowledgeUsageRange,
@@ -31,22 +53,22 @@ const summaryCards = computed(() => [
   {
     label: '总引用次数',
     value: usage.value?.totalCitations ?? 0,
-    icon: DataAnalysis,
+    icon: ChartNoAxesColumnIncreasingIcon,
   },
   {
     label: '被引用文档',
     value: usage.value?.citedDocumentCount ?? 0,
-    icon: Document,
+    icon: FileTextIcon,
   },
   {
     label: '被引用分段',
     value: usage.value?.citedChunkCount ?? 0,
-    icon: Link,
+    icon: LinkIcon,
   },
   {
     label: '最近引用',
     value: usage.value?.lastCitedAt ? formatTime(usage.value.lastCitedAt) : '-',
-    icon: Timer,
+    icon: ClockIcon,
   },
 ])
 
@@ -100,136 +122,148 @@ onMounted(load)
   <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
     <header class="mb-4 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
       <div>
-        <h1 class="m-0 text-2xl font-semibold text-(--zeta-ink)">知识热度</h1>
-        <p class="m-0 mt-1.5 text-sm text-(--zeta-muted)">
+        <h1 class="m-0 text-2xl font-semibold text-foreground">知识热度</h1>
+        <p class="m-0 mt-1.5 text-sm text-muted-foreground">
           只统计 Agent 回答中真实产生的引用，不包含检索测试。
         </p>
       </div>
-      <el-radio-group v-model="range">
-        <el-radio-button
+      <div class="flex w-fit rounded-lg border border-border bg-card p-1">
+        <Button
           v-for="option in rangeOptions"
           :key="option.value"
-          :value="option.value"
+          :variant="range === option.value ? 'secondary' : 'ghost'"
+          size="sm"
+          type="button"
+          @click="range = option.value"
         >
           {{ option.label }}
-        </el-radio-button>
-      </el-radio-group>
+        </Button>
+      </div>
     </header>
 
-    <section v-loading="loading" class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
+    <section class="relative grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
       <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <article
-          v-for="card in summaryCards"
-          :key="card.label"
-          class="flex items-center gap-3 rounded-lg border border-(--zeta-line) bg-(--zeta-panel) p-4"
-        >
-          <el-avatar class="avatar-light" :icon="card.icon" />
-          <div>
-            <p class="m-0 text-sm text-(--zeta-muted)">{{ card.label }}</p>
-            <strong class="mt-1 block text-2xl text-(--zeta-ink)">{{ card.value }}</strong>
-          </div>
-        </article>
+        <Card v-for="card in summaryCards" :key="card.label" size="sm">
+          <CardContent class="flex items-center gap-3">
+            <span class="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+              <component :is="card.icon" class="size-4" />
+            </span>
+            <div>
+              <p class="m-0 text-sm text-muted-foreground">{{ card.label }}</p>
+              <strong class="mt-1 block text-2xl text-foreground">{{ card.value }}</strong>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div class="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <el-card
-          :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }"
-          shadow="never"
-          class="min-h-0 overflow-hidden"
-        >
-          <template #header>
+        <Card class="min-h-0 gap-0 py-0">
+          <CardHeader class="border-b border-border py-4">
             <div class="flex items-center justify-between">
-              <span class="font-semibold text-(--zeta-ink)">热门文档</span>
-              <span class="text-sm text-(--zeta-muted)">
+              <CardTitle>热门文档</CardTitle>
+              <CardDescription>
                 {{ usage?.topDocuments.length ?? 0 }} 个文档
-              </span>
+              </CardDescription>
             </div>
-          </template>
+          </CardHeader>
 
-          <div class="min-h-0 flex-1 overflow-auto">
-            <el-empty
+          <CardContent class="min-h-0 flex-1 overflow-auto p-0">
+            <div
               v-if="!usage || usage.topDocuments.length === 0"
-              description="暂无引用数据"
-            />
-            <el-table v-else :data="usage.topDocuments" height="100%">
-              <el-table-column label="文档" min-width="220">
-                <template #default="{ row }">
-                  <div class="grid gap-1">
-                    <strong class="truncate text-(--zeta-ink)" :title="row.documentName">
-                      {{ row.documentName }}
-                    </strong>
-                    <small class="text-(--zeta-muted)">{{ sourceText(row.sourceType) }}</small>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column align="center" label="引用" width="90">
-                <template #default="{ row }">
-                  <el-tag effect="light" type="primary">{{ row.citationCount }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column align="center" label="分段" width="90" prop="citedChunkCount" />
-              <el-table-column label="最近引用" width="130">
-                <template #default="{ row }">
-                  {{ formatTime(row.lastCitedAt) }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-        </el-card>
-
-        <el-card
-          :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }"
-          shadow="never"
-          class="min-h-0 overflow-hidden"
-        >
-          <template #header>
-            <div class="flex items-center justify-between">
-              <span class="font-semibold text-(--zeta-ink)">热门分段</span>
-              <span class="text-sm text-(--zeta-muted)">
-                {{ usage?.topChunks.length ?? 0 }} 个分段
-              </span>
+              class="grid min-h-48 place-items-center p-6 text-center text-muted-foreground"
+            >
+              暂无引用数据
             </div>
-          </template>
+            <Table v-else>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>文档</TableHead>
+                  <TableHead class="text-center">引用</TableHead>
+                  <TableHead class="text-center">分段</TableHead>
+                  <TableHead>最近引用</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="document in usage.topDocuments" :key="document.documentId">
+                  <TableCell class="min-w-56 whitespace-normal">
+                    <div class="grid gap-1">
+                      <strong class="truncate text-foreground" :title="document.documentName">
+                        {{ document.documentName }}
+                      </strong>
+                      <small class="text-muted-foreground">{{ sourceText(document.sourceType) }}</small>
+                    </div>
+                  </TableCell>
+                  <TableCell class="text-center">
+                    <Badge>{{ document.citationCount }}</Badge>
+                  </TableCell>
+                  <TableCell class="text-center">{{ document.citedChunkCount }}</TableCell>
+                  <TableCell>{{ formatTime(document.lastCitedAt) }}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
-          <div class="min-h-0 flex-1 overflow-auto p-4">
-            <el-empty
+        <Card class="min-h-0 gap-0 py-0">
+          <CardHeader class="border-b border-border py-4">
+            <div class="flex items-center justify-between">
+              <CardTitle>热门分段</CardTitle>
+              <CardDescription>
+                {{ usage?.topChunks.length ?? 0 }} 个分段
+              </CardDescription>
+            </div>
+          </CardHeader>
+
+          <CardContent class="min-h-0 flex-1 overflow-auto p-4">
+            <div
               v-if="!usage || usage.topChunks.length === 0"
-              description="暂无引用数据"
-            />
+              class="grid min-h-48 place-items-center text-center text-muted-foreground"
+            >
+              暂无引用数据
+            </div>
             <div v-else class="grid gap-3">
-              <article
+              <Card
                 v-for="chunk in usage.topChunks"
                 :key="chunk.chunkId"
-                class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4"
+                size="sm"
               >
-                <header class="mb-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
-                  <div class="min-w-0">
-                    <strong class="block truncate text-(--zeta-ink)" :title="chunk.title || '-'">
-                      {{ chunk.title || '未命名分段' }}
-                    </strong>
-                    <p class="m-0 mt-1 text-xs text-(--zeta-muted)">
-                      {{ chunk.documentName }} · 分段 #{{ chunk.chunkPosition + 1 }}
-                    </p>
-                  </div>
-                  <el-tag effect="light" type="success">
-                    引用 {{ chunk.citationCount }}
-                  </el-tag>
-                </header>
+                <CardContent>
+                  <header class="mb-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                    <div class="min-w-0">
+                      <strong class="block truncate text-foreground" :title="chunk.title || '-'">
+                        {{ chunk.title || '未命名分段' }}
+                      </strong>
+                      <p class="m-0 mt-1 text-xs text-muted-foreground">
+                        {{ chunk.documentName }} · 分段 #{{ chunk.chunkPosition + 1 }}
+                      </p>
+                    </div>
+                    <Badge>
+                      引用 {{ chunk.citationCount }}
+                    </Badge>
+                  </header>
 
-                <p class="m-0 line-clamp-3 text-sm leading-6 text-(--zeta-content)">
-                  {{ chunk.preview || '暂无内容摘要' }}
-                </p>
+                  <p class="m-0 line-clamp-3 text-sm leading-6 text-foreground">
+                    {{ chunk.preview || '暂无内容摘要' }}
+                  </p>
 
-                <footer class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-(--zeta-muted)">
-                  <span>最近引用 {{ formatTime(chunk.lastCitedAt) }}</span>
-                  <el-button link type="primary" @click="goChunk(chunk.documentId, chunk.chunkId)">
-                    查看分段
-                  </el-button>
-                </footer>
-              </article>
+                  <footer class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>最近引用 {{ formatTime(chunk.lastCitedAt) }}</span>
+                    <Button variant="link" size="sm" type="button" @click="goChunk(chunk.documentId, chunk.chunkId)">
+                      查看分段
+                    </Button>
+                  </footer>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        </el-card>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div
+        v-if="loading"
+        class="absolute inset-0 grid place-items-center rounded-lg bg-background/70 text-sm text-muted-foreground backdrop-blur-sm"
+      >
+        加载知识热度...
       </div>
     </section>
   </div>
