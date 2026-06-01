@@ -31,10 +31,13 @@ describe('ChatService improveMessage', () => {
     removeImprovedChunk: jest.fn(),
   };
 
-  const createService = (prisma: Record<string, unknown>) =>
+  const createService = (
+    prisma: Record<string, unknown>,
+    retrievalService: Record<string, unknown> = {},
+  ) =>
     new ChatService(
       prisma as never,
-      {} as never,
+      retrievalService as never,
       knowledgeDocsService as never,
     );
 
@@ -368,5 +371,163 @@ describe('ChatService improveMessage', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
 
     expect(knowledgeDocsService.removeImprovedChunk).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatService chat citations', () => {
+  const knowledgeDocsService = {
+    createAiExtractedChunk: jest.fn(),
+    removeImprovedChunk: jest.fn(),
+  };
+
+  const createService = (
+    prisma: Record<string, unknown>,
+    retrievalService: Record<string, unknown>,
+  ) =>
+    new ChatService(
+      prisma as never,
+      retrievalService as never,
+      knowledgeDocsService as never,
+    );
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('stores only the first three retrieval hits as answer citations', async () => {
+    const now = new Date('2026-06-01T10:00:00.000Z');
+    type ChatCitationCreateInput = {
+      chunk: { connect: { id: string } };
+      document: { connect: { id: string } };
+      score: number;
+      quote: string;
+    };
+    type ChatMessageCreateInput = {
+      data: {
+        role: ChatMessageRole;
+        citations?: {
+          create: ChatCitationCreateInput[];
+        };
+      };
+    };
+    const hits = Array.from({ length: 5 }, (_, index) => ({
+      chunkId: `chunk-${index + 1}`,
+      documentId: `doc-${index + 1}`,
+      documentName: `文档 ${index + 1}`,
+      title: `标题 ${index + 1}`,
+      content: `内容 ${index + 1}`,
+      position: index,
+      charCount: 10,
+      score: 1 - index * 0.1,
+      vectorScore: null,
+      keywordScore: null,
+      finalScore: 1 - index * 0.1,
+      matchReason: 'SEMANTIC',
+      rerankScore: null,
+    }));
+    const chatMessageCreate = jest
+      .fn<Promise<unknown>, [ChatMessageCreateInput]>()
+      .mockImplementation(({ data }: { data: { role: ChatMessageRole } }) => {
+        if (data.role === ChatMessageRole.USER) {
+          return Promise.resolve({
+            id: 'message-user',
+            sessionId: 'session-1',
+            role: ChatMessageRole.USER,
+            content: '线段树是什么',
+            modelId: null,
+            tokenUsage: {},
+            metadata: {},
+            createdAt: now,
+            citations: [],
+          });
+        }
+
+        return Promise.resolve({
+          id: 'message-assistant',
+          sessionId: 'session-1',
+          role: ChatMessageRole.ASSISTANT,
+          content: '回答内容',
+          modelId: 'model-1',
+          tokenUsage: {},
+          metadata: {},
+          createdAt: now,
+          citations: [],
+        });
+      });
+    const prisma = {
+      agent: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'agent-1',
+          name: 'OI 助手',
+          status: 'PUBLISHED',
+          systemPrompt: '你是知识库助手。',
+          temperature: null,
+          topP: null,
+          model: {
+            id: 'model-1',
+            type: 'CHAT',
+            isEnabled: true,
+            modelName: 'qwen',
+            baseUrl: 'https://example.test/v1',
+            apiKey: 'secret',
+          },
+          agentKnowledgeBases: [{ knowledgeBaseId: 'kb-1' }],
+        }),
+      },
+      $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+        Promise.resolve(
+          callback({
+            chatSession: {
+              create: jest.fn().mockResolvedValue({
+                id: 'session-1',
+                userId: 'user-1',
+                agentId: 'agent-1',
+                title: '线段树是什么',
+                createdAt: now,
+                updatedAt: now,
+                agent: {
+                  id: 'agent-1',
+                  name: 'OI 助手',
+                },
+              }),
+            },
+            chatMessage: {
+              create: chatMessageCreate,
+            },
+          }),
+        ),
+      ),
+    };
+    const retrievalService = {
+      retrieveFromKnowledgeBases: jest.fn().mockResolvedValue({
+        question: '线段树是什么',
+        topK: 5,
+        hits,
+      }),
+    };
+
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          choices: [{ message: { content: '回答内容' } }],
+          usage: {},
+        }),
+    } as Response);
+
+    const service = createService(prisma, retrievalService);
+
+    await service.chat('agent-1', 'user-1', {
+      message: '线段树是什么',
+      topK: 5,
+    });
+
+    const createdCitations =
+      chatMessageCreate.mock.calls[1]?.[0].data.citations?.create ?? [];
+
+    expect(createdCitations).toHaveLength(3);
+    expect(
+      createdCitations.map((citation) => citation.chunk.connect.id),
+    ).toEqual(['chunk-1', 'chunk-2', 'chunk-3']);
   });
 });

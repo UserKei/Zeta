@@ -6,6 +6,7 @@ import {
 import { FileStorageService, PrismaService } from '@libs/shared';
 import {
   AiModelType,
+  ChunkStatus,
   KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
@@ -72,37 +73,57 @@ export class KnowledgeBasesService {
       where.createdAt = { gte: rangeStart };
     }
 
-    const citations = await this.prisma.chatCitation.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        createdAt: true,
-        document: {
-          select: {
-            id: true,
-            name: true,
-            sourceType: true,
+    const [citations, activeChunks] = await Promise.all([
+      this.prisma.chatCitation.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          document: {
+            select: {
+              id: true,
+              name: true,
+              sourceType: true,
+            },
+          },
+          chunk: {
+            select: {
+              id: true,
+              documentId: true,
+              title: true,
+              position: true,
+              content: true,
+            },
           },
         },
-        chunk: {
-          select: {
-            id: true,
-            documentId: true,
-            title: true,
-            position: true,
-            content: true,
-          },
+      }),
+      this.prisma.chunk.findMany({
+        where: {
+          knowledgeBaseId: id,
+          status: ChunkStatus.ACTIVE,
         },
-      },
-    });
+        select: {
+          id: true,
+          documentId: true,
+        },
+      }),
+    ]);
 
     const documentMap = new Map<
       string,
       KnowledgeUsageDocumentItem & { chunkIds: Set<string> }
     >();
     const chunkMap = new Map<string, KnowledgeUsageChunkItem>();
+    const documentChunkCounts = new Map<string, number>();
     let lastCitedAt: string | null = null;
+
+    for (const chunk of activeChunks) {
+      documentChunkCounts.set(
+        chunk.documentId,
+        (documentChunkCounts.get(chunk.documentId) ?? 0) + 1,
+      );
+    }
 
     for (const citation of citations) {
       const citedAt = citation.createdAt.toISOString();
@@ -118,7 +139,9 @@ export class KnowledgeBasesService {
         documentName: document.name,
         sourceType: document.sourceType,
         citationCount: 0,
+        chunkCount: documentChunkCounts.get(document.id) ?? 0,
         citedChunkCount: 0,
+        chunkCoverageRate: 0,
         lastCitedAt: citedAt,
         chunkIds: new Set<string>(),
       };
@@ -154,6 +177,7 @@ export class KnowledgeBasesService {
       .map(({ chunkIds, ...item }) => ({
         ...item,
         citedChunkCount: chunkIds.size,
+        chunkCoverageRate: this.toCoverageRate(chunkIds.size, item.chunkCount),
       }))
       .sort((left, right) => this.compareUsageItems(left, right));
 
@@ -164,8 +188,13 @@ export class KnowledgeBasesService {
     return {
       range,
       totalCitations: citations.length,
+      totalChunkCount: activeChunks.length,
       citedDocumentCount: documentMap.size,
       citedChunkCount: chunkMap.size,
+      chunkCoverageRate: this.toCoverageRate(
+        chunkMap.size,
+        activeChunks.length,
+      ),
       lastCitedAt,
       topDocuments,
       topChunks,
@@ -536,6 +565,14 @@ export class KnowledgeBasesService {
       right.citationCount - left.citationCount ||
       right.lastCitedAt.localeCompare(left.lastCitedAt)
     );
+  }
+
+  private toCoverageRate(citedCount: number, totalCount: number) {
+    if (totalCount <= 0) {
+      return 0;
+    }
+
+    return Math.min(1, citedCount / totalCount);
   }
 
   private async requireKnowledgeBase(id: string) {

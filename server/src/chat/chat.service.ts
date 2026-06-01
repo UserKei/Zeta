@@ -56,6 +56,7 @@ type ChatCompletionStreamChunk = {
 
 const DEFAULT_CHAT_TOP_K = 5;
 const MAX_CHAT_TOP_K = 20;
+const CHAT_CITATION_LIMIT = 3;
 const DEFAULT_TEMPERATURE = 0.2;
 
 @Injectable()
@@ -631,7 +632,7 @@ export class ChatService {
           model: { connect: { id: agent.model.id } },
           tokenUsage: answer.usage ?? {},
           citations: {
-            create: hits.map((hit) => ({
+            create: hits.slice(0, CHAT_CITATION_LIMIT).map((hit) => ({
               chunk: { connect: { id: hit.chunkId } },
               document: { connect: { id: hit.documentId } },
               score: Number(hit.score.toFixed(6)),

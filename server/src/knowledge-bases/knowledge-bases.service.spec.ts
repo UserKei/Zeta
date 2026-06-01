@@ -15,6 +15,10 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
     IMAGE: 'IMAGE',
     RERANKER: 'RERANKER',
   },
+  ChunkStatus: {
+    ACTIVE: 'ACTIVE',
+    DISABLED: 'DISABLED',
+  },
   KnowledgeBaseStatus: {
     ACTIVE: 'ACTIVE',
     DISABLED: 'DISABLED',
@@ -43,6 +47,9 @@ describe('KnowledgeBasesService getUsage', () => {
       chatCitation: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      chunk: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     });
 
     const result = await service.getUsage('kb-1', 'all');
@@ -50,8 +57,10 @@ describe('KnowledgeBasesService getUsage', () => {
     expect(result).toEqual({
       range: 'all',
       totalCitations: 0,
+      totalChunkCount: 0,
       citedDocumentCount: 0,
       citedChunkCount: 0,
+      chunkCoverageRate: 0,
       lastCitedAt: null,
       topDocuments: [],
       topChunks: [],
@@ -123,6 +132,14 @@ describe('KnowledgeBasesService getUsage', () => {
       chatCitation: {
         findMany: chatCitationFindMany,
       },
+      chunk: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'chunk-1', documentId: 'doc-1' },
+          { id: 'chunk-2', documentId: 'doc-2' },
+          { id: 'chunk-3', documentId: 'doc-1' },
+          { id: 'chunk-4', documentId: 'doc-1' },
+        ]),
+      },
     });
 
     const result = await service.getUsage('kb-1', '7d');
@@ -131,8 +148,10 @@ describe('KnowledgeBasesService getUsage', () => {
       gte: new Date('2026-05-24T12:00:00.000Z'),
     });
     expect(result.totalCitations).toBe(3);
+    expect(result.totalChunkCount).toBe(4);
     expect(result.citedDocumentCount).toBe(2);
     expect(result.citedChunkCount).toBe(2);
+    expect(result.chunkCoverageRate).toBe(0.5);
     expect(result.lastCitedAt).toBe('2026-05-31T09:00:00.000Z');
     expect(result.topDocuments).toEqual([
       expect.objectContaining({
@@ -141,6 +160,8 @@ describe('KnowledgeBasesService getUsage', () => {
         sourceType: 'FILE_UPLOAD',
         citationCount: 2,
         citedChunkCount: 1,
+        chunkCount: 3,
+        chunkCoverageRate: 1 / 3,
         lastCitedAt: '2026-05-31T09:00:00.000Z',
       }),
       expect.objectContaining({
@@ -148,6 +169,8 @@ describe('KnowledgeBasesService getUsage', () => {
         documentName: '采购制度',
         citationCount: 1,
         citedChunkCount: 1,
+        chunkCount: 1,
+        chunkCoverageRate: 1,
       }),
     ]);
     expect(result.topChunks[0]).toEqual(

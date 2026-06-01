@@ -67,3 +67,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # generated assets
 /generated/prisma
 **/generated/prisma
+
+# local example corpora and import scratch files
+/example/

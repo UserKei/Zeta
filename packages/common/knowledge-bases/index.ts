@@ -27,7 +27,9 @@ export type KnowledgeUsageDocumentItem = {
   documentName: string;
   sourceType: string;
   citationCount: number;
+  chunkCount: number;
   citedChunkCount: number;
+  chunkCoverageRate: number;
   lastCitedAt: string;
 };
 
@@ -45,8 +47,10 @@ export type KnowledgeUsageChunkItem = {
 export type KnowledgeUsageSummary = {
   range: KnowledgeUsageRange;
   totalCitations: number;
+  totalChunkCount: number;
   citedDocumentCount: number;
   citedChunkCount: number;
+  chunkCoverageRate: number;
   lastCitedAt: string | null;
   topDocuments: KnowledgeUsageDocumentItem[];
   topChunks: KnowledgeUsageChunkItem[];

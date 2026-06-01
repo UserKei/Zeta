@@ -1,21 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  ChartNoAxesColumnIncreasingIcon,
-  ClockIcon,
-  FileTextIcon,
-  LinkIcon,
-} from '@lucide/vue'
+import { ChartNoAxesColumnIncreasingIcon, ClockIcon, FileTextIcon, LinkIcon } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -52,22 +41,29 @@ const rangeOptions: Array<{ label: string; value: KnowledgeUsageRange }> = [
 const summaryCards = computed(() => [
   {
     label: '总引用次数',
-    value: usage.value?.totalCitations ?? 0,
+    value: String(usage.value?.totalCitations ?? 0),
+    detail: 'Chat 引用事件',
     icon: ChartNoAxesColumnIncreasingIcon,
   },
   {
-    label: '被引用文档',
-    value: usage.value?.citedDocumentCount ?? 0,
-    icon: FileTextIcon,
+    label: '分段覆盖',
+    value: formatPercent(usage.value?.chunkCoverageRate ?? 0),
+    detail: formatCoverageText(
+      usage.value?.citedChunkCount ?? 0,
+      usage.value?.totalChunkCount ?? 0,
+    ),
+    icon: LinkIcon,
   },
   {
-    label: '被引用分段',
-    value: usage.value?.citedChunkCount ?? 0,
-    icon: LinkIcon,
+    label: '文档覆盖',
+    value: String(usage.value?.citedDocumentCount ?? 0),
+    detail: '个文档被引用',
+    icon: FileTextIcon,
   },
   {
     label: '最近引用',
     value: usage.value?.lastCitedAt ? formatTime(usage.value.lastCitedAt) : '-',
+    detail: '最近一次 Chat 引用',
     icon: ClockIcon,
   },
 ])
@@ -86,12 +82,12 @@ const load = async () => {
 
 const sourceText = (sourceType: string) =>
   (
-    {
+    ({
       MANUAL: '手动录入',
       FILE_UPLOAD: '文件导入',
       AI_EXTRACTED: 'AI 提炼',
       WEB_IMPORT: '网页导入',
-    } as Record<string, string>
+    }) as Record<string, string>
   )[sourceType] ?? sourceType
 
 const formatTime = (value: string) =>
@@ -101,6 +97,11 @@ const formatTime = (value: string) =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+
+const formatPercent = (value: number) => `${Math.round(value * 100)}%`
+
+const formatCoverageText = (citedCount: number, totalCount: number) =>
+  `${citedCount} / ${totalCount} 个分段`
 
 const goChunk = (documentId: string, chunkId: string) => {
   void router.push({
@@ -145,12 +146,15 @@ onMounted(load)
       <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card v-for="card in summaryCards" :key="card.label" size="sm">
           <CardContent class="flex items-center gap-3">
-            <span class="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+            <span
+              class="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"
+            >
               <component :is="card.icon" class="size-4" />
             </span>
             <div>
               <p class="m-0 text-sm text-muted-foreground">{{ card.label }}</p>
               <strong class="mt-1 block text-2xl text-foreground">{{ card.value }}</strong>
+              <small class="mt-1 block text-xs text-muted-foreground">{{ card.detail }}</small>
             </div>
           </CardContent>
         </Card>
@@ -161,9 +165,7 @@ onMounted(load)
           <CardHeader class="border-b border-border py-4">
             <div class="flex items-center justify-between">
               <CardTitle>热门文档</CardTitle>
-              <CardDescription>
-                {{ usage?.topDocuments.length ?? 0 }} 个文档
-              </CardDescription>
+              <CardDescription> {{ usage?.topDocuments.length ?? 0 }} 个文档 </CardDescription>
             </div>
           </CardHeader>
 
@@ -179,7 +181,7 @@ onMounted(load)
                 <TableRow>
                   <TableHead>文档</TableHead>
                   <TableHead class="text-center">引用</TableHead>
-                  <TableHead class="text-center">分段</TableHead>
+                  <TableHead class="text-center">覆盖分段</TableHead>
                   <TableHead>最近引用</TableHead>
                 </TableRow>
               </TableHeader>
@@ -190,13 +192,22 @@ onMounted(load)
                       <strong class="truncate text-foreground" :title="document.documentName">
                         {{ document.documentName }}
                       </strong>
-                      <small class="text-muted-foreground">{{ sourceText(document.sourceType) }}</small>
+                      <small class="text-muted-foreground">{{
+                        sourceText(document.sourceType)
+                      }}</small>
                     </div>
                   </TableCell>
                   <TableCell class="text-center">
                     <Badge>{{ document.citationCount }}</Badge>
                   </TableCell>
-                  <TableCell class="text-center">{{ document.citedChunkCount }}</TableCell>
+                  <TableCell class="text-center">
+                    <div class="grid gap-1">
+                      <span>{{ document.citedChunkCount }} / {{ document.chunkCount }}</span>
+                      <small class="text-muted-foreground">
+                        {{ formatPercent(document.chunkCoverageRate) }}
+                      </small>
+                    </div>
+                  </TableCell>
                   <TableCell>{{ formatTime(document.lastCitedAt) }}</TableCell>
                 </TableRow>
               </TableBody>
@@ -208,9 +219,7 @@ onMounted(load)
           <CardHeader class="border-b border-border py-4">
             <div class="flex items-center justify-between">
               <CardTitle>热门分段</CardTitle>
-              <CardDescription>
-                {{ usage?.topChunks.length ?? 0 }} 个分段
-              </CardDescription>
+              <CardDescription> {{ usage?.topChunks.length ?? 0 }} 个分段 </CardDescription>
             </div>
           </CardHeader>
 
@@ -222,13 +231,11 @@ onMounted(load)
               暂无引用数据
             </div>
             <div v-else class="grid gap-3">
-              <Card
-                v-for="chunk in usage.topChunks"
-                :key="chunk.chunkId"
-                size="sm"
-              >
+              <Card v-for="chunk in usage.topChunks" :key="chunk.chunkId" size="sm">
                 <CardContent>
-                  <header class="mb-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                  <header
+                    class="mb-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-start"
+                  >
                     <div class="min-w-0">
                       <strong class="block truncate text-foreground" :title="chunk.title || '-'">
                         {{ chunk.title || '未命名分段' }}
@@ -237,18 +244,23 @@ onMounted(load)
                         {{ chunk.documentName }} · 分段 #{{ chunk.chunkPosition + 1 }}
                       </p>
                     </div>
-                    <Badge>
-                      引用 {{ chunk.citationCount }}
-                    </Badge>
+                    <Badge> 引用 {{ chunk.citationCount }} </Badge>
                   </header>
 
                   <p class="m-0 line-clamp-3 text-sm leading-6 text-foreground">
                     {{ chunk.preview || '暂无内容摘要' }}
                   </p>
 
-                  <footer class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <footer
+                    class="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+                  >
                     <span>最近引用 {{ formatTime(chunk.lastCitedAt) }}</span>
-                    <Button variant="link" size="sm" type="button" @click="goChunk(chunk.documentId, chunk.chunkId)">
+                    <Button
+                      variant="link"
+                      size="sm"
+                      type="button"
+                      @click="goChunk(chunk.documentId, chunk.chunkId)"
+                    >
                       查看分段
                     </Button>
                   </footer>
