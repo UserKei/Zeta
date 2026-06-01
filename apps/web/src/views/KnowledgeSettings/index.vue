@@ -1,32 +1,70 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   deleteKnowledgeBase,
   getKnowledgeBase,
   updateKnowledgeBase,
   type KnowledgeBase,
-  type KnowledgeBasePayload,
+  type KnowledgeBaseStatus,
 } from '@/apis/knowledge-bases'
 import { listModels, type AiModel } from '@/apis/models'
-import { isCancelAction, showErrorMessage, showSuccessMessage } from '@/utils/feedback'
+import { showErrorMessage, showSuccessMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeSettingsView',
 })
 
+const NO_VISION_MODEL = '__NO_VISION_MODEL__'
+
 const route = useRoute()
 const router = useRouter()
 const knowledgeBaseId = computed(() => String(route.params.knowledgeBaseId ?? ''))
+
+interface KnowledgeBaseSettingsForm {
+  name: string
+  description: string
+  status: KnowledgeBaseStatus
+  embeddingModelId: string
+  visionModelId: string | null
+  imageUnderstandingPrompt: string
+  chunkSize: number
+  chunkOverlap: number
+}
 
 const knowledgeBase = ref<KnowledgeBase | null>(null)
 const models = ref<AiModel[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const deleting = ref(false)
+const deleteOpen = ref(false)
 
-const form = reactive<KnowledgeBasePayload>({
+const form = reactive<KnowledgeBaseSettingsForm>({
   name: '',
   description: '',
   status: 'ACTIVE',
@@ -56,6 +94,19 @@ const canSave = computed(
     form.chunkOverlap >= 0 &&
     form.chunkOverlap < form.chunkSize,
 )
+
+const visionModelValue = computed({
+  get: () => form.visionModelId ?? NO_VISION_MODEL,
+  set: (value: string) => {
+    form.visionModelId = value === NO_VISION_MODEL ? null : value
+  },
+})
+
+const handleStatusChange = (value: unknown) => {
+  if (value === 'ACTIVE' || value === 'DISABLED') {
+    form.status = value
+  }
+}
 
 const load = async () => {
   loading.value = true
@@ -114,29 +165,26 @@ const save = async () => {
   }
 }
 
-const remove = async () => {
+const remove = () => {
   if (!knowledgeBase.value) {
     return
   }
 
+  deleteOpen.value = true
+}
+
+const confirmRemove = async () => {
+  if (!knowledgeBase.value) {
+    return
+  }
+
+  deleting.value = true
+
   try {
-    await ElMessageBox.confirm(
-      `删除知识库「${knowledgeBase.value.name}」？删除后文档、分段、向量和绑定关系会同步清理。`,
-      '删除知识库',
-      {
-        cancelButtonText: '取消',
-        confirmButtonText: '删除',
-        type: 'warning',
-      },
-    )
-    deleting.value = true
     await deleteKnowledgeBase(knowledgeBase.value.id)
+    deleteOpen.value = false
     await router.push({ name: 'knowledge-bases' })
   } catch (cause) {
-    if (isCancelAction(cause)) {
-      return
-    }
-
     showErrorMessage(cause, '删除知识库失败')
   } finally {
     deleting.value = false
@@ -149,151 +197,196 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
+  <div class="flex min-h-0 flex-1 flex-col bg-background p-4 text-foreground lg:p-6">
     <header class="mb-4">
-      <h1 class="m-0 text-2xl font-semibold text-(--zeta-ink)">知识库设置</h1>
-      <p class="m-0 mt-1.5 text-sm text-(--zeta-muted)">管理知识库基础信息、索引配置和危险操作。</p>
+      <h1 class="m-0 text-2xl font-semibold">知识库设置</h1>
+      <p class="m-0 mt-1.5 text-sm text-muted-foreground">
+        管理知识库基础信息、索引配置和危险操作。
+      </p>
     </header>
 
-    <section
-      v-loading="loading"
-      class="min-h-0 flex-1 overflow-auto rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"
-    >
-      <div class="mx-auto grid max-w-3xl gap-5 p-4 lg:p-6">
-        <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
-          <h2
-            class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)"
-          >
-            基础信息
-          </h2>
-          <el-form class="mt-4" label-position="top" @submit.prevent="save">
-            <el-form-item label="知识库名称" required>
-              <el-input v-model="form.name" maxlength="80" show-word-limit />
-            </el-form-item>
-            <el-form-item label="描述">
-              <el-input
-                v-model="form.description"
-                :rows="4"
-                maxlength="500"
-                placeholder="描述知识库内容，便于后续管理和检索调试"
-                show-word-limit
-                type="textarea"
-              />
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-radio-group v-model="form.status">
-                <el-radio-button value="ACTIVE">启用</el-radio-button>
-                <el-radio-button value="DISABLED">停用</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-          </el-form>
-        </section>
+    <div class="mx-auto grid w-full max-w-3xl gap-5">
+      <Card v-if="loading">
+        <CardContent class="py-8 text-sm text-muted-foreground">正在加载知识库设置...</CardContent>
+      </Card>
 
-        <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
-          <h2
-            class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)"
-          >
-            索引配置
-          </h2>
-          <p
-            class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)"
-          >
-            分段大小和重叠配置不会自动重切已有分段，只影响后续导入或重建索引。
-          </p>
-          <el-form class="mt-4" label-position="top" @submit.prevent="save">
-            <el-form-item label="Embedding 模型" required>
-              <el-select
-                v-model="form.embeddingModelId"
-                filterable
-                placeholder="请选择启用的 Embedding 模型"
-              >
-                <el-option
-                  v-for="model in embeddingModels"
-                  :key="model.id"
-                  :label="modelLabel(model)"
-                  :value="model.id"
+      <template v-else>
+        <Card>
+          <CardHeader>
+            <CardTitle>基础信息</CardTitle>
+            <CardDescription>配置知识库名称、描述和启停状态。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form class="grid gap-4" @submit.prevent="save">
+              <div class="grid gap-2">
+                <Label for="knowledge-name">知识库名称</Label>
+                <Input id="knowledge-name" v-model="form.name" maxlength="80" />
+              </div>
+
+              <div class="grid gap-2">
+                <Label for="knowledge-description">描述</Label>
+                <Textarea
+                  id="knowledge-description"
+                  v-model="form.description"
+                  :rows="4"
+                  maxlength="500"
+                  placeholder="描述知识库内容，便于后续管理和检索调试"
                 />
-              </el-select>
-            </el-form-item>
+              </div>
+
+              <div class="grid gap-2">
+                <Label>状态</Label>
+                <ToggleGroup
+                  :model-value="form.status"
+                  type="single"
+                  variant="outline"
+                  class="w-fit"
+                  @update:model-value="handleStatusChange"
+                >
+                  <ToggleGroupItem value="ACTIVE">启用</ToggleGroupItem>
+                  <ToggleGroupItem value="DISABLED">停用</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>索引配置</CardTitle>
+            <CardDescription>配置后续导入文档时使用的索引参数。</CardDescription>
+          </CardHeader>
+          <CardContent class="grid gap-4">
+            <Alert>
+              <AlertTitle>已有分段不会自动重切</AlertTitle>
+              <AlertDescription> 分段大小和重叠配置只影响后续导入或重建索引。 </AlertDescription>
+            </Alert>
+
+            <div class="grid gap-2">
+              <Label>Embedding 模型</Label>
+              <Select v-model="form.embeddingModelId">
+                <SelectTrigger class="w-full">
+                  <SelectValue placeholder="请选择启用的 Embedding 模型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem v-for="model in embeddingModels" :key="model.id" :value="model.id">
+                      {{ modelLabel(model) }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div class="grid gap-4 md:grid-cols-2">
-              <el-form-item label="分段大小">
-                <el-input-number
-                  v-model="form.chunkSize"
+              <div class="grid gap-2">
+                <Label for="chunk-size">分段大小</Label>
+                <Input
+                  id="chunk-size"
+                  v-model.number="form.chunkSize"
                   :max="5000"
                   :min="100"
-                  controls-position="right"
-                  class="w-full"
+                  type="number"
                 />
-              </el-form-item>
-              <el-form-item label="分段重叠">
-                <el-input-number
-                  v-model="form.chunkOverlap"
+              </div>
+              <div class="grid gap-2">
+                <Label for="chunk-overlap">分段重叠</Label>
+                <Input
+                  id="chunk-overlap"
+                  v-model.number="form.chunkOverlap"
                   :max="form.chunkSize - 1"
                   :min="0"
-                  controls-position="right"
-                  class="w-full"
+                  type="number"
                 />
-              </el-form-item>
+              </div>
             </div>
-          </el-form>
-        </section>
+          </CardContent>
+        </Card>
 
-        <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
-          <h2
-            class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)"
-          >
-            图片理解
-          </h2>
-          <p
-            class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)"
-          >
-            未配置视觉模型时，DOCX 图片和扫描 PDF 页面图会保留并可预览，但不会生成图片理解分段。
-          </p>
-          <el-form class="mt-4" label-position="top" @submit.prevent="save">
-            <el-form-item label="图片理解模型">
-              <el-select
-                v-model="form.visionModelId"
-                clearable
-                filterable
-                placeholder="可选：请选择启用的视觉模型"
-              >
-                <el-option
-                  v-for="model in visionModels"
-                  :key="model.id"
-                  :label="modelLabel(model)"
-                  :value="model.id"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="图片理解提示词">
-              <el-input
+        <Card>
+          <CardHeader>
+            <CardTitle>图片理解</CardTitle>
+            <CardDescription>配置 DOCX 图片和扫描 PDF 页面图的理解模型。</CardDescription>
+          </CardHeader>
+          <CardContent class="grid gap-4">
+            <Alert>
+              <AlertTitle>未配置视觉模型时</AlertTitle>
+              <AlertDescription>
+                DOCX 图片和扫描 PDF 页面图会保留并可预览，但不会生成图片理解分段。
+              </AlertDescription>
+            </Alert>
+
+            <div class="grid gap-2">
+              <Label>图片理解模型</Label>
+              <Select v-model="visionModelValue">
+                <SelectTrigger class="w-full">
+                  <SelectValue placeholder="可选：请选择启用的视觉模型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem :value="NO_VISION_MODEL">不启用图片理解</SelectItem>
+                    <SelectItem v-for="model in visionModels" :key="model.id" :value="model.id">
+                      {{ modelLabel(model) }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="grid gap-2">
+              <Label for="image-understanding-prompt">图片理解提示词</Label>
+              <Textarea
+                id="image-understanding-prompt"
                 v-model="form.imageUnderstandingPrompt"
                 :rows="5"
                 maxlength="1000"
                 placeholder="用于指导视觉模型提取图片中的知识信息"
-                show-word-limit
-                type="textarea"
               />
-            </el-form-item>
-          </el-form>
-        </section>
+            </div>
+          </CardContent>
+        </Card>
 
         <div class="flex justify-end">
-          <el-button :disabled="!canSave" :loading="saving" type="primary" @click="save">
-            保存设置
-          </el-button>
+          <Button :disabled="!canSave || saving" @click="save">
+            {{ saving ? '保存中' : '保存设置' }}
+          </Button>
         </div>
 
-        <section class="rounded-lg border border-(--zeta-danger-line) bg-(--zeta-panel) p-4">
-          <h2 class="m-0 text-lg font-semibold text-(--zeta-danger)">危险操作</h2>
-          <p class="m-0 mt-2 text-sm leading-6 text-(--zeta-muted)">
-            删除知识库会同步清理文档、分段、向量、引用和 Agent 绑定关系。该操作不可恢复。
-          </p>
-          <div class="mt-4">
-            <el-button :loading="deleting" type="danger" @click="remove">删除知识库</el-button>
-          </div>
-        </section>
-      </div>
-    </section>
+        <Card class="border-destructive/40">
+          <CardHeader>
+            <CardTitle class="text-destructive">危险操作</CardTitle>
+            <CardDescription>
+              删除知识库会同步清理文档、分段、向量、引用和 Agent 绑定关系。该操作不可恢复。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="destructive" :disabled="deleting" @click="remove">
+              {{ deleting ? '删除中' : '删除知识库' }}
+            </Button>
+          </CardContent>
+        </Card>
+      </template>
+    </div>
+
+    <AlertDialog v-model:open="deleteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除知识库</AlertDialogTitle>
+          <AlertDialogDescription>
+            删除知识库「{{ knowledgeBase?.name }}」？删除后文档、分段、向量和绑定关系会同步清理。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="deleting"
+            @click.prevent="confirmRemove"
+          >
+            {{ deleting ? '删除中' : '删除' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>

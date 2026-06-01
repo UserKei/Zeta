@@ -116,7 +116,7 @@ const getCitationDocuments = (citations: ChatCitation[]) => {
             v-if="message.content"
             :editor-id="`chat-message-${message.id}`"
             :model-value="message.content"
-            class="zeta-chat-md-preview"
+            class="chat-md-preview"
           />
           <p
             v-else-if="message.id === streamingMessageId"
@@ -169,15 +169,15 @@ const getCitationDocuments = (citations: ChatCitation[]) => {
 </template>
 
 <style scoped>
-.zeta-chat-md-preview {
+.chat-md-preview {
   background: transparent;
 }
 
-.zeta-chat-md-preview :deep(.md-editor-preview-wrapper) {
+.chat-md-preview :deep(.md-editor-preview-wrapper) {
   padding: 0;
 }
 
-.zeta-chat-md-preview :deep(.md-editor-preview) {
+.chat-md-preview :deep(.md-editor-preview) {
   color: var(--foreground);
   font-size: 15px;
   line-height: 1.85;
