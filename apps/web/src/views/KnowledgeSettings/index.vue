@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import {
   deleteKnowledgeBase,
   getKnowledgeBase,
@@ -10,7 +10,7 @@ import {
   type KnowledgeBasePayload,
 } from '@/apis/knowledge-bases'
 import { listModels, type AiModel } from '@/apis/models'
-import { isCancelAction, showErrorMessage } from '@/utils/feedback'
+import { isCancelAction, showErrorMessage, showSuccessMessage } from '@/utils/feedback'
 
 defineOptions({
   name: 'KnowledgeSettingsView',
@@ -106,7 +106,7 @@ const save = async () => {
       chunkOverlap: form.chunkOverlap,
     })
     knowledgeBase.value = updated
-    ElMessage.success('知识库设置已保存')
+    showSuccessMessage('知识库设置已保存')
   } catch (cause) {
     showErrorMessage(cause, '保存知识库设置失败')
   } finally {
@@ -143,8 +143,7 @@ const remove = async () => {
   }
 }
 
-const modelLabel = (model: AiModel) =>
-  `${model.name} · ${model.provider} / ${model.modelName}`
+const modelLabel = (model: AiModel) => `${model.name} · ${model.provider} / ${model.modelName}`
 
 onMounted(load)
 </script>
@@ -153,15 +152,18 @@ onMounted(load)
   <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
     <header class="mb-4">
       <h1 class="m-0 text-2xl font-semibold text-(--zeta-ink)">知识库设置</h1>
-      <p class="m-0 mt-1.5 text-sm text-(--zeta-muted)">
-        管理知识库基础信息、索引配置和危险操作。
-      </p>
+      <p class="m-0 mt-1.5 text-sm text-(--zeta-muted)">管理知识库基础信息、索引配置和危险操作。</p>
     </header>
 
-    <section v-loading="loading" class="min-h-0 flex-1 overflow-auto rounded-lg border border-(--zeta-line) bg-(--zeta-panel)">
+    <section
+      v-loading="loading"
+      class="min-h-0 flex-1 overflow-auto rounded-lg border border-(--zeta-line) bg-(--zeta-panel)"
+    >
       <div class="mx-auto grid max-w-3xl gap-5 p-4 lg:p-6">
         <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
-          <h2 class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)">
+          <h2
+            class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)"
+          >
             基础信息
           </h2>
           <el-form class="mt-4" label-position="top" @submit.prevent="save">
@@ -188,10 +190,14 @@ onMounted(load)
         </section>
 
         <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
-          <h2 class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)">
+          <h2
+            class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)"
+          >
             索引配置
           </h2>
-          <p class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)">
+          <p
+            class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)"
+          >
             分段大小和重叠配置不会自动重切已有分段，只影响后续导入或重建索引。
           </p>
           <el-form class="mt-4" label-position="top" @submit.prevent="save">
@@ -233,10 +239,14 @@ onMounted(load)
         </section>
 
         <section class="rounded-lg border border-(--zeta-line-soft) bg-(--zeta-surface-tint) p-4">
-          <h2 class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)">
+          <h2
+            class="m-0 border-l-3 border-(--zeta-blue) pl-3 text-lg font-semibold text-(--zeta-ink)"
+          >
             图片理解
           </h2>
-          <p class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)">
+          <p
+            class="m-0 mt-3 rounded-lg bg-(--zeta-blue-soft) px-3 py-2 text-sm text-(--zeta-content)"
+          >
             未配置视觉模型时，DOCX 图片和扫描 PDF 页面图会保留并可预览，但不会生成图片理解分段。
           </p>
           <el-form class="mt-4" label-position="top" @submit.prevent="save">
