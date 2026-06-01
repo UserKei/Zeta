@@ -17,8 +17,9 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
 ![Vue Router](https://img.shields.io/badge/Vue_Router-5-42B883?logo=vue.js&logoColor=white)
 ![Pinia](https://img.shields.io/badge/Pinia-3-F7D336?logo=pinia&logoColor=black)
-![Element Plus](https://img.shields.io/badge/Element_Plus-2-409EFF)
+![shadcn-vue](https://img.shields.io/badge/shadcn--vue-UI-111827)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Sonner](https://img.shields.io/badge/vue--sonner-toast-111827)
 ![axios](https://img.shields.io/badge/axios-1-5A29E4)
 ![SSE](https://img.shields.io/badge/SSE-fetch--event--source-111827)
 ![Markdown](https://img.shields.io/badge/Markdown-md--editor--v3-000000?logo=markdown&logoColor=white)
@@ -33,11 +34,11 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 - 前端框架：Vue 3、Vite、TypeScript、Vue Router。
 - 前端状态与请求：Pinia、pinia-plugin-persistedstate、axios、@microsoft/fetch-event-source。
-- 前端 UI：Element Plus、@element-plus/icons-vue、Tailwind CSS、md-editor-v3、vue-draggable-plus。
+- 前端 UI：shadcn-vue、Tailwind CSS、vue-sonner、lucide-vue-next、md-editor-v3、vue-draggable-plus。
 - 后端框架：NestJS 11、TypeScript、JWT、bcrypt、全局拦截器和统一响应封装。
 - 数据访问：Prisma 7、Prisma migration、Prisma seed、PostgreSQL 16。
-- 检索能力：pgvector、PostgreSQL 全文检索、Chunk Embedding、RAG 检索增强生成。
-- AI 接入：阿里云百炼 `text-embedding-v4`、DeepSeek 对话模型（OpenAI-compatible Chat Completions 协议）。
+- 检索能力：PostgreSQL 全文检索、pgvector 向量检索、可选文本 Rerank、Chunk Embedding、RAG 检索增强生成。
+- AI 接入：阿里云百炼 `text-embedding-v4`、`qwen3-rerank`、视觉模型和 DeepSeek 对话模型，主要走 OpenAI-compatible 协议。
 - 工程工具：pnpm workspace、ESLint、Oxlint、Prettier、Husky、lint-staged。
 - 部署运行：Docker Compose、Nginx、生产多阶段 Dockerfile。
 
@@ -73,6 +74,7 @@ flowchart LR
 
     subgraph ai[外部 AI 能力]
         embedding[Embedding Model]
+        rerank[Rerank Model]
         llm[Chat LLM]
     end
 
@@ -100,6 +102,7 @@ flowchart LR
     retrieval --> fts
     retrieval --> vector
     retrieval --> embedding
+    retrieval --> rerank
 
     chatSvc --> retrieval
     chatSvc --> llm
@@ -134,12 +137,12 @@ flowchart LR
 
 - 登录与默认账号：首版只做登录，不做注册；默认账号由 Prisma seed 初始化。
 - 模型管理：维护 Chat、Embedding、Reranker 和视觉模型配置。
-- 知识库管理：创建知识库，绑定 Embedding 模型，配置分段参数、图片理解模型和图片理解提示词。
+- 知识库管理：创建知识库，绑定 Embedding 模型，可选绑定文本重排模型、图片理解模型和图片理解提示词。
 - 文档列表：按知识库管理文档、来源、状态、字符数和分段数。
 - 文档导入：上传 Markdown、TXT、HTML、PDF、DOCX、CSV、XLSX、XLS，解析为分段草稿，人工调整后确认入库。
 - 图片理解：DOCX 内嵌图片和 PDF 页面图会保存为文件资产；知识库配置视觉模型后，会额外生成图片理解 Chunk，继续进入全文索引和向量检索。
 - 分段管理：支持新增、编辑、删除、启停和拖拽重排分段。
-- 索引与检索：为启用分段写入全文索引和向量 Embedding，支持检索测试。
+- 索引与检索：为启用分段写入全文索引和向量 Embedding，支持全文 + 向量混合召回；知识库配置 Reranker 后，会调用文本重排模型精排候选分段。
 - 知识热度：基于 Agent Chat 回答中的引用记录统计热门文档和热门分段。
 - 专家 Agent：配置 Prompt、Chat 模型，并绑定一个或多个知识库。
 - Chat 问答：独立聊天页面，支持 SSE 流式回答、历史会话和引用来源。
@@ -149,13 +152,13 @@ flowchart LR
 ## 推荐演示路径
 
 1. 使用默认账号 `admin / 123456` 登录系统。
-2. 在模型管理中确认已有 Chat 模型、启用的 Embedding 模型；如需演示图片理解，再配置一个视觉模型。
-3. 创建一个知识库，例如“企业制度知识库”，在知识库设置中选择 Embedding 模型；如已配置视觉模型，可同时选择图片理解模型并调整提示词。
+2. 在模型管理中确认已有 Chat 模型、启用的 Embedding 模型；如需演示精排和图片理解，再配置 `qwen3-rerank` 重排模型和一个视觉模型。
+3. 创建一个知识库，例如“企业制度知识库”，在知识库设置中选择 Embedding 模型；如已配置重排或视觉模型，可同时选择重排模型、图片理解模型并调整提示词。
 4. 进入知识库文档管理，上传 `docs/demo/it-account-onboarding.md`。
 5. 在上传页查看 Markdown 解析出的分段草稿，编辑一个分段标题或内容后确认入库。
 6. 继续上传 CSV、PDF 或 DOCX 样例，演示表格按行分段、PDF 结构化分段、DOCX 标题和图片资产保留。
 7. 进入分段页，演示分段的新增、编辑、启停、排序和删除；如果知识库配置了视觉模型，可查看图片理解 Chunk。
-8. 回到文档列表，打开检索测试，提问“VPN 权限多久生效？”并查看命中分段、来源、命中原因和分数。
+8. 回到文档列表，打开检索测试，提问“VPN 权限多久生效？”并查看命中分段、来源、命中原因和分数；如果配置了重排模型，结果会显示“已重排”和重排分数。
 9. 创建或选择一个绑定该知识库的专家 Agent，进入 Chat 页面提问“采购合同超过 100 万需要哪些审批？”。
 10. 查看 AI 回答下方的引用来源，并打开引用详情确认回答可追溯到文档分段。
 11. 回到 Agent 管理页，进入对话日志，将某条 AI 回答标注入库。
@@ -166,15 +169,15 @@ flowchart LR
 
 仓库内提供企业场景样例，可直接用于知识库上传测试：
 
-| 文件 | 场景 | 推荐问题 |
-| ---- | ---- | -------- |
-| `docs/demo/it-account-onboarding.md` | 入职账号、邮箱、飞书、VPN、MFA | `VPN 权限多久生效？` |
-| `docs/demo/it-account-onboarding.pdf` / `.docx` | 同一场景的 PDF / DOCX 版本，用于验证结构化解析和 Word 标题分段 | `MFA 没绑定会影响什么？` |
-| `docs/demo/procurement-contract-approval.md` | 采购合同、审批材料、金额节点、风险条款 | `采购合同超过 100 万需要哪些审批？` |
-| `docs/demo/procurement-contract-approval.pdf` / `.docx` | 同一场景的 PDF / DOCX 版本，用于验证多格式导入 | `采购合同需要准备哪些材料？` |
-| `docs/demo/security-incident-response.md` | 钓鱼邮件、账号异常、数据泄露、安全事件上报 | `发现钓鱼邮件应该多久内上报？` |
-| `docs/demo/security-incident-response.pdf` / `.docx` | 同一场景的 PDF / DOCX 版本，用于验证结构化分段和引用追溯 | `账号异常登录应该怎么处理？` |
-| `docs/demo/expense-policy-table.csv` | 报销费用类型、限额、审批人、生效时间 | `客户招待费用的单次限额是多少？` |
+| 文件                                                    | 场景                                                           | 推荐问题                            |
+| ------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------- |
+| `docs/demo/it-account-onboarding.md`                    | 入职账号、邮箱、飞书、VPN、MFA                                 | `VPN 权限多久生效？`                |
+| `docs/demo/it-account-onboarding.pdf` / `.docx`         | 同一场景的 PDF / DOCX 版本，用于验证结构化解析和 Word 标题分段 | `MFA 没绑定会影响什么？`            |
+| `docs/demo/procurement-contract-approval.md`            | 采购合同、审批材料、金额节点、风险条款                         | `采购合同超过 100 万需要哪些审批？` |
+| `docs/demo/procurement-contract-approval.pdf` / `.docx` | 同一场景的 PDF / DOCX 版本，用于验证多格式导入                 | `采购合同需要准备哪些材料？`        |
+| `docs/demo/security-incident-response.md`               | 钓鱼邮件、账号异常、数据泄露、安全事件上报                     | `发现钓鱼邮件应该多久内上报？`      |
+| `docs/demo/security-incident-response.pdf` / `.docx`    | 同一场景的 PDF / DOCX 版本，用于验证结构化分段和引用追溯       | `账号异常登录应该怎么处理？`        |
+| `docs/demo/expense-policy-table.csv`                    | 报销费用类型、限额、审批人、生效时间                           | `客户招待费用的单次限额是多少？`    |
 
 这些样例用于演示文档上传、分段预览、检索测试、Agent 引用回答、知识热度和对话日志标注入库。CSV 样例可在上传页切换到“表格”模式后导入，系统会把第一行作为表头，并将后续每一行转换为一个可检索分段。PDF / DOCX 样例已经随仓库提供，`docs/demo/pdf-docx-import.md` 保留为自行生成更多测试文件的说明。
 
@@ -354,7 +357,8 @@ Zeta/
 │           ├── parser/              # 文件解析器：Markdown、TXT、HTML、PDF、DOCX、表格
 │           ├── prisma/              # Prisma Module / Service
 │           ├── response/            # 统一响应封装
-│           ├── retrieval/           # 检索服务
+│           ├── retrieval/           # 混合检索服务
+│           ├── rerank/              # 文本重排服务
 │           └── text-splitter/       # 文本切分能力
 │
 ├── packages/
@@ -394,10 +398,12 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
    - 业务数据、文档元数据、分段、聊天记录和引用关系都落在 PostgreSQL。
    - 全文检索使用 PostgreSQL `tsvector` / GIN。
    - 语义检索使用 pgvector。
+   - 文本重排使用 OpenAI-compatible `/reranks`，当前推荐阿里云百炼 `qwen3-rerank`。
    - 文件原文首版按 PostgreSQL Large Object 方案设计。
 
 5. **RAG 问答链路**
    - 用户提问后，后端在 Agent 绑定知识库内召回 Chunk。
+   - 如果知识库配置了重排模型，后端会先召回更多候选，再按 Rerank 分数筛选最终 TopK。
    - 后端组装 Prompt 并调用 Chat 模型。
    - 回答通过 SSE 流式返回。
    - 回答结束后保存 ChatMessage 和 ChatCitation，引用可回溯到 Document 和 Chunk。
@@ -455,7 +461,7 @@ bash scripts/deploy.sh
 ## 后续计划
 
 - 多模态深化：当前已支持图片资产保留，并可通过视觉模型生成文本型图片理解 Chunk；后续候选是独立图片上传、OCR 专用服务和真正的图文向量检索。
-- 检索准确率深化：继续优化中文全文检索、混合检索分数解释，并为后续 Rerank 留出扩展点。
+- 检索准确率深化：当前已支持混合召回后的文本 Rerank；后续继续优化中文全文检索、重排参数解释和不同知识库场景下的命中稳定性。
 - 复杂知识关系：后续评估跨文档引用、流程型知识、表格关系和知识版本变化的表达方式。
 - UI 收口：继续参考 MaxKB 优化知识库 Workspace、文档管理、上传流程、分段页和 Agent 日志页面。
 - 演示材料：根据后续答辩要求补充稳定的知识库样例、Agent 样例和演示脚本。
