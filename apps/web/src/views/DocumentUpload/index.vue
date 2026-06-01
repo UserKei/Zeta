@@ -9,6 +9,7 @@ import {
   TrashIcon,
   UploadIcon,
 } from '@lucide/vue'
+import { Icon } from '@iconify/vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -382,10 +383,32 @@ const formatFileSize = (size: number) => {
   return `${(size / 1024 / 1024).toFixed(2)} MB`
 }
 
+const getFileExtension = (fileName: string) => fileName.split('.').pop()?.trim().toLowerCase() || ''
+
 const getFileExtensionLabel = (fileName: string) => {
-  const extension = fileName.split('.').pop()?.trim()
+  const extension = getFileExtension(fileName)
 
   return extension ? extension.toUpperCase() : 'FILE'
+}
+
+const getFileIcon = (fileName: string) => {
+  const extension = getFileExtension(fileName)
+
+  return (
+    {
+      pdf: 'vscode-icons:file-type-pdf2',
+      docx: 'vscode-icons:file-type-word',
+      doc: 'vscode-icons:file-type-word',
+      xlsx: 'vscode-icons:file-type-excel',
+      xls: 'vscode-icons:file-type-excel',
+      csv: 'vscode-icons:file-type-csv',
+      md: 'vscode-icons:file-type-markdown',
+      markdown: 'vscode-icons:file-type-markdown',
+      html: 'vscode-icons:file-type-html',
+      htm: 'vscode-icons:file-type-html',
+      txt: 'vscode-icons:file-type-text',
+    }[extension] || 'vscode-icons:default-file'
+  )
 }
 
 const sourceFormatText = (format: FileSourceFormat) =>
@@ -413,35 +436,39 @@ onMounted(loadKnowledgeBase)
 
         <div v-else-if="activeStep === 0" class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
           <section class="mx-auto flex w-full max-w-280 flex-col gap-5 py-3">
-            <div class="flex flex-col gap-2">
-              <h2 class="m-0 text-lg font-semibold">上传文档</h2>
-              <p class="m-0 text-sm text-muted-foreground">
-                选择文本文件或表格文件，系统会先解析为可编辑分段草稿。
-              </p>
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div class="min-w-0 flex-1">
+                <h2 class="m-0 text-lg font-semibold">上传文档</h2>
+                <p class="m-0 mt-2 text-sm text-muted-foreground">
+                  选择文本文件或表格文件，系统会先解析为可编辑分段草稿。
+                </p>
+              </div>
+
+              <ToggleGroup
+                :model-value="uploadMode"
+                type="single"
+                variant="outline"
+                class="w-fit"
+                @update:model-value="handleUploadModeChange"
+              >
+                <ToggleGroupItem value="TEXT">文本文件</ToggleGroupItem>
+                <ToggleGroupItem value="TABLE">表格</ToggleGroupItem>
+              </ToggleGroup>
             </div>
 
-            <ToggleGroup
-              :model-value="uploadMode"
-              type="single"
-              variant="outline"
-              class="w-fit"
-              @update:model-value="handleUploadModeChange"
-            >
-              <ToggleGroupItem value="TEXT">文本文件</ToggleGroupItem>
-              <ToggleGroupItem value="TABLE">表格</ToggleGroupItem>
-            </ToggleGroup>
+            <div class="grid gap-3" :class="imageUnderstandingNotice ? 'lg:grid-cols-2' : ''">
+              <Alert>
+                <AlertTitle>{{
+                  uploadMode === 'TABLE' ? '表格解析规则' : '文本文件解析规则'
+                }}</AlertTitle>
+                <AlertDescription>{{ uploadModeDescription }}</AlertDescription>
+              </Alert>
 
-            <Alert>
-              <AlertTitle>{{
-                uploadMode === 'TABLE' ? '表格解析规则' : '文本文件解析规则'
-              }}</AlertTitle>
-              <AlertDescription>{{ uploadModeDescription }}</AlertDescription>
-            </Alert>
-
-            <Alert v-if="imageUnderstandingNotice" variant="default">
-              <AlertTitle>图片理解</AlertTitle>
-              <AlertDescription>{{ imageUnderstandingNotice }}</AlertDescription>
-            </Alert>
+              <Alert v-if="imageUnderstandingNotice" variant="default">
+                <AlertTitle>图片理解</AlertTitle>
+                <AlertDescription>{{ imageUnderstandingNotice }}</AlertDescription>
+              </Alert>
+            </div>
 
             <button
               type="button"
@@ -479,10 +506,8 @@ onMounted(loadKnowledgeBase)
                 :key="getFileKey(file)"
                 class="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card p-3 text-card-foreground"
               >
-                <div
-                  class="grid size-10 shrink-0 place-items-center rounded-md bg-primary/10 text-primary"
-                >
-                  <FileTextIcon />
+                <div class="grid size-12 shrink-0 place-items-center">
+                  <Icon :icon="getFileIcon(file.name)" class="size-11" aria-hidden="true" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <p class="m-0 truncate text-sm font-medium" :title="file.name">
