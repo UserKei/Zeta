@@ -180,7 +180,7 @@ onMounted(load)
               <TableHeader>
                 <TableRow>
                   <TableHead>文档</TableHead>
-                  <TableHead class="text-center">引用</TableHead>
+                  <TableHead class="text-center">引用次数</TableHead>
                   <TableHead class="text-center">覆盖分段</TableHead>
                   <TableHead>最近引用</TableHead>
                 </TableRow>
@@ -244,7 +244,7 @@ onMounted(load)
                         {{ chunk.documentName }} · 分段 #{{ chunk.chunkPosition + 1 }}
                       </p>
                     </div>
-                    <Badge> 引用 {{ chunk.citationCount }} </Badge>
+                    <Badge> 引用次数 {{ chunk.citationCount }} </Badge>
                   </header>
 
                   <p class="m-0 line-clamp-3 text-sm leading-6 text-foreground">
