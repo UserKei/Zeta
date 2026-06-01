@@ -16,6 +16,7 @@ export default [
           requiresAuth: true,
           activeMenu: 'agents',
           title: '专家 Agent',
+          breadcrumb: [{ label: '专家 Agent' }],
         },
         component: () => import('@/views/Agents/index.vue'),
       },
@@ -29,11 +30,6 @@ export default [
         meta: {
           requiresAuth: true,
           activeMenu: 'agents',
-          workspaceTitle: '专家 Agent',
-          workspaceSubtitle: '对话日志与知识反哺',
-          workspaceBackRoute: 'agents',
-          workspaceResourceType: 'agent',
-          workspaceResourceIdParam: 'agentId',
         },
         children: [
           {
@@ -45,6 +41,8 @@ export default [
               workspaceMenu: true,
               title: '对话日志',
               icon: MessageCircleIcon,
+              breadcrumb: [{ label: '专家 Agent', to: { name: 'agents' } }, { label: '对话日志' }],
+              breadcrumbBack: { name: 'agents' },
             },
             component: () => import('@/views/ChatLogs/index.vue'),
           },

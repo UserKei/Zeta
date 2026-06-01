@@ -13,6 +13,7 @@ export default [
           requiresAuth: true,
           activeMenu: 'models',
           title: '模型管理',
+          breadcrumb: [{ label: '模型管理' }],
         },
         component: () => import('@/views/Models/index.vue'),
       },

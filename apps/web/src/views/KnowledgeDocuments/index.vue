@@ -303,21 +303,13 @@ onMounted(load)
 
 <template>
   <div class="grid gap-4 p-4 lg:p-6">
-    <header class="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
-      <div class="flex min-w-0 items-start gap-3">
-        <Button variant="outline" size="sm" @click="router.push({ name: 'knowledge-bases' })">
-          返回
-        </Button>
-        <div class="min-w-0">
-          <p class="m-0 text-sm text-muted-foreground">知识库 / 文档</p>
-          <h1 class="m-0 mt-1 truncate text-2xl font-semibold text-foreground">文档</h1>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <Badge variant="outline">{{ knowledgeBase?.name || '知识库' }}</Badge>
-            <Badge variant="secondary">已索引 {{ indexedCount }} / {{ documents.length }}</Badge>
-            <Badge variant="secondary">分段 {{ totalChunks }}</Badge>
-          </div>
-        </div>
-      </div>
+    <header class="flex flex-wrap items-center gap-2">
+      <Badge variant="outline" class="max-w-full truncate">
+        {{ knowledgeBase?.name || '知识库' }}
+      </Badge>
+      <Badge variant="secondary">文档 {{ documents.length }}</Badge>
+      <Badge variant="secondary">已索引 {{ indexedCount }} / {{ documents.length }}</Badge>
+      <Badge variant="secondary">分段 {{ totalChunks }}</Badge>
     </header>
 
     <section

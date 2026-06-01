@@ -1,8 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterView, useRoute, useRouter } from 'vue-router'
-import { BoxIcon, LibraryIcon, MessageCircleIcon, PowerIcon, UserIcon } from '@lucide/vue'
+import { RouterView, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
+import {
+  ArrowLeftIcon,
+  BoxIcon,
+  LibraryIcon,
+  MessageCircleIcon,
+  PowerIcon,
+  UserIcon,
+} from '@lucide/vue'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useUserStore } from '@/stores/user'
 
@@ -13,6 +29,13 @@ defineOptions({
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+type CurrentRoute = ReturnType<typeof useRoute>
+type BreadcrumbTarget = RouteLocationRaw | ((route: CurrentRoute) => RouteLocationRaw)
+type BreadcrumbItemConfig = {
+  label: string
+  to?: BreadcrumbTarget
+}
 
 const navItems = [
   { name: 'models', label: '模型管理', icon: BoxIcon },
@@ -30,8 +53,41 @@ const activeMenu = computed(() => {
   return typeof route.name === 'string' ? route.name : ''
 })
 
+const breadcrumbItems = computed(() => {
+  const items = route.meta.breadcrumb
+
+  return Array.isArray(items) ? (items as BreadcrumbItemConfig[]) : []
+})
+
+const breadcrumbBack = computed(() => route.meta.breadcrumbBack as BreadcrumbTarget | undefined)
+
+const hasBreadcrumb = computed(() => breadcrumbItems.value.length > 0)
+const currentBreadcrumbItem = computed(() => breadcrumbItems.value.at(-1))
+
+const resolveRouteTarget = (target?: BreadcrumbTarget) => {
+  if (!target) {
+    return null
+  }
+
+  return typeof target === 'function' ? target(route) : target
+}
+
 const openMenu = async (name: string) => {
   await router.push({ name })
+}
+
+const openBreadcrumbTarget = async (target?: BreadcrumbTarget) => {
+  const routeTarget = resolveRouteTarget(target)
+
+  if (!routeTarget) {
+    return
+  }
+
+  await router.push(routeTarget)
+}
+
+const openBreadcrumbBack = async () => {
+  await openBreadcrumbTarget(breadcrumbBack.value)
 }
 
 const logout = async () => {
@@ -48,9 +104,9 @@ const logout = async () => {
       <div
         class="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(170px,1fr)_auto_minmax(220px,1fr)] lg:items-center lg:px-8"
       >
-        <div class="flex min-w-0 items-center">
+        <div class="flex min-w-0 items-center gap-3">
           <button
-            class="group flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-left"
+            class="group flex shrink-0 items-center gap-2 border-0 bg-transparent p-0 text-left"
             type="button"
             aria-label="回到模型管理"
             @click="router.push({ name: 'models' })"
@@ -64,6 +120,62 @@ const logout = async () => {
               Zeta
             </span>
           </button>
+
+          <div v-if="hasBreadcrumb" class="hidden min-w-0 items-center gap-2 md:flex">
+            <Separator orientation="vertical" class="h-6" />
+            <Button
+              v-if="breadcrumbBack"
+              variant="ghost"
+              size="icon"
+              type="button"
+              aria-label="返回上一层"
+              class="size-8"
+              @click="openBreadcrumbBack"
+            >
+              <ArrowLeftIcon />
+            </Button>
+            <Breadcrumb class="min-w-0 overflow-hidden">
+              <BreadcrumbList class="flex-nowrap">
+                <template v-for="(item, index) in breadcrumbItems" :key="`${item.label}-${index}`">
+                  <BreadcrumbItem class="min-w-0">
+                    <BreadcrumbLink
+                      v-if="item.to"
+                      as="button"
+                      type="button"
+                      class="max-w-32 cursor-pointer truncate lg:max-w-44"
+                      @click="openBreadcrumbTarget(item.to)"
+                    >
+                      {{ item.label }}
+                    </BreadcrumbLink>
+                    <BreadcrumbPage v-else class="max-w-36 truncate lg:max-w-56">
+                      {{ item.label }}
+                    </BreadcrumbPage>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator v-if="index < breadcrumbItems.length - 1" />
+                </template>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+
+          <div
+            v-if="hasBreadcrumb"
+            class="flex min-w-0 items-center gap-2 border-l border-border pl-3 md:hidden"
+          >
+            <Button
+              v-if="breadcrumbBack"
+              variant="ghost"
+              size="icon"
+              type="button"
+              aria-label="返回上一层"
+              class="size-8"
+              @click="openBreadcrumbBack"
+            >
+              <ArrowLeftIcon />
+            </Button>
+            <span class="truncate text-sm text-muted-foreground">
+              {{ currentBreadcrumbItem?.label }}
+            </span>
+          </div>
         </div>
 
         <nav
