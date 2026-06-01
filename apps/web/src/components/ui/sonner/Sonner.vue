@@ -9,14 +9,32 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from '@lucide/vue'
+import { computed } from 'vue'
 import { Toaster as Sonner } from 'vue-sonner'
 import { cn } from '@/lib/utils'
 
 const props = defineProps<ToasterProps>()
+
+const forwardedProps = computed(() => {
+  const delegatedProps = { ...props }
+  delete delegatedProps.class
+  delete delegatedProps.toastOptions
+
+  return delegatedProps
+})
+
+const toastOptions = computed<ToasterProps['toastOptions']>(() => ({
+  ...props.toastOptions,
+  classes: {
+    ...props.toastOptions?.classes,
+    toast: cn('rounded-2xl', props.toastOptions?.classes?.toast),
+  },
+}))
 </script>
 
 <template>
   <Sonner
+    v-bind="forwardedProps"
     :class="cn('toaster group', props.class)"
     :style="{
       '--normal-bg': 'var(--popover)',
@@ -29,12 +47,7 @@ const props = defineProps<ToasterProps>()
       '--gray5': 'var(--border)',
       '--gray12': 'var(--popover-foreground)',
     }"
-    :toast-options="{
-      classes: {
-        toast: 'rounded-2xl',
-      },
-    }"
-    v-bind="props"
+    :toast-options="toastOptions"
   >
     <template #success-icon>
       <CircleCheckIcon class="size-4" />

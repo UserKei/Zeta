@@ -5,5 +5,5 @@ import 'vue-sonner/style.css'
 
 <template>
   <RouterView />
-  <Toaster rich-colors position="top-right" />
+  <Toaster rich-colors position="top-center" />
 </template>
