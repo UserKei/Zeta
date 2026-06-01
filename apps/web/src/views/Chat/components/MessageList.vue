@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BotIcon, MessageCircleIcon } from '@lucide/vue'
-import ZetaMarkdownPreview from '@/components/ZetaMarkdownPreview.vue'
+import MarkdownPreview from '@/components/markdown/MarkdownPreview.vue'
 import type { ChatCitation, ChatMessage } from '@/apis/chat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -112,7 +112,7 @@ const getCitationDocuments = (citations: ChatCitation[]) => {
             <span>{{ formatTime(message.createdAt) }}</span>
           </header>
 
-          <ZetaMarkdownPreview
+          <MarkdownPreview
             v-if="message.content"
             :editor-id="`chat-message-${message.id}`"
             :model-value="message.content"

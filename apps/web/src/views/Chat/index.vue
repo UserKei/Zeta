@@ -18,7 +18,7 @@ import { getAgent, type Agent } from '@/apis/agents'
 import SessionSidebar from './components/SessionSidebar.vue'
 import MessageList from './components/MessageList.vue'
 import ChatComposer from './components/ChatComposer.vue'
-import ChatCitationDialog from '@/components/ui/ChatCitationDialog.vue'
+import ChatCitationDialog from '@/components/chat/ChatCitationDialog.vue'
 import { showErrorMessage } from '@/utils/feedback'
 
 defineOptions({

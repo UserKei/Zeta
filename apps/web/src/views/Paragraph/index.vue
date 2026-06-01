@@ -14,7 +14,7 @@ import {
 import { MdEditor } from 'md-editor-v3'
 import { VueDraggable } from 'vue-draggable-plus'
 import 'md-editor-v3/lib/style.css'
-import ZetaMarkdownPreview from '@/components/ZetaMarkdownPreview.vue'
+import MarkdownPreview from '@/components/markdown/MarkdownPreview.vue'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -547,7 +547,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <ZetaMarkdownPreview
+              <MarkdownPreview
                 :editor-id="`chunk-preview-${chunk.id}`"
                 :modelValue="chunk.content"
                 class="paragraph-md-preview"
@@ -583,7 +583,7 @@ onBeforeUnmount(() => {
                 编辑
               </Button>
             </div>
-            <ZetaMarkdownPreview
+            <MarkdownPreview
               editor-id="chunk-dialog-preview"
               :modelValue="chunkForm.content"
               class="paragraph-md-preview rounded-lg border border-border p-3"

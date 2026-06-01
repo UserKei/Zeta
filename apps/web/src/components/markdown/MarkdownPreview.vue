@@ -19,11 +19,10 @@ let loadVersion = 0
 
 const fileReferencePattern = /\.\/files\/([A-Za-z0-9_-]+)/g
 
-const extractFileIds = (markdown: string) => [
-  ...new Set(
-    [...markdown.matchAll(fileReferencePattern)].map((match) => match[1] ?? ''),
-  ),
-].filter(Boolean)
+const extractFileIds = (markdown: string) =>
+  [...new Set([...markdown.matchAll(fileReferencePattern)].map((match) => match[1] ?? ''))].filter(
+    Boolean,
+  )
 
 const releaseObjectUrls = () => {
   objectUrls.forEach((url) => URL.revokeObjectURL(url))
@@ -88,9 +87,5 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <MdPreview
-    v-bind="$attrs"
-    :editor-id="editorId"
-    :model-value="renderedMarkdown"
-  />
+  <MdPreview v-bind="$attrs" :editor-id="editorId" :model-value="renderedMarkdown" />
 </template>
