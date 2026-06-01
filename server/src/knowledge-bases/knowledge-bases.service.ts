@@ -23,6 +23,7 @@ type KnowledgeBaseInput = {
   status?: KnowledgeBaseStatus;
   embeddingModelId?: string;
   visionModelId?: string | null;
+  rerankerModelId?: string | null;
   imageUnderstandingPrompt?: string | null;
   chunkSize?: number;
   chunkOverlap?: number;
@@ -309,6 +310,7 @@ export class KnowledgeBasesService {
       status: input.status ?? KnowledgeBaseStatus.ACTIVE,
       embeddingModel: { connect: { id: embeddingModelId } },
       ...(await this.createVisionModelData(input.visionModelId)),
+      ...(await this.createRerankerModelData(input.rerankerModelId)),
       chunkSize,
       chunkOverlap,
       metadata: this.createMetadata(input.imageUnderstandingPrompt),
@@ -358,6 +360,12 @@ export class KnowledgeBasesService {
 
     if (input.visionModelId !== undefined) {
       data.visionModel = await this.toVisionModelUpdate(input.visionModelId);
+    }
+
+    if (input.rerankerModelId !== undefined) {
+      data.rerankerModel = await this.toRerankerModelUpdate(
+        input.rerankerModelId,
+      );
     }
 
     if (input.imageUnderstandingPrompt !== undefined) {
@@ -427,6 +435,24 @@ export class KnowledgeBasesService {
     return { visionModel: { connect: { id: normalizedVisionModelId } } };
   }
 
+  private async createRerankerModelData(
+    rerankerModelId: string | null | undefined,
+  ): Promise<Pick<Prisma.KnowledgeBaseCreateInput, 'rerankerModel'>> {
+    if (!rerankerModelId) {
+      return {};
+    }
+
+    const normalizedRerankerModelId = rerankerModelId.trim();
+
+    if (!normalizedRerankerModelId) {
+      return {};
+    }
+
+    await this.requireRerankerModel(normalizedRerankerModelId);
+
+    return { rerankerModel: { connect: { id: normalizedRerankerModelId } } };
+  }
+
   private async toVisionModelUpdate(
     visionModelId: string | null,
   ): Promise<Prisma.KnowledgeBaseUpdateInput['visionModel']> {
@@ -443,6 +469,24 @@ export class KnowledgeBasesService {
     await this.requireVisionModel(normalizedVisionModelId);
 
     return { connect: { id: normalizedVisionModelId } };
+  }
+
+  private async toRerankerModelUpdate(
+    rerankerModelId: string | null,
+  ): Promise<Prisma.KnowledgeBaseUpdateInput['rerankerModel']> {
+    if (rerankerModelId === null) {
+      return { disconnect: true };
+    }
+
+    const normalizedRerankerModelId = rerankerModelId.trim();
+
+    if (!normalizedRerankerModelId) {
+      return { disconnect: true };
+    }
+
+    await this.requireRerankerModel(normalizedRerankerModelId);
+
+    return { connect: { id: normalizedRerankerModelId } };
   }
 
   private validateChunkConfig(chunkSize: number, chunkOverlap: number) {
@@ -537,6 +581,23 @@ export class KnowledgeBasesService {
     if (!model) {
       throw new BadRequestException(
         'visionModelId must point to an enabled vision model',
+      );
+    }
+  }
+
+  private async requireRerankerModel(id: string) {
+    const model = await this.prisma.aiModel.findFirst({
+      where: {
+        id,
+        type: AiModelType.RERANKER,
+        isEnabled: true,
+      },
+      select: { id: true },
+    });
+
+    if (!model) {
+      throw new BadRequestException(
+        'rerankerModelId must point to an enabled reranker model',
       );
     }
   }

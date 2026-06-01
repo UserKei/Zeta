@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmbeddingService } from '../embedding/embedding.service';
+import { RerankService } from '../rerank/rerank.service';
 import { AiModelType, KnowledgeBaseStatus } from '../generated/prisma/enums';
 import { Prisma } from '../generated/prisma/client';
 import type {
@@ -17,6 +18,7 @@ type VectorRetrievalRow = {
   chunk_id: string;
   document_id: string;
   document_name: string;
+  title: string | null;
   content: string;
   position: number;
   char_count: number;
@@ -27,6 +29,7 @@ type KeywordRetrievalRow = {
   chunk_id: string;
   document_id: string;
   document_name: string;
+  title: string | null;
   content: string;
   position: number;
   char_count: number;
@@ -37,6 +40,7 @@ type RetrievalCandidate = {
   chunkId: string;
   documentId: string;
   documentName: string;
+  title: string | null;
   content: string;
   position: number;
   charCount: number;
@@ -47,6 +51,9 @@ type RetrievalCandidate = {
 const DEFAULT_RETRIEVAL_TOP_K = 5;
 const MAX_RETRIEVAL_TOP_K = 20;
 const RETRIEVAL_CANDIDATE_MULTIPLIER = 2;
+const RERANK_MIN_CANDIDATE_LIMIT = 20;
+const RERANK_MAX_CANDIDATE_LIMIT = 50;
+const RERANK_CANDIDATE_MULTIPLIER = 4;
 const VECTOR_SCORE_WEIGHT = 0.7;
 const KEYWORD_SCORE_WEIGHT = 0.3;
 
@@ -55,6 +62,7 @@ export class RetrievalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    private readonly rerankService: RerankService,
   ) {}
 
   async retrieveFromKnowledgeBase(
@@ -67,9 +75,11 @@ export class RetrievalService {
     const knowledgeBase =
       await this.requireRetrievableKnowledgeBase(knowledgeBaseId);
     const embeddingModel = this.getRetrievableEmbeddingModel(knowledgeBase);
+    const rerankerModel = this.getRetrievableRerankerModel(knowledgeBase);
     const hits = await this.retrieveWithKnowledgeBase(
       knowledgeBase.id,
       embeddingModel,
+      rerankerModel,
       normalizedQuestion,
       limit,
     );
@@ -103,10 +113,12 @@ export class RetrievalService {
             await this.requireRetrievableKnowledgeBase(knowledgeBaseId);
           const embeddingModel =
             this.getRetrievableEmbeddingModel(knowledgeBase);
+          const rerankerModel = this.getRetrievableRerankerModel(knowledgeBase);
 
           return this.retrieveWithKnowledgeBase(
             knowledgeBase.id,
             embeddingModel,
+            rerankerModel,
             normalizedQuestion,
             limit,
           );
@@ -133,6 +145,13 @@ export class RetrievalService {
       apiKey: string | null;
       configJson: Prisma.JsonValue;
     },
+    rerankerModel: {
+      id: string;
+      modelName: string;
+      baseUrl: string | null;
+      apiKey: string | null;
+      configJson: Prisma.JsonValue;
+    } | null,
     question: string,
     topK: number,
   ) {
@@ -145,7 +164,9 @@ export class RetrievalService {
       throw new BadRequestException('embedding provider returned empty data');
     }
 
-    const candidateLimit = topK * RETRIEVAL_CANDIDATE_MULTIPLIER;
+    const candidateLimit = rerankerModel
+      ? this.getRerankCandidateLimit(topK)
+      : topK * RETRIEVAL_CANDIDATE_MULTIPLIER;
     const [vectorRows, keywordRows] = await Promise.all([
       this.searchByVector(
         knowledgeBaseId,
@@ -156,7 +177,31 @@ export class RetrievalService {
       this.searchByKeyword(knowledgeBaseId, question, candidateLimit),
     ]);
 
-    return this.mergeRetrievalRows(vectorRows, keywordRows, topK);
+    const hits = this.mergeRetrievalRows(vectorRows, keywordRows);
+
+    if (!rerankerModel || hits.length === 0) {
+      return hits.slice(0, topK);
+    }
+
+    const results = await this.rerankService.rerankDocuments(rerankerModel, {
+      query: question,
+      documents: hits.map((hit) =>
+        hit.title ? `${hit.title}\n${hit.content}` : hit.content,
+      ),
+      topN: Math.min(topK, hits.length),
+    });
+
+    return results.map((result) => {
+      const hit = hits[result.index];
+      const rerankScore = this.normalizeScore(result.score);
+
+      return {
+        ...hit,
+        score: rerankScore,
+        finalScore: rerankScore,
+        rerankScore,
+      };
+    });
   }
 
   private async searchByVector(
@@ -172,6 +217,7 @@ export class RetrievalService {
         c."id" AS chunk_id,
         d."id" AS document_id,
         d."name" AS document_name,
+        c."title",
         c."content",
         c."position",
         c."char_count",
@@ -201,6 +247,7 @@ export class RetrievalService {
         c."id" AS chunk_id,
         d."id" AS document_id,
         d."name" AS document_name,
+        c."title",
         c."content",
         c."position",
         c."char_count",
@@ -222,7 +269,6 @@ export class RetrievalService {
   private mergeRetrievalRows(
     vectorRows: VectorRetrievalRow[],
     keywordRows: KeywordRetrievalRow[],
-    topK: number,
   ) {
     const candidates = new Map<string, RetrievalCandidate>();
 
@@ -231,6 +277,7 @@ export class RetrievalService {
         chunkId: row.chunk_id,
         documentId: row.document_id,
         documentName: row.document_name,
+        title: row.title,
         content: row.content,
         position: row.position,
         charCount: row.char_count,
@@ -252,6 +299,7 @@ export class RetrievalService {
         chunkId: row.chunk_id,
         documentId: row.document_id,
         documentName: row.document_name,
+        title: row.title,
         content: row.content,
         position: row.position,
         charCount: row.char_count,
@@ -262,8 +310,7 @@ export class RetrievalService {
 
     return [...candidates.values()]
       .map((candidate) => this.toHit(candidate))
-      .sort((left, right) => right.score - left.score)
-      .slice(0, topK);
+      .sort((left, right) => right.score - left.score);
   }
 
   private toHit(candidate: RetrievalCandidate): RetrievalHit {
@@ -276,12 +323,14 @@ export class RetrievalService {
       chunkId: candidate.chunkId,
       documentId: candidate.documentId,
       documentName: candidate.documentName,
+      title: candidate.title,
       content: candidate.content,
       position: candidate.position,
       charCount: candidate.charCount,
       score: finalScore,
       vectorScore: candidate.vectorScore,
       keywordScore: candidate.keywordScore,
+      rerankScore: null,
       finalScore,
       matchReason: this.getMatchReason(
         candidate.vectorScore,
@@ -347,6 +396,13 @@ export class RetrievalService {
     return `[${embedding.join(',')}]`;
   }
 
+  private getRerankCandidateLimit(topK: number) {
+    return Math.min(
+      RERANK_MAX_CANDIDATE_LIMIT,
+      Math.max(RERANK_MIN_CANDIDATE_LIMIT, topK * RERANK_CANDIDATE_MULTIPLIER),
+    );
+  }
+
   private async requireRetrievableKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
@@ -354,6 +410,17 @@ export class RetrievalService {
         id: true,
         status: true,
         embeddingModel: {
+          select: {
+            id: true,
+            type: true,
+            isEnabled: true,
+            modelName: true,
+            baseUrl: true,
+            apiKey: true,
+            configJson: true,
+          },
+        },
+        rerankerModel: {
           select: {
             id: true,
             type: true,
@@ -399,5 +466,26 @@ export class RetrievalService {
     }
 
     return knowledgeBase.embeddingModel;
+  }
+
+  private getRetrievableRerankerModel(
+    knowledgeBase: Awaited<
+      ReturnType<RetrievalService['requireRetrievableKnowledgeBase']>
+    >,
+  ) {
+    if (!knowledgeBase.rerankerModel) {
+      return null;
+    }
+
+    if (
+      knowledgeBase.rerankerModel.type !== AiModelType.RERANKER ||
+      !knowledgeBase.rerankerModel.isEnabled
+    ) {
+      throw new BadRequestException(
+        'knowledge base reranker model must be enabled',
+      );
+    }
+
+    return knowledgeBase.rerankerModel;
   }
 }

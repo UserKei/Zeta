@@ -25,3 +25,5 @@ export * from './file-storage/file-storage.module';
 export * from './file-storage/file-storage.service';
 export * from './image-understanding/image-understanding.module';
 export * from './image-understanding/image-understanding.service';
+export * from './rerank/rerank.module';
+export * from './rerank/rerank.service';

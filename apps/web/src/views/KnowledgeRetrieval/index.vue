@@ -69,11 +69,13 @@ const matchReasonText = (reason: RetrievalHit['matchReason']) =>
   })[reason]
 
 const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants['variant'] =>
-  ({
-    VECTOR: 'secondary',
-    KEYWORD: 'outline',
-    HYBRID: 'default',
-  } as const)[reason]
+  (
+    ({
+      VECTOR: 'secondary',
+      KEYWORD: 'outline',
+      HYBRID: 'default',
+    }) as const
+  )[reason]
 </script>
 
 <template>
@@ -95,7 +97,10 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
           </div>
         </div>
 
-        <div v-else-if="result.hits.length === 0" class="grid min-h-0 flex-1 place-items-center p-6 text-center">
+        <div
+          v-else-if="result.hits.length === 0"
+          class="grid min-h-0 flex-1 place-items-center p-6 text-center"
+        >
           <div class="grid justify-items-center gap-2 text-muted-foreground">
             <SearchIcon class="size-10" />
             <p class="m-0 font-medium text-foreground">没有命中的分段</p>
@@ -104,8 +109,12 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
         </div>
 
         <div v-else class="min-h-0 flex-1 overflow-auto p-4">
-          <div class="mb-4 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
-            <span class="grid size-9 shrink-0 place-items-center rounded-full bg-background text-muted-foreground ring-1 ring-border">
+          <div
+            class="mb-4 flex min-w-0 items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3"
+          >
+            <span
+              class="grid size-9 shrink-0 place-items-center rounded-full bg-background text-muted-foreground ring-1 ring-border"
+            >
               <SearchIcon class="size-4" />
             </span>
             <div class="min-w-0">
@@ -119,14 +128,12 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
           </div>
 
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Card
-              v-for="(hit, index) in result.hits"
-              :key="hit.chunkId"
-              class="min-h-0"
-            >
+            <Card v-for="(hit, index) in result.hits" :key="hit.chunkId" class="min-h-0">
               <CardHeader class="mb-3 flex-row items-start justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-2">
-                  <span class="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                  <span
+                    class="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
+                  >
                     {{ index + 1 }}
                   </span>
                   <strong class="min-w-0 truncate text-foreground" :title="hit.documentName">
@@ -136,10 +143,11 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
                 <Badge :variant="matchReasonVariant(hit.matchReason)">
                   {{ matchReasonText(hit.matchReason) }}
                 </Badge>
+                <Badge v-if="hit.rerankScore !== null" variant="outline"> 已重排 </Badge>
               </CardHeader>
 
               <CardContent class="flex min-h-0 flex-1 flex-col">
-                <div class="mb-3 grid grid-cols-3 gap-2 text-xs">
+                <div class="mb-3 grid grid-cols-2 gap-2 text-xs lg:grid-cols-4">
                   <span class="rounded bg-muted px-2 py-1 text-muted-foreground">
                     综合 {{ formatScore(hit.finalScore) }}
                   </span>
@@ -149,9 +157,17 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
                   <span class="rounded bg-muted px-2 py-1 text-muted-foreground">
                     关键词 {{ formatScore(hit.keywordScore) }}
                   </span>
+                  <span
+                    v-if="hit.rerankScore !== null"
+                    class="rounded bg-muted px-2 py-1 text-muted-foreground"
+                  >
+                    重排 {{ formatScore(hit.rerankScore) }}
+                  </span>
                 </div>
 
-                <p class="m-0 max-h-52 overflow-auto whitespace-pre-wrap text-sm leading-6 text-foreground">
+                <p
+                  class="m-0 max-h-52 overflow-auto whitespace-pre-wrap text-sm leading-6 text-foreground"
+                >
                   {{ hit.content }}
                 </p>
               </CardContent>
@@ -164,7 +180,10 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
         </div>
       </div>
 
-      <form class="flex flex-col gap-3 border-t border-border bg-card p-4 lg:flex-row lg:items-end" @submit.prevent="runRetrieval">
+      <form
+        class="flex flex-col gap-3 border-t border-border bg-card p-4 lg:flex-row lg:items-end"
+        @submit.prevent="runRetrieval"
+      >
         <label class="grid min-w-0 flex-1 gap-1.5">
           <span class="text-sm font-medium text-foreground">检索问题</span>
           <Input
@@ -175,12 +194,7 @@ const matchReasonVariant = (reason: RetrievalHit['matchReason']): BadgeVariants[
         </label>
         <label class="grid gap-1.5 lg:w-28">
           <span class="text-sm font-medium text-foreground">Top K</span>
-          <Input
-            v-model="form.topK"
-            type="number"
-            min="1"
-            max="20"
-          />
+          <Input v-model="form.topK" type="number" min="1" max="20" />
         </label>
         <Button :disabled="!canSearch" type="submit">
           {{ loading ? '检索中...' : '测试检索' }}

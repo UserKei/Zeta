@@ -7,6 +7,7 @@ export const knowledgeBaseSelect = {
   status: true,
   embeddingModelId: true,
   visionModelId: true,
+  rerankerModelId: true,
   chunkSize: true,
   chunkOverlap: true,
   metadata: true,
@@ -22,6 +23,15 @@ export const knowledgeBaseSelect = {
     },
   },
   visionModel: {
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      modelName: true,
+      isEnabled: true,
+    },
+  },
+  rerankerModel: {
     select: {
       id: true,
       name: true,

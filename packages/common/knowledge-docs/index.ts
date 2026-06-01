@@ -1,29 +1,29 @@
 export const DocumentSourceType = {
-  FILE_UPLOAD: 'FILE_UPLOAD',
-  MANUAL: 'MANUAL',
-  AI_EXTRACTED: 'AI_EXTRACTED',
-  WEB_IMPORT: 'WEB_IMPORT',
+  FILE_UPLOAD: "FILE_UPLOAD",
+  MANUAL: "MANUAL",
+  AI_EXTRACTED: "AI_EXTRACTED",
+  WEB_IMPORT: "WEB_IMPORT",
 } as const;
 
 export type DocumentSourceType =
   (typeof DocumentSourceType)[keyof typeof DocumentSourceType];
 
 export const DocumentStatus = {
-  UPLOADED: 'UPLOADED',
-  PARSING: 'PARSING',
-  CHUNKING: 'CHUNKING',
-  EMBEDDING: 'EMBEDDING',
-  INDEXED: 'INDEXED',
-  FAILED: 'FAILED',
-  DISABLED: 'DISABLED',
+  UPLOADED: "UPLOADED",
+  PARSING: "PARSING",
+  CHUNKING: "CHUNKING",
+  EMBEDDING: "EMBEDDING",
+  INDEXED: "INDEXED",
+  FAILED: "FAILED",
+  DISABLED: "DISABLED",
 } as const;
 
 export type DocumentStatus =
   (typeof DocumentStatus)[keyof typeof DocumentStatus];
 
 export const ChunkStatus = {
-  ACTIVE: 'ACTIVE',
-  DISABLED: 'DISABLED',
+  ACTIVE: "ACTIVE",
+  DISABLED: "DISABLED",
 } as const;
 
 export type ChunkStatus = (typeof ChunkStatus)[keyof typeof ChunkStatus];
@@ -65,13 +65,13 @@ export type ChunkDraftPayload = {
 };
 
 export type FileSourceFormat =
-  | 'MARKDOWN'
-  | 'TEXT'
-  | 'HTML'
-  | 'PDF'
-  | 'DOCX'
-  | 'CSV'
-  | 'EXCEL';
+  | "MARKDOWN"
+  | "TEXT"
+  | "HTML"
+  | "PDF"
+  | "DOCX"
+  | "CSV"
+  | "EXCEL";
 
 export type ManualDocumentPayload = {
   name: string;
@@ -141,18 +141,20 @@ export type RetrievalTestPayload = {
   topK?: number;
 };
 
-export type RetrievalMatchReason = 'VECTOR' | 'KEYWORD' | 'HYBRID';
+export type RetrievalMatchReason = "VECTOR" | "KEYWORD" | "HYBRID";
 
 export type RetrievalHit = {
   chunkId: string;
   documentId: string;
   documentName: string;
+  title: string | null;
   content: string;
   position: number;
   charCount: number;
   score: number;
   vectorScore: number | null;
   keywordScore: number | null;
+  rerankScore: number | null;
   finalScore: number;
   matchReason: RetrievalMatchReason;
 };

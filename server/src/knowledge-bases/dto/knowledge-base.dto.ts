@@ -45,6 +45,11 @@ export class KnowledgeBaseDto implements KnowledgeBasePayload {
   @IsString()
   visionModelId?: string | null;
 
+  @ApiPropertyOptional({ description: '重排模型 ID', nullable: true })
+  @IsOptional()
+  @IsString()
+  rerankerModelId?: string | null;
+
   @ApiPropertyOptional({ description: '图片理解提示词', nullable: true })
   @IsOptional()
   @IsString()
@@ -95,6 +100,11 @@ export class KnowledgeBaseUpdateDto implements KnowledgeBaseUpdatePayload {
   @IsOptional()
   @IsString()
   visionModelId?: string | null;
+
+  @ApiPropertyOptional({ description: '重排模型 ID', nullable: true })
+  @IsOptional()
+  @IsString()
+  rerankerModelId?: string | null;
 
   @ApiPropertyOptional({ description: '图片理解提示词', nullable: true })
   @IsOptional()

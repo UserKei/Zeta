@@ -106,11 +106,12 @@ model AiModel {
   createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  knowledgeBases       KnowledgeBase[] @relation("KnowledgeBaseEmbeddingModel")
-  visionKnowledgeBases KnowledgeBase[] @relation("KnowledgeBaseVisionModel")
-  chunkEmbeddings      ChunkEmbedding[]
-  agents               Agent[]
-  chatMessages         ChatMessage[]
+  knowledgeBases         KnowledgeBase[]  @relation("KnowledgeBaseEmbeddingModel")
+  visionKnowledgeBases   KnowledgeBase[]  @relation("KnowledgeBaseVisionModel")
+  rerankerKnowledgeBases KnowledgeBase[]  @relation("KnowledgeBaseRerankerModel")
+  chunkEmbeddings        ChunkEmbedding[]
+  agents                 Agent[]
+  chatMessages           ChatMessage[]
 
   @@index([type, isEnabled])
   @@index([provider, modelName])
@@ -145,6 +146,7 @@ model KnowledgeBase {
   status           KnowledgeBaseStatus @default(ACTIVE)
   embeddingModelId String?             @map("embedding_model_id") @db.Uuid
   visionModelId    String?             @map("vision_model_id") @db.Uuid
+  rerankerModelId  String?             @map("reranker_model_id") @db.Uuid
   chunkSize        Int                 @default(800) @map("chunk_size")
   chunkOverlap     Int                 @default(100) @map("chunk_overlap")
   metadata         Json                @default("{}") @db.JsonB
@@ -153,6 +155,7 @@ model KnowledgeBase {
 
   embeddingModel      AiModel?             @relation("KnowledgeBaseEmbeddingModel", fields: [embeddingModelId], references: [id], onDelete: SetNull)
   visionModel         AiModel?             @relation("KnowledgeBaseVisionModel", fields: [visionModelId], references: [id], onDelete: SetNull)
+  rerankerModel       AiModel?             @relation("KnowledgeBaseRerankerModel", fields: [rerankerModelId], references: [id], onDelete: SetNull)
   documents           Document[]
   chunks              Chunk[]
   agentKnowledgeBases AgentKnowledgeBase[]
@@ -161,6 +164,7 @@ model KnowledgeBase {
   @@index([status])
   @@index([embeddingModelId])
   @@index([visionModelId])
+  @@index([rerankerModelId])
   @@map("knowledge_bases")
 }
 

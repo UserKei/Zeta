@@ -41,6 +41,7 @@ defineOptions({
 })
 
 const NO_VISION_MODEL = '__NO_VISION_MODEL__'
+const NO_RERANKER_MODEL = '__NO_RERANKER_MODEL__'
 
 const route = useRoute()
 const router = useRouter()
@@ -52,6 +53,7 @@ interface KnowledgeBaseSettingsForm {
   status: KnowledgeBaseStatus
   embeddingModelId: string
   visionModelId: string | null
+  rerankerModelId: string | null
   imageUnderstandingPrompt: string
   chunkSize: number
   chunkOverlap: number
@@ -70,6 +72,7 @@ const form = reactive<KnowledgeBaseSettingsForm>({
   status: 'ACTIVE',
   embeddingModelId: '',
   visionModelId: null,
+  rerankerModelId: null,
   imageUnderstandingPrompt: '',
   chunkSize: 800,
   chunkOverlap: 100,
@@ -86,6 +89,10 @@ const visionModels = computed(() =>
   models.value.filter((model) => model.type === 'IMAGE' && model.isEnabled),
 )
 
+const rerankerModels = computed(() =>
+  models.value.filter((model) => model.type === 'RERANKER' && model.isEnabled),
+)
+
 const canSave = computed(
   () =>
     form.name.trim().length > 0 &&
@@ -99,6 +106,13 @@ const visionModelValue = computed({
   get: () => form.visionModelId ?? NO_VISION_MODEL,
   set: (value: string) => {
     form.visionModelId = value === NO_VISION_MODEL ? null : value
+  },
+})
+
+const rerankerModelValue = computed({
+  get: () => form.rerankerModelId ?? NO_RERANKER_MODEL,
+  set: (value: string) => {
+    form.rerankerModelId = value === NO_RERANKER_MODEL ? null : value
   },
 })
 
@@ -124,6 +138,7 @@ const load = async () => {
       status: knowledgeBaseDetail.status,
       embeddingModelId: knowledgeBaseDetail.embeddingModelId ?? '',
       visionModelId: knowledgeBaseDetail.visionModelId ?? null,
+      rerankerModelId: knowledgeBaseDetail.rerankerModelId ?? null,
       imageUnderstandingPrompt:
         typeof knowledgeBaseDetail.metadata.imageUnderstandingPrompt === 'string'
           ? knowledgeBaseDetail.metadata.imageUnderstandingPrompt
@@ -152,6 +167,7 @@ const save = async () => {
       status: form.status,
       embeddingModelId: form.embeddingModelId,
       visionModelId: form.visionModelId || null,
+      rerankerModelId: form.rerankerModelId || null,
       imageUnderstandingPrompt: String(form.imageUnderstandingPrompt ?? '').trim() || null,
       chunkSize: form.chunkSize,
       chunkOverlap: form.chunkOverlap,
@@ -276,6 +292,26 @@ onMounted(load)
                   </SelectGroup>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div class="grid gap-2">
+              <Label>重排模型</Label>
+              <Select v-model="rerankerModelValue">
+                <SelectTrigger class="w-full">
+                  <SelectValue placeholder="可选：请选择启用的重排模型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem :value="NO_RERANKER_MODEL">不启用重排</SelectItem>
+                    <SelectItem v-for="model in rerankerModels" :key="model.id" :value="model.id">
+                      {{ modelLabel(model) }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p class="m-0 text-xs text-muted-foreground">
+                启用后会先召回更多候选分段，再用重排模型筛选最终 TopK。
+              </p>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">

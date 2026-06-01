@@ -1,6 +1,6 @@
 export const KnowledgeBaseStatus = {
-  ACTIVE: 'ACTIVE',
-  DISABLED: 'DISABLED',
+  ACTIVE: "ACTIVE",
+  DISABLED: "DISABLED",
 } as const;
 
 export type KnowledgeBaseStatus =
@@ -12,6 +12,7 @@ export type KnowledgeBasePayload = {
   status?: KnowledgeBaseStatus;
   embeddingModelId: string;
   visionModelId?: string | null;
+  rerankerModelId?: string | null;
   imageUnderstandingPrompt?: string | null;
   chunkSize?: number;
   chunkOverlap?: number;
@@ -19,7 +20,7 @@ export type KnowledgeBasePayload = {
 
 export type KnowledgeBaseUpdatePayload = Partial<KnowledgeBasePayload>;
 
-export type KnowledgeUsageRange = '7d' | '30d' | 'all';
+export type KnowledgeUsageRange = "7d" | "30d" | "all";
 
 export type KnowledgeUsageDocumentItem = {
   documentId: string;

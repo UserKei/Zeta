@@ -13,6 +13,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
   AiModelType: {
     EMBEDDING: 'EMBEDDING',
     IMAGE: 'IMAGE',
+    RERANKER: 'RERANKER',
   },
   KnowledgeBaseStatus: {
     ACTIVE: 'ACTIVE',
@@ -251,6 +252,76 @@ describe('KnowledgeBasesService vision settings', () => {
       where: { id: 'kb-1' },
       data: {
         visionModel: { disconnect: true },
+      },
+      select: expect.any(Object) as unknown,
+    });
+  });
+});
+
+describe('KnowledgeBasesService reranker settings', () => {
+  const createService = (prisma: Record<string, unknown>) =>
+    new KnowledgeBasesService(prisma as never, {} as never);
+
+  it('stores a reranker model in knowledge base settings', async () => {
+    const knowledgeBaseUpdate = jest.fn().mockResolvedValue({
+      id: 'kb-1',
+      rerankerModelId: 'reranker-1',
+    });
+    const aiModelFindFirst = jest.fn().mockResolvedValue({ id: 'reranker-1' });
+    const service = createService({
+      knowledgeBase: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'kb-1' }),
+        update: knowledgeBaseUpdate,
+      },
+      aiModel: {
+        findFirst: aiModelFindFirst,
+      },
+    });
+
+    await service.update('kb-1', {
+      rerankerModelId: 'reranker-1',
+    });
+
+    expect(aiModelFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'reranker-1',
+        type: 'RERANKER',
+        isEnabled: true,
+      },
+      select: { id: true },
+    });
+    expect(knowledgeBaseUpdate).toHaveBeenCalledWith({
+      where: { id: 'kb-1' },
+      data: {
+        rerankerModel: { connect: { id: 'reranker-1' } },
+      },
+      select: expect.any(Object) as unknown,
+    });
+  });
+
+  it('can clear the configured reranker model', async () => {
+    const knowledgeBaseUpdate = jest.fn().mockResolvedValue({
+      id: 'kb-1',
+      rerankerModelId: null,
+    });
+    const aiModelFindFirst = jest.fn();
+    const service = createService({
+      knowledgeBase: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'kb-1' }),
+        update: knowledgeBaseUpdate,
+      },
+      aiModel: {
+        findFirst: aiModelFindFirst,
+      },
+    });
+
+    await service.update('kb-1', { rerankerModelId: null });
+
+    expect(aiModelFindFirst).not.toHaveBeenCalled();
+    expect(knowledgeBaseUpdate).toHaveBeenCalledWith({
+      where: { id: 'kb-1' },
+      data: {
+        rerankerModel: { disconnect: true },
       },
       select: expect.any(Object) as unknown,
     });
