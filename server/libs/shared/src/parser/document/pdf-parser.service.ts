@@ -212,7 +212,7 @@ export class PdfParserService implements DocumentFileParser {
         .map((line) => {
           const lineItems = line.items.sort((left, right) => left.x - right.x);
           const text = normalizeTextContent(
-            lineItems.map((item) => item.text).join(' '),
+            this.joinPdfLineItems(lineItems),
           ).trim();
           const fontSize = Math.max(...lineItems.map((item) => item.fontSize));
 
@@ -229,6 +229,38 @@ export class PdfParserService implements DocumentFileParser {
     } catch {
       throw new BadRequestException('PDF 文件解析失败');
     }
+  }
+
+  private joinPdfLineItems(
+    lineItems: ReadonlyArray<{
+      text: string;
+      x: number;
+      width: number;
+      fontSize: number;
+    }>,
+  ) {
+    const [firstItem, ...restItems] = lineItems;
+
+    if (!firstItem) {
+      return '';
+    }
+
+    let text = firstItem.text;
+    let previousItem = firstItem;
+
+    for (const item of restItems) {
+      const gap = item.x - (previousItem.x + previousItem.width);
+      const spaceThreshold = Math.max(
+        1,
+        previousItem.fontSize * 0.2,
+        item.fontSize * 0.2,
+      );
+
+      text += gap > spaceThreshold ? ` ${item.text}` : item.text;
+      previousItem = item;
+    }
+
+    return text;
   }
 
   private async buildOutlineMarkdown(

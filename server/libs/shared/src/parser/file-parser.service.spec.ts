@@ -232,6 +232,20 @@ describe('FileParserService', () => {
     expect(result.chunks[0]?.content).toContain('Expense approval limit');
   });
 
+  it('keeps adjacent Chinese pdf text items together', async () => {
+    const result = await service.parse({
+      fileName: 'procurement-contract-approval.pdf',
+      mimeType: 'application/pdf',
+      buffer: readDemoFile('procurement-contract-approval.pdf'),
+    });
+    const content = result.chunks
+      .map((chunk) => `${chunk.title ?? ''}\n${chunk.content}`)
+      .join('\n');
+
+    expect(content).toContain('审批前准备材料');
+    expect(content).not.toContain('审 批 前准 备 材 料');
+  });
+
   it('infers pdf sections from larger font sizes', async () => {
     const result = await service.parse({
       fileName: '采购制度.pdf',
