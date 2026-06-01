@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  CheckIcon,
-  FileCheckIcon,
-  FileTextIcon,
-  PlusIcon,
-  TrashIcon,
-  UploadIcon,
-} from '@lucide/vue'
+import { CheckIcon, FileCheckIcon, PlusIcon, TrashIcon, UploadIcon } from '@lucide/vue'
 import { Icon } from '@iconify/vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -622,7 +615,7 @@ onMounted(loadKnowledgeBase)
                   "
                   @click="activeFileIndex = index"
                 >
-                  <FileTextIcon data-icon="inline-start" />
+                  <Icon :icon="getFileIcon(item.fileName)" data-icon="inline-start" />
                   <span class="max-w-56 truncate">{{ item.fileName }}</span>
                   <Badge variant="secondary">{{ sourceFormatText(item.sourceFormat) }}</Badge>
                 </Button>
