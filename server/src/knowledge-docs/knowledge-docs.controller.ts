@@ -32,6 +32,9 @@ import {
   RetrievalTestDto,
 } from './dto/knowledge-docs.dto';
 
+const DOCUMENT_FILE_DESCRIPTION =
+  '.md/.markdown/.txt/.html/.htm/.pdf/.docx/.csv/.xlsx/.xls 文件，最多 10 个，单文件最大 2MB';
+
 @UseGuards(AuthGuard)
 @Controller()
 @ApiTags('Knowledge Documents')
@@ -87,7 +90,7 @@ export class KnowledgeDocsController {
         files: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
-          description: '.md/.markdown/.txt/.html/.htm 文件，最多 10 个',
+          description: DOCUMENT_FILE_DESCRIPTION,
         },
       },
     },
@@ -159,7 +162,7 @@ export class KnowledgeDocsController {
         files: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
-          description: '.md/.markdown/.txt/.html/.htm 文件，最多 10 个',
+          description: DOCUMENT_FILE_DESCRIPTION,
         },
         documents: {
           type: 'string',
