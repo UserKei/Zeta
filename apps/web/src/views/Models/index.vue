@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,8 +82,12 @@ const catalogProviders = ref<ModelCatalogProvider[]>([])
 const catalogTypes = ref<ModelTypeOption[]>([])
 const catalogModels = ref<ModelCatalogModel[]>([])
 const catalogLoading = ref(false)
+const catalogError = ref<string | null>(null)
 const modelNameMode = ref<'recommended' | 'custom'>('recommended')
 const baseUrlTouched = ref(false)
+let catalogRequestId = 0
+
+const CATALOG_ERROR_MESSAGE = '模型目录加载失败，请稍后重试'
 
 const fallbackModelTypes: { value: AiModelType; label: string }[] = [
   { value: 'CHAT', label: '大语言模型' },
@@ -174,6 +179,20 @@ const resolveDefaultBaseUrl = (model?: ModelCatalogModel) =>
   catalogProviders.value.find((item) => item.value === form.provider)?.defaultBaseUrl ??
   ''
 
+const nextCatalogRequestId = () => {
+  catalogRequestId += 1
+  return catalogRequestId
+}
+
+const isCurrentCatalogRequest = (requestId: number, provider: string, type?: AiModelType) =>
+  requestId === catalogRequestId &&
+  provider === form.provider &&
+  (type === undefined || type === form.type)
+
+const setCatalogError = () => {
+  catalogError.value = CATALOG_ERROR_MESSAGE
+}
+
 const safeConfigJson = () => {
   const content = configJsonText.value.trim()
 
@@ -227,49 +246,114 @@ const selectRecommendedModel = (modelName: string) => {
   mergeConfigDefaults(catalogModel?.defaultConfigJson)
 }
 
-const loadCatalogModelsForCurrentType = async (selectFirstModel = false) => {
-  if (!form.provider || !form.type) {
-    catalogModels.value = []
-    return
+const applyCatalogModels = async (
+  provider: string,
+  type: AiModelType,
+  selectFirstModel: boolean,
+  requestId: number,
+) => {
+  const models = await listModelCatalogModels(provider, type)
+
+  if (!isCurrentCatalogRequest(requestId, provider, type)) {
+    return false
   }
 
-  try {
-    catalogModels.value = await listModelCatalogModels(form.provider, form.type)
+  catalogModels.value = models
+  catalogError.value = null
 
-    if (selectFirstModel) {
-      const firstModel = catalogModels.value[0]
+  if (selectFirstModel) {
+    const firstModel = catalogModels.value[0]
 
-      if (firstModel) {
-        modelNameMode.value = 'recommended'
-        selectRecommendedModel(firstModel.value)
-      } else {
-        modelNameMode.value = 'custom'
-        form.modelName = ''
-      }
+    if (firstModel) {
+      modelNameMode.value = 'recommended'
+      selectRecommendedModel(firstModel.value)
+    } else {
+      modelNameMode.value = 'custom'
+      form.modelName = ''
     }
-  } catch {
+  }
+
+  return true
+}
+
+const loadCatalogModelsForCurrentType = async (selectFirstModel = false) => {
+  if (!form.provider || !form.type) {
+    nextCatalogRequestId()
     catalogModels.value = []
+    catalogError.value = null
+    return false
+  }
+
+  const requestId = nextCatalogRequestId()
+  const provider = form.provider
+  const type = form.type
+  catalogLoading.value = true
+  catalogError.value = null
+
+  try {
+    return await applyCatalogModels(provider, type, selectFirstModel, requestId)
+  } catch {
+    if (isCurrentCatalogRequest(requestId, provider, type)) {
+      catalogModels.value = []
+      setCatalogError()
+    }
+
+    return false
+  } finally {
+    if (requestId === catalogRequestId) {
+      catalogLoading.value = false
+    }
+  }
+}
+
+const loadCatalogProviders = async () => {
+  catalogLoading.value = true
+  catalogError.value = null
+
+  try {
+    catalogProviders.value = await listModelCatalogProviders()
+    catalogError.value = null
+    return true
+  } catch {
+    catalogProviders.value = []
+    setCatalogError()
+    return false
+  } finally {
+    catalogLoading.value = false
   }
 }
 
 const loadCatalogForCurrentProvider = async (selectFirstModel = false) => {
   if (!form.provider) {
+    nextCatalogRequestId()
     catalogTypes.value = []
     catalogModels.value = []
-    return
+    catalogError.value = null
+    return false
   }
 
   if (!catalogProviders.value.some((item) => item.value === form.provider)) {
+    nextCatalogRequestId()
     catalogTypes.value = []
     catalogModels.value = []
     modelNameMode.value = 'custom'
-    return
+    catalogError.value = null
+    return false
   }
 
+  const requestId = nextCatalogRequestId()
+  const provider = form.provider
   catalogLoading.value = true
+  catalogError.value = null
 
   try {
-    catalogTypes.value = (await listModelCatalogTypes(form.provider)).map(normalizeModelTypeOption)
+    const types = await listModelCatalogTypes(provider)
+
+    if (!isCurrentCatalogRequest(requestId, provider)) {
+      return false
+    }
+
+    catalogTypes.value = types.map(normalizeModelTypeOption)
 
     if (!catalogTypes.value.some((item) => item.value === form.type)) {
       const nextType =
@@ -280,24 +364,56 @@ const loadCatalogForCurrentProvider = async (selectFirstModel = false) => {
       }
     }
 
-    await loadCatalogModelsForCurrentType(selectFirstModel)
+    const type = form.type
+    return await applyCatalogModels(provider, type, selectFirstModel, requestId)
   } catch {
-    catalogTypes.value = []
-    catalogModels.value = []
+    if (isCurrentCatalogRequest(requestId, provider)) {
+      catalogTypes.value = []
+      catalogModels.value = []
+      setCatalogError()
+    }
+
+    return false
   } finally {
-    catalogLoading.value = false
+    if (requestId === catalogRequestId) {
+      catalogLoading.value = false
+    }
   }
 }
 
 const ensureCatalogProviders = async () => {
   if (catalogProviders.value.length > 0) {
+    return true
+  }
+
+  return await loadCatalogProviders()
+}
+
+const retryCatalogProviders = () => {
+  void loadCatalogProviders()
+}
+
+const retryCurrentCatalog = () => {
+  if (!form.provider) {
+    void loadCatalogProviders()
     return
   }
 
-  catalogProviders.value = await listModelCatalogProviders()
+  void (async () => {
+    if (catalogProviders.value.length === 0) {
+      const loaded = await loadCatalogProviders()
+
+      if (!loaded) {
+        return
+      }
+    }
+
+    await loadCatalogForCurrentProvider(modelNameMode.value === 'recommended' && !form.modelName)
+  })()
 }
 
 const resetForm = () => {
+  nextCatalogRequestId()
   Object.assign(form, {
     name: '',
     provider: '',
@@ -311,21 +427,21 @@ const resetForm = () => {
   configJsonText.value = ''
   catalogTypes.value = []
   catalogModels.value = []
+  catalogError.value = null
 }
 
 const load = async () => {
   loading.value = true
 
   try {
-    const [modelList, providerList] = await Promise.all([listModels(), listModelCatalogProviders()])
-
-    models.value = modelList
-    catalogProviders.value = providerList
+    models.value = await listModels()
   } catch (cause) {
     showErrorMessage(cause, '加载模型失败')
   } finally {
     loading.value = false
   }
+
+  await loadCatalogProviders()
 }
 
 const openCreate = async () => {
@@ -334,24 +450,16 @@ const openCreate = async () => {
   modelNameMode.value = 'recommended'
   resetForm()
 
-  try {
-    await ensureCatalogProviders()
-    providerPickerShouldReturnToForm.value = false
-    providerPickerOpen.value = true
-  } catch (cause) {
-    showErrorMessage(cause, '加载模型目录失败')
-  }
+  providerPickerShouldReturnToForm.value = false
+  await ensureCatalogProviders()
+  providerPickerOpen.value = true
 }
 
 const openProviderPickerFromForm = async () => {
-  try {
-    await ensureCatalogProviders()
-    providerPickerShouldReturnToForm.value = true
-    formOpen.value = false
-    providerPickerOpen.value = true
-  } catch (cause) {
-    showErrorMessage(cause, '加载模型目录失败')
-  }
+  providerPickerShouldReturnToForm.value = true
+  formOpen.value = false
+  await ensureCatalogProviders()
+  providerPickerOpen.value = true
 }
 
 const handleProviderPickerOpenChange = (open: boolean) => {
@@ -379,14 +487,10 @@ const chooseProvider = async (provider: ModelCatalogProvider) => {
 
   mergeConfigDefaults(provider.defaultConfigJson)
 
-  try {
-    await loadCatalogForCurrentProvider(true)
-    providerPickerShouldReturnToForm.value = false
-    providerPickerOpen.value = false
-    formOpen.value = true
-  } catch (cause) {
-    showErrorMessage(cause, '加载模型目录失败')
-  }
+  await loadCatalogForCurrentProvider(true)
+  providerPickerShouldReturnToForm.value = false
+  providerPickerOpen.value = false
+  formOpen.value = true
 }
 
 const openEdit = async (model: AiModel) => {
@@ -407,15 +511,22 @@ const openEdit = async (model: AiModel) => {
   formOpen.value = true
 
   try {
-    await ensureCatalogProviders()
-    if (catalogProviders.value.some((item) => item.value === form.provider)) {
+    const providerCatalogLoaded = await ensureCatalogProviders()
+
+    if (
+      providerCatalogLoaded &&
+      catalogProviders.value.some((item) => item.value === form.provider)
+    ) {
       await loadCatalogForCurrentProvider(false)
       modelNameMode.value = catalogModels.value.some((item) => item.value === form.modelName)
         ? 'recommended'
         : 'custom'
-    } else {
+    } else if (providerCatalogLoaded) {
       catalogTypes.value = []
       catalogModels.value = []
+      catalogError.value = null
+      modelNameMode.value = 'custom'
+    } else {
       modelNameMode.value = 'custom'
     }
   } catch (cause) {
@@ -615,7 +726,24 @@ onMounted(load)
           </DialogDescription>
         </DialogHeader>
 
-        <div class="grid gap-3 sm:grid-cols-2">
+        <Alert v-if="catalogError && providerOptions.length === 0" variant="destructive">
+          <AlertTitle>模型目录加载失败</AlertTitle>
+          <AlertDescription>{{ catalogError }}</AlertDescription>
+          <AlertAction>
+            <Button type="button" variant="outline" size="sm" @click="retryCatalogProviders">
+              重试
+            </Button>
+          </AlertAction>
+        </Alert>
+
+        <div
+          v-else-if="catalogLoading && providerOptions.length === 0"
+          class="rounded-lg border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground"
+        >
+          正在加载模型目录...
+        </div>
+
+        <div v-else class="grid gap-3 sm:grid-cols-2">
           <button
             v-for="provider in providerOptions"
             :key="provider.value"
@@ -741,13 +869,17 @@ onMounted(load)
             <Select
               v-if="modelNameMode === 'recommended'"
               :model-value="form.modelName"
-              :disabled="catalogLoading || recommendedModelOptions.length === 0"
+              :disabled="catalogLoading || !!catalogError || recommendedModelOptions.length === 0"
               @update:model-value="handleRecommendedModelChange"
             >
               <SelectTrigger id="model-id" class="w-full">
                 <SelectValue
                   :placeholder="
-                    recommendedModelOptions.length > 0 ? '选择推荐模型' : '暂无推荐模型'
+                    catalogError
+                      ? '目录加载失败'
+                      : recommendedModelOptions.length > 0
+                        ? '选择推荐模型'
+                        : '暂无推荐模型'
                   "
                 />
               </SelectTrigger>
@@ -764,6 +896,25 @@ onMounted(load)
               </SelectContent>
             </Select>
             <Input v-else id="model-id" v-model="form.modelName" placeholder="自定义模型标识" />
+            <Alert v-if="catalogError" variant="destructive">
+              <AlertTitle>模型目录加载失败</AlertTitle>
+              <AlertDescription>{{ catalogError }}</AlertDescription>
+              <AlertAction>
+                <Button type="button" variant="outline" size="sm" @click="retryCurrentCatalog">
+                  重试
+                </Button>
+              </AlertAction>
+            </Alert>
+            <p
+              v-else-if="
+                modelNameMode === 'recommended' &&
+                !catalogLoading &&
+                recommendedModelOptions.length === 0
+              "
+              class="m-0 text-sm text-muted-foreground"
+            >
+              当前类型暂无推荐模型，可切换为自定义手动填写。
+            </p>
           </div>
 
           <div class="grid gap-2 md:col-span-2">
