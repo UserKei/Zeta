@@ -14,13 +14,16 @@ import {
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@libs/shared';
+import { KnowledgeDocsService } from './knowledge-docs.service';
 import {
-  KnowledgeDocsService,
   DOCUMENT_FILE_COUNT_LIMIT,
   DOCUMENT_FILE_SIZE_LIMIT,
   MARKDOWN_FILE_SIZE_LIMIT,
+} from './knowledge-docs.constants';
+import {
+  DocumentImportService,
   type UploadedDocumentFile,
-} from './knowledge-docs.service';
+} from './document-import.service';
 import {
   ChunkDto,
   ChunkReorderDto,
@@ -40,7 +43,10 @@ const DOCUMENT_FILE_DESCRIPTION =
 @ApiTags('Knowledge Documents')
 @ApiBearerAuth('access-token')
 export class KnowledgeDocsController {
-  constructor(private readonly knowledgeDocsService: KnowledgeDocsService) {}
+  constructor(
+    private readonly knowledgeDocsService: KnowledgeDocsService,
+    private readonly documentImportService: DocumentImportService,
+  ) {}
 
   @Get('knowledge-bases/:knowledgeBaseId/documents')
   listByKnowledgeBase(@Param('knowledgeBaseId') knowledgeBaseId: string) {
@@ -77,7 +83,10 @@ export class KnowledgeDocsController {
     @Param('knowledgeBaseId') knowledgeBaseId: string,
     @UploadedFile() file?: UploadedDocumentFile,
   ) {
-    return this.knowledgeDocsService.previewMarkdownFile(knowledgeBaseId, file);
+    return this.documentImportService.previewMarkdownFile(
+      knowledgeBaseId,
+      file,
+    );
   }
 
   @Post('knowledge-bases/:knowledgeBaseId/documents/files/preview')
@@ -104,7 +113,7 @@ export class KnowledgeDocsController {
     @Param('knowledgeBaseId') knowledgeBaseId: string,
     @UploadedFiles() files?: UploadedDocumentFile[],
   ) {
-    return this.knowledgeDocsService.previewDocumentFiles(
+    return this.documentImportService.previewDocumentFiles(
       knowledgeBaseId,
       files,
     );
@@ -145,7 +154,7 @@ export class KnowledgeDocsController {
     @UploadedFile() file: UploadedDocumentFile | undefined,
     @Body() body: MarkdownImportFormDto,
   ) {
-    return this.knowledgeDocsService.createMarkdownDocument(
+    return this.documentImportService.createMarkdownDocument(
       knowledgeBaseId,
       file,
       body,
@@ -181,7 +190,7 @@ export class KnowledgeDocsController {
     @UploadedFiles() files: UploadedDocumentFile[] | undefined,
     @Body() body: FileImportFormDto,
   ) {
-    return this.knowledgeDocsService.createFileDocuments(
+    return this.documentImportService.createFileDocuments(
       knowledgeBaseId,
       files,
       body,
