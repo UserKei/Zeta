@@ -123,4 +123,55 @@ describe('RerankService', () => {
       ),
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
+
+  it('wraps provider network failures as BadGatewayException', async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockRejectedValue(new Error('connection refused'));
+
+    const service = new RerankService();
+
+    await expect(
+      service.rerankDocuments(
+        {
+          id: 'model-1',
+          modelName: 'qwen3-rerank',
+          baseUrl: 'https://example.com/v1',
+          apiKey: 'sk-test',
+          configJson: {},
+        },
+        {
+          query: 'VPN',
+          documents: ['VPN 需要审批'],
+          topN: 1,
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
+
+  it('wraps invalid provider JSON as BadGatewayException', async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError('Unexpected token')),
+    } as Response);
+
+    const service = new RerankService();
+
+    await expect(
+      service.rerankDocuments(
+        {
+          id: 'model-1',
+          modelName: 'qwen3-rerank',
+          baseUrl: 'https://example.com/v1',
+          apiKey: 'sk-test',
+          configJson: {},
+        },
+        {
+          query: 'VPN',
+          documents: ['VPN 需要审批'],
+          topN: 1,
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
 });

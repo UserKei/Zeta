@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 jest.mock('@libs/shared', () => ({
   FileStorageService: class FileStorageService {},
   PrismaService: class PrismaService {},
@@ -134,6 +136,38 @@ describe('ChunkIndexingService', () => {
       { text: '补充正文' },
     ]);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw.mock.calls[0]).toEqual(
+      expect.arrayContaining(['chunk-1', 'embedding-1', '[0.1,0.2]', 2]),
+    );
+    expect(prisma.$executeRaw.mock.calls[1]).toEqual(
+      expect.arrayContaining(['chunk-2', 'embedding-1', '[0.3,0.4]', 2]),
+    );
+  });
+
+  it('rejects mismatched chunk and embedding counts', async () => {
+    const { service, prisma, embeddingService } = createService();
+
+    prisma.chunk.findMany.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        title: '标题',
+        content: '正文',
+        metadata: {},
+      },
+      {
+        id: 'chunk-2',
+        title: null,
+        content: '补充正文',
+        metadata: {},
+      },
+    ]);
+    embeddingService.embedInputs.mockResolvedValue([[0.1, 0.2]]);
+
+    await expect(
+      service.rebuildDocumentEmbeddings('doc-1', embeddingModel),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('adds image data to multimodal PDF page embedding inputs', async () => {

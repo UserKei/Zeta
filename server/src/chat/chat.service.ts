@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ChatModelService, type ChatModelRequest } from '@libs/model-adapters';
@@ -44,6 +45,8 @@ const DEFAULT_TEMPERATURE = 0.2;
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly retrievalService: RetrievalService,
@@ -253,9 +256,18 @@ export class ChatService {
       };
     });
 
-    await this.aiExtractedDocumentService.indexCreatedChunk(
-      transactionResult.result,
-    );
+    try {
+      await this.aiExtractedDocumentService.indexCreatedChunk(
+        transactionResult.result,
+      );
+    } catch (error) {
+      await this.cleanupFailedImproveIndex(
+        transactionResult.updated,
+        transactionResult.improveRecord,
+        error,
+      );
+      throw error;
+    }
 
     return {
       message: this.toMessageResponse(transactionResult.updated),
@@ -309,6 +321,42 @@ export class ChatService {
       message: this.toMessageResponse(updated),
       deletedRecord,
     };
+  }
+
+  private async cleanupFailedImproveIndex(
+    message: ChatMessageRecord,
+    improveRecord: ChatImproveRecord,
+    cause: unknown,
+  ) {
+    try {
+      const metadata = this.toMetadataObject(message.metadata);
+      const improveRecords = this.toImproveRecords(message.metadata);
+
+      await this.prisma.$transaction(async (tx) => {
+        await this.knowledgeDocsService.removeImprovedChunk(
+          improveRecord.chunkId,
+          tx,
+        );
+
+        await tx.chatMessage.update({
+          where: { id: message.id },
+          data: {
+            metadata: {
+              ...metadata,
+              improveRecords: improveRecords.filter(
+                (record) => record.chunkId !== improveRecord.chunkId,
+              ),
+            },
+          },
+        });
+      });
+    } catch (cleanupError) {
+      this.logger.error(
+        `failed to cleanup improve record ${improveRecord.chunkId} after indexing failure`,
+        cleanupError instanceof Error ? cleanupError.stack : undefined,
+        cause instanceof Error ? cause.message : undefined,
+      );
+    }
   }
 
   private async prepareChat(

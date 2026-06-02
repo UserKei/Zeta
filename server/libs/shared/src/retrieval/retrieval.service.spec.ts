@@ -118,6 +118,92 @@ describe('RetrievalService', () => {
     );
   });
 
+  it('deduplicates hybrid vector and keyword candidates before reranking', async () => {
+    const queryRaw = jest
+      .fn()
+      .mockResolvedValueOnce([
+        createVectorRow({
+          chunk_id: 'chunk-a',
+          content: 'VPN 申请需要部门负责人审批。',
+          vector_score: 0.8,
+        }),
+        createVectorRow({
+          chunk_id: 'chunk-b',
+          content: '密码重置需要短信验证码。',
+          vector_score: 0.7,
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createKeywordRow({
+          chunk_id: 'chunk-a',
+          content: 'VPN 申请需要部门负责人审批。',
+          keyword_score: 0.5,
+        }),
+        createKeywordRow({
+          chunk_id: 'chunk-c',
+          content: '员工入职会自动创建 IT 账号。',
+          keyword_score: 0.9,
+        }),
+      ]);
+    const rerankDocuments = jest.fn().mockResolvedValue([
+      { index: 0, score: 0.96 },
+      { index: 1, score: 0.73 },
+      { index: 2, score: 0.61 },
+    ]);
+    const service = createService(
+      {
+        knowledgeBase: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            status: 'ACTIVE',
+            embeddingModel: createModel({
+              id: 'embedding-1',
+              type: 'EMBEDDING',
+            }),
+            rerankerModel: createModel({
+              id: 'reranker-1',
+              type: 'RERANKER',
+              modelName: 'qwen3-rerank',
+            }),
+          }),
+        },
+        $queryRaw: queryRaw,
+      },
+      {
+        embedTexts: jest.fn().mockResolvedValue([[0.1, 0.2]]),
+      },
+      {
+        rerankDocuments,
+      },
+    );
+
+    const result = await service.retrieveFromKnowledgeBase('kb-1', 'VPN', 3);
+
+    expect(rerankDocuments).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'reranker-1' }),
+      {
+        query: 'VPN',
+        documents: [
+          'VPN 申请需要部门负责人审批。',
+          '密码重置需要短信验证码。',
+          '员工入职会自动创建 IT 账号。',
+        ],
+        topN: 3,
+      },
+    );
+    expect(result.hits).toHaveLength(3);
+    expect(result.hits[0]).toEqual(
+      expect.objectContaining({
+        chunkId: 'chunk-a',
+        matchReason: 'HYBRID',
+        vectorScore: 0.8,
+        keywordScore: 0.5,
+        finalScore: 0.96,
+        rerankScore: 0.96,
+      }),
+    );
+  });
+
   it('keeps hybrid ranking unchanged when no reranker is configured', async () => {
     const rerankDocuments = jest.fn();
     const service = createService(

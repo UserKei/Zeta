@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 
 jest.mock('../generated/prisma/client', () => ({
   Prisma: {},
@@ -9,6 +10,90 @@ jest.mock('../prisma/prisma.service', () => ({
 }));
 
 import { FileStorageService } from './file-storage.service';
+
+describe('FileStorageService saveBuffer', () => {
+  const createService = (prisma: Record<string, unknown>) =>
+    new FileStorageService(prisma as never);
+
+  it('stores a buffer as a large object and persists file metadata', async () => {
+    const buffer = Buffer.from('image-bytes');
+    const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{ loid: 123n }]),
+      file: {
+        create: jest.fn().mockResolvedValue({
+          id: 'file-1',
+          fileName: '流程图.png',
+          mimeType: 'image/png',
+          fileSize: BigInt(buffer.byteLength),
+          sha256Hash: createHash('sha256').update(buffer).digest('hex'),
+          loid: 123n,
+        }),
+      },
+    };
+    const service = createService(prisma);
+
+    const result = await service.saveBuffer({
+      fileName: '流程图.png',
+      mimeType: 'image/png',
+      buffer,
+      metadata: { source: 'PDF_PAGE_SCREENSHOT' },
+    });
+
+    expect(result).toEqual({
+      id: 'file-1',
+      fileName: '流程图.png',
+      mimeType: 'image/png',
+      fileSize: BigInt(buffer.byteLength),
+      sha256Hash: createHash('sha256').update(buffer).digest('hex'),
+      loid: 123n,
+    });
+    expect(prisma.$queryRaw.mock.calls[0]).toContain(buffer);
+    expect(prisma.file.create).toHaveBeenCalledWith({
+      data: {
+        fileName: '流程图.png',
+        mimeType: 'image/png',
+        fileSize: BigInt(buffer.byteLength),
+        sha256Hash: createHash('sha256').update(buffer).digest('hex'),
+        loid: 123n,
+        status: 'AVAILABLE',
+        metadata: { source: 'PDF_PAGE_SCREENSHOT' },
+      },
+      select: {
+        id: true,
+        fileName: true,
+        mimeType: true,
+        fileSize: true,
+        sha256Hash: true,
+        loid: true,
+      },
+    });
+  });
+
+  it('unlinks the large object when file metadata creation fails', async () => {
+    const createError = new Error('file row insert failed');
+    const prisma = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ loid: 123n }])
+        .mockResolvedValueOnce([]),
+      file: {
+        create: jest.fn().mockRejectedValue(createError),
+      },
+    };
+    const service = createService(prisma);
+
+    await expect(
+      service.saveBuffer({
+        fileName: '流程图.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('image-bytes'),
+      }),
+    ).rejects.toThrow(createError);
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$queryRaw.mock.calls[1]).toContain(123n);
+  });
+});
 
 describe('FileStorageService readBuffer', () => {
   const createService = (prisma: Record<string, unknown>) =>

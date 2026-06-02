@@ -118,4 +118,53 @@ describe('ImageUnderstandingService', () => {
       ),
     ).rejects.toBeInstanceOf(BadGatewayException);
   });
+
+  it('wraps provider network failures as BadGatewayException', async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockRejectedValue(new Error('connection refused'));
+
+    const service = new ImageUnderstandingService();
+
+    await expect(
+      service.understandImage(
+        {
+          id: 'model-1',
+          modelName: 'qwen-vl-max',
+          baseUrl: 'https://example.com/v1',
+          apiKey: 'sk-test',
+          configJson: {},
+        },
+        {
+          dataUrl: 'data:image/png;base64,aGVsbG8=',
+          prompt: '描述图片',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
+
+  it('wraps invalid provider JSON as BadGatewayException', async () => {
+    const fetchMock = jest.mocked(global.fetch);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError('Unexpected token')),
+    } as Response);
+
+    const service = new ImageUnderstandingService();
+
+    await expect(
+      service.understandImage(
+        {
+          id: 'model-1',
+          modelName: 'qwen-vl-max',
+          baseUrl: 'https://example.com/v1',
+          apiKey: 'sk-test',
+          configJson: {},
+        },
+        {
+          dataUrl: 'data:image/png;base64,aGVsbG8=',
+          prompt: '描述图片',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
 });

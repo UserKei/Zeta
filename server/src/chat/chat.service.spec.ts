@@ -28,6 +28,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
 
 import { ChatMessageRole } from '@libs/shared/generated/prisma/enums';
 import type { ChatStreamEvent } from '@zeta/common/chat';
+import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { ChatService } from './chat.service';
 
 describe('ChatService listAgentSessionSummaries', () => {
@@ -118,6 +119,30 @@ describe('ChatService listAgentSessionSummaries', () => {
     );
   });
 });
+
+function createRetrievalHit(input: {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  content: string;
+  score: number;
+}): RetrievalHit {
+  return {
+    chunkId: input.chunkId,
+    documentId: input.documentId,
+    documentName: input.documentName,
+    title: null,
+    content: input.content,
+    position: 0,
+    charCount: input.content.length,
+    score: input.score,
+    vectorScore: null,
+    keywordScore: null,
+    finalScore: input.score,
+    matchReason: 'SEMANTIC',
+    rerankScore: null,
+  };
+}
 
 describe('ChatService improveMessage', () => {
   const knowledgeDocsService = {
@@ -386,6 +411,105 @@ describe('ChatService improveMessage', () => {
     expect(knowledgeDocsService.removeImprovedChunk).not.toHaveBeenCalled();
   });
 
+  it('removes the improve record and chunk when indexing the created chunk fails', async () => {
+    const indexingError = new Error('embedding provider failed');
+    const updatedAt = new Date('2026-05-28T08:00:00.000Z');
+    const existingRecord = {
+      knowledgeBaseId: 'kb-1',
+      documentId: 'doc-existing',
+      documentName: '已有补充知识',
+      chunkId: 'chunk-existing',
+      chunkTitle: '已有标题',
+      chunkPosition: 0,
+      createdAt: updatedAt.toISOString(),
+    };
+    const transactionClient = {
+      chatMessage: {
+        update: jest.fn(),
+      },
+    };
+    const updateChatMessage = jest
+      .fn<Promise<unknown>, [Record<string, unknown>]>()
+      .mockResolvedValue({
+        id: 'message-1',
+        sessionId: 'session-1',
+        role: ChatMessageRole.ASSISTANT,
+        content: 'AI 回答',
+        modelId: 'model-1',
+        tokenUsage: {},
+        metadata: {
+          improveRecords: [
+            existingRecord,
+            {
+              knowledgeBaseId: 'kb-1',
+              documentId: 'doc-1',
+              documentName: '聊天补充知识',
+              chunkId: 'chunk-1',
+              chunkTitle: '标题',
+              chunkPosition: 1,
+              createdAt: updatedAt.toISOString(),
+            },
+          ],
+        },
+        createdAt: updatedAt,
+        citations: [],
+      });
+    transactionClient.chatMessage.update = updateChatMessage;
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+          callback(transactionClient),
+      ),
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'message-1',
+          role: ChatMessageRole.ASSISTANT,
+          metadata: {
+            improveRecords: [existingRecord],
+          },
+          session: {
+            userId: 'user-1',
+            agent: {
+              agentKnowledgeBases: [{ knowledgeBaseId: 'kb-1' }],
+            },
+          },
+        }),
+      },
+    };
+    aiExtractedDocumentService.createChunkRecord.mockResolvedValue({
+      document: { id: 'doc-1', name: '聊天补充知识' },
+      chunk: { id: 'chunk-1', title: '标题', position: 1 },
+    });
+    aiExtractedDocumentService.indexCreatedChunk.mockRejectedValue(
+      indexingError,
+    );
+    const service = createService(prisma);
+
+    await expect(
+      service.improveMessage('message-1', 'user-1', {
+        knowledgeBaseId: 'kb-1',
+        title: '标题',
+        content: '补充内容',
+      }),
+    ).rejects.toThrow(indexingError);
+
+    expect(knowledgeDocsService.removeImprovedChunk).toHaveBeenCalledWith(
+      'chunk-1',
+      transactionClient,
+    );
+    expect(updateChatMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: 'message-1' },
+        data: {
+          metadata: {
+            improveRecords: [existingRecord],
+          },
+        },
+      }),
+    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
   it('lists improve records with current chunk content', async () => {
     const service = createService({
       chatMessage: {
@@ -606,21 +730,43 @@ describe('ChatService chat citations', () => {
         };
       };
     };
-    const hits = Array.from({ length: 5 }, (_, index) => ({
-      chunkId: `chunk-${index + 1}`,
-      documentId: `doc-${index + 1}`,
-      documentName: `文档 ${index + 1}`,
-      title: `标题 ${index + 1}`,
-      content: `内容 ${index + 1}`,
-      position: index,
-      charCount: 10,
-      score: 1 - index * 0.1,
-      vectorScore: null,
-      keywordScore: null,
-      finalScore: 1 - index * 0.1,
-      matchReason: 'SEMANTIC',
-      rerankScore: null,
-    }));
+    const hits = [
+      createRetrievalHit({
+        chunkId: 'chunk-vpn',
+        documentId: 'doc-it',
+        documentName: 'IT 服务台 FAQ',
+        content: 'VPN 权限需要部门负责人审批。',
+        score: 0.987654321,
+      }),
+      createRetrievalHit({
+        chunkId: 'chunk-mail',
+        documentId: 'doc-it',
+        documentName: 'IT 服务台 FAQ',
+        content: '邮箱默认在入职当天开通。',
+        score: 0.86,
+      }),
+      createRetrievalHit({
+        chunkId: 'chunk-mfa',
+        documentId: 'doc-security',
+        documentName: 'MFA 故障排查手册',
+        content: 'MFA 绑定失败时先检查手机号。',
+        score: 0.71,
+      }),
+      createRetrievalHit({
+        chunkId: 'chunk-expense',
+        documentId: 'doc-expense',
+        documentName: '报销制度',
+        content: '报销需要直属主管审批。',
+        score: 0.42,
+      }),
+      createRetrievalHit({
+        chunkId: 'chunk-procurement',
+        documentId: 'doc-procurement',
+        documentName: '采购审批制度',
+        content: '采购超过 100 万需要法务复核。',
+        score: 0.31,
+      }),
+    ];
     const chatMessageCreate = jest
       .fn<Promise<unknown>, [ChatMessageCreateInput]>()
       .mockImplementation(({ data }: { data: { role: ChatMessageRole } }) => {
@@ -718,9 +864,26 @@ describe('ChatService chat citations', () => {
       chatMessageCreate.mock.calls[1]?.[0].data.citations?.create ?? [];
 
     expect(createdCitations).toHaveLength(3);
-    expect(
-      createdCitations.map((citation) => citation.chunk.connect.id),
-    ).toEqual(['chunk-1', 'chunk-2', 'chunk-3']);
+    expect(createdCitations).toEqual([
+      {
+        chunk: { connect: { id: 'chunk-vpn' } },
+        document: { connect: { id: 'doc-it' } },
+        score: 0.987654,
+        quote: 'VPN 权限需要部门负责人审批。',
+      },
+      {
+        chunk: { connect: { id: 'chunk-mail' } },
+        document: { connect: { id: 'doc-it' } },
+        score: 0.86,
+        quote: '邮箱默认在入职当天开通。',
+      },
+      {
+        chunk: { connect: { id: 'chunk-mfa' } },
+        document: { connect: { id: 'doc-security' } },
+        score: 0.71,
+        quote: 'MFA 绑定失败时先检查手机号。',
+      },
+    ]);
   });
 
   it('maps streamed LangChain deltas to existing chat stream events', async () => {
@@ -731,15 +894,18 @@ describe('ChatService chat citations', () => {
     }
 
     const now = new Date('2026-06-01T10:00:00.000Z');
+    type StreamChatMessageCreateInput = {
+      data: { role: ChatMessageRole; content: string };
+    };
     const chatMessageCreate = jest
-      .fn()
-      .mockImplementation(({ data }: { data: { role: ChatMessageRole } }) => {
+      .fn<Promise<unknown>, [StreamChatMessageCreateInput]>()
+      .mockImplementation(({ data }) => {
         if (data.role === ChatMessageRole.USER) {
           return Promise.resolve({
             id: 'message-user',
             sessionId: 'session-1',
             role: ChatMessageRole.USER,
-            content: '线段树是什么',
+            content: data.content,
             modelId: null,
             tokenUsage: {},
             metadata: {},
@@ -752,7 +918,7 @@ describe('ChatService chat citations', () => {
           id: 'message-assistant',
           sessionId: 'session-1',
           role: ChatMessageRole.ASSISTANT,
-          content: '第一段第二段',
+          content: data.content,
           modelId: 'model-1',
           tokenUsage: {},
           metadata: {},
@@ -843,6 +1009,10 @@ describe('ChatService chat citations', () => {
     }
 
     expect(events[2].response.assistantMessage.content).toBe('第一段第二段');
+    const assistantCreateInput = chatMessageCreate.mock.calls[1]?.[0];
+
+    expect(assistantCreateInput?.data.role).toBe(ChatMessageRole.ASSISTANT);
+    expect(assistantCreateInput?.data.content).toBe('第一段第二段');
     expect(chatModelService.stream).toHaveBeenCalledWith(
       expect.objectContaining({
         signal: controller.signal,

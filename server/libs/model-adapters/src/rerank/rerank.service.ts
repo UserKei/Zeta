@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
+import { fetchProviderJson } from '../provider-http';
 
 type RerankModelConfig = {
   id: string;
@@ -62,24 +63,18 @@ export class RerankService {
       body.instruct = instruct;
     }
 
-    const response = await fetch(`${this.trimBaseUrl(baseUrl)}/reranks`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const payload = await fetchProviderJson<RerankProviderResponse>(
+      `${this.trimBaseUrl(baseUrl)}/reranks`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-
-      throw new BadGatewayException(
-        `rerank provider request failed: ${message || response.statusText}`,
-      );
-    }
-
-    const payload = (await response.json()) as RerankProviderResponse;
+      'rerank',
+    );
 
     return this.parseResults(payload.results, input.documents.length);
   }

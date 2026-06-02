@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
+import { fetchProviderJson } from '../provider-http';
 
 type EmbeddingModelConfig = {
   id: string;
@@ -123,29 +124,23 @@ export class EmbeddingService {
     baseUrl: string,
     apiKey: string,
   ): Promise<number[][]> {
-    const response = await fetch(`${this.trimBaseUrl(baseUrl)}/embeddings`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const payload = await fetchProviderJson<EmbeddingResponse>(
+      `${this.trimBaseUrl(baseUrl)}/embeddings`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model.modelName,
+          input: texts,
+          dimensions: this.getDimensions(model.configJson),
+          encoding_format: this.getEncodingFormat(model.configJson),
+        }),
       },
-      body: JSON.stringify({
-        model: model.modelName,
-        input: texts,
-        dimensions: this.getDimensions(model.configJson),
-        encoding_format: this.getEncodingFormat(model.configJson),
-      }),
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-
-      throw new BadGatewayException(
-        `embedding provider request failed: ${message || response.statusText}`,
-      );
-    }
-
-    const payload = (await response.json()) as EmbeddingResponse;
+      'embedding',
+    );
     const data = payload.data ?? [];
 
     if (data.length !== texts.length) {
@@ -170,7 +165,7 @@ export class EmbeddingService {
       throw new BadRequestException('embedding input is required');
     }
 
-    const response = await fetch(
+    const payload = await fetchProviderJson<DashScopeMultimodalResponse>(
       this.getDashScopeMultimodalUrl(baseUrl, model.configJson),
       {
         method: 'POST',
@@ -186,17 +181,8 @@ export class EmbeddingService {
           parameters: this.getDashScopeParameters(model.configJson),
         }),
       },
+      'embedding',
     );
-
-    if (!response.ok) {
-      const message = await response.text();
-
-      throw new BadGatewayException(
-        `embedding provider request failed: ${message || response.statusText}`,
-      );
-    }
-
-    const payload = (await response.json()) as DashScopeMultimodalResponse;
     const embedding = payload.output?.embeddings?.[0]?.embedding;
 
     return this.parseEmbedding(embedding);

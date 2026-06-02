@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
+import { fetchProviderJson } from '../provider-http';
 
 type ImageUnderstandingModelConfig = {
   id: string;
@@ -45,7 +46,7 @@ export class ImageUnderstandingService {
       throw new BadRequestException('image understanding prompt is required');
     }
 
-    const response = await fetch(
+    const payload = await fetchProviderJson<VisionChatResponse>(
       `${this.trimBaseUrl(baseUrl)}/chat/completions`,
       {
         method: 'POST',
@@ -69,19 +70,8 @@ export class ImageUnderstandingService {
           ],
         }),
       },
+      'image understanding',
     );
-
-    if (!response.ok) {
-      const message = await response.text();
-
-      throw new BadGatewayException(
-        `image understanding provider request failed: ${
-          message || response.statusText
-        }`,
-      );
-    }
-
-    const payload = (await response.json()) as VisionChatResponse;
     const content = payload.choices?.[0]?.message?.content;
 
     if (typeof content !== 'string' || !content.trim()) {

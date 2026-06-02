@@ -1,3 +1,4 @@
+import { BadGatewayException } from '@nestjs/common';
 import { EmbeddingService } from './embedding.service';
 
 type TestEmbeddingInput = {
@@ -135,6 +136,33 @@ describe('EmbeddingService', () => {
         }),
       }),
     );
+  });
+
+  it('wraps provider network failures as BadGatewayException', async () => {
+    global.fetch = jest
+      .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+      .mockRejectedValue(new Error('connection refused'));
+
+    const service = new EmbeddingService();
+
+    await expect(
+      service.embedTexts(createModel({}), ['VPN 权限']),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+  });
+
+  it('wraps invalid provider JSON as BadGatewayException', async () => {
+    global.fetch = jest
+      .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+      .mockResolvedValue({
+        ok: true,
+        json: () => Promise.reject(new SyntaxError('Unexpected token')),
+      } as Response);
+
+    const service = new EmbeddingService();
+
+    await expect(
+      service.embedTexts(createModel({}), ['VPN 权限']),
+    ).rejects.toBeInstanceOf(BadGatewayException);
   });
 });
 
