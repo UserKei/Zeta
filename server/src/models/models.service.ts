@@ -6,6 +6,12 @@ import {
 import { PrismaService } from '@libs/shared';
 import { AiModelType } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
+import {
+  findModelProvider,
+  getModelsByProviderAndType,
+  getModelTypesByProvider,
+  modelProviders,
+} from './model-catalog';
 
 type ModelInput = {
   name?: string;
@@ -35,6 +41,33 @@ const modelSelect = {
 @Injectable()
 export class ModelsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  listCatalogProviders() {
+    return modelProviders.map(
+      ({ value, label, defaultBaseUrl, defaultConfigJson }) => ({
+        value,
+        label,
+        defaultBaseUrl,
+        defaultConfigJson,
+      }),
+    );
+  }
+
+  listCatalogTypes(provider: string) {
+    this.requireCatalogProvider(provider);
+
+    return getModelTypesByProvider(provider);
+  }
+
+  listCatalogModels(provider: string, type: AiModelType) {
+    this.requireCatalogProvider(provider);
+
+    if (!this.isModelType(type)) {
+      throw new BadRequestException('type is invalid');
+    }
+
+    return getModelsByProviderAndType(provider, type);
+  }
 
   async list() {
     const models = await this.prisma.aiModel.findMany({
@@ -189,6 +222,12 @@ export class ModelsService {
 
     if (!model) {
       throw new NotFoundException('model does not exist');
+    }
+  }
+
+  private requireCatalogProvider(provider: string) {
+    if (!findModelProvider(provider)) {
+      throw new BadRequestException('provider is not supported by catalog');
     }
   }
 

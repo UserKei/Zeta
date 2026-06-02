@@ -41,14 +41,21 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   createModel,
   deleteModel,
+  listModelCatalogModels,
+  listModelCatalogProviders,
+  listModelCatalogTypes,
   listModels,
   updateModel,
   type AiModel,
   type AiModelType,
+  type ModelCatalogModel,
+  type ModelCatalogProvider,
   type ModelPayload,
+  type ModelTypeOption,
 } from '@/apis/models'
 import { showErrorMessage } from '@/utils/feedback'
 
@@ -65,8 +72,14 @@ const deleteOpen = ref(false)
 const deleting = ref(false)
 const deletingModel = ref<AiModel | null>(null)
 const configJsonText = ref('')
+const catalogProviders = ref<ModelCatalogProvider[]>([])
+const catalogTypes = ref<ModelTypeOption[]>([])
+const catalogModels = ref<ModelCatalogModel[]>([])
+const catalogLoading = ref(false)
+const modelNameMode = ref<'recommended' | 'custom'>('recommended')
+const baseUrlTouched = ref(false)
 
-const modelTypes: { value: AiModelType; label: string }[] = [
+const fallbackModelTypes: { value: AiModelType; label: string }[] = [
   { value: 'CHAT', label: '对话模型' },
   { value: 'EMBEDDING', label: 'Embedding' },
   { value: 'RERANKER', label: 'Reranker' },
@@ -86,11 +99,177 @@ const form = reactive<ModelPayload>({
 
 const title = computed(() => (editingId.value ? '编辑模型' : '添加模型'))
 
+const providerOptions = computed(() => {
+  const options = [...catalogProviders.value]
+
+  if (form.provider && !options.some((item) => item.value === form.provider)) {
+    options.push({ value: form.provider, label: form.provider })
+  }
+
+  return options
+})
+
+const modelTypeOptions = computed(() => {
+  const options = [...catalogTypes.value]
+
+  if (form.type && !options.some((item) => item.value === form.type)) {
+    options.push({
+      value: form.type,
+      label: fallbackModelTypes.find((item) => item.value === form.type)?.label ?? form.type,
+    })
+  }
+
+  return options
+})
+
+const recommendedModelOptions = computed(() => {
+  const options = [...catalogModels.value]
+
+  if (
+    form.modelName &&
+    modelNameMode.value === 'recommended' &&
+    !options.some((item) => item.value === form.modelName)
+  ) {
+    options.push({
+      value: form.modelName,
+      label: form.modelName,
+      type: form.type,
+    })
+  }
+
+  return options
+})
+
+const isAiModelType = (value: unknown): value is AiModelType =>
+  fallbackModelTypes.some((item) => item.value === value)
+
+const providerLabel = (provider: string) =>
+  catalogProviders.value.find((item) => item.value === provider)?.label ?? provider
+
+const modelTypeLabel = (type: AiModelType) =>
+  catalogTypes.value.find((item) => item.value === type)?.label ??
+  fallbackModelTypes.find((item) => item.value === type)?.label ??
+  type
+
+const safeConfigJson = () => {
+  const content = configJsonText.value.trim()
+
+  if (!content) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(content) as unknown
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null
+    }
+
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+const mergeConfigDefaults = (defaults?: Record<string, unknown>) => {
+  if (!defaults || Object.keys(defaults).length === 0) {
+    return
+  }
+
+  const currentConfig = safeConfigJson()
+
+  if (!currentConfig) {
+    return
+  }
+
+  configJsonText.value = JSON.stringify(
+    {
+      ...defaults,
+      ...currentConfig,
+    },
+    null,
+    2,
+  )
+}
+
+const selectRecommendedModel = (modelName: string) => {
+  form.modelName = modelName
+
+  const catalogModel = catalogModels.value.find((item) => item.value === modelName)
+  mergeConfigDefaults(catalogModel?.defaultConfigJson)
+}
+
+const loadCatalogModelsForCurrentType = async (selectFirstModel = false) => {
+  if (!form.provider || !form.type) {
+    catalogModels.value = []
+    return
+  }
+
+  try {
+    catalogModels.value = await listModelCatalogModels(form.provider, form.type)
+
+    if (selectFirstModel) {
+      const firstModel = catalogModels.value[0]
+
+      if (firstModel) {
+        modelNameMode.value = 'recommended'
+        selectRecommendedModel(firstModel.value)
+      } else {
+        modelNameMode.value = 'custom'
+        form.modelName = ''
+      }
+    }
+  } catch {
+    catalogModels.value = []
+  }
+}
+
+const loadCatalogForCurrentProvider = async (selectFirstModel = false) => {
+  if (!form.provider) {
+    catalogTypes.value = []
+    catalogModels.value = []
+    return
+  }
+
+  catalogLoading.value = true
+
+  try {
+    catalogTypes.value = await listModelCatalogTypes(form.provider)
+
+    if (!catalogTypes.value.some((item) => item.value === form.type)) {
+      const nextType =
+        catalogTypes.value.find((item) => item.value === 'CHAT') ?? catalogTypes.value[0]
+
+      if (nextType) {
+        form.type = nextType.value
+      }
+    }
+
+    await loadCatalogModelsForCurrentType(selectFirstModel)
+  } catch {
+    catalogTypes.value = []
+    catalogModels.value = []
+  } finally {
+    catalogLoading.value = false
+  }
+}
+
+const ensureCatalogProviders = async () => {
+  if (catalogProviders.value.length > 0) {
+    return
+  }
+
+  catalogProviders.value = await listModelCatalogProviders()
+}
+
 const load = async () => {
   loading.value = true
 
   try {
-    models.value = await listModels()
+    const [modelList, providerList] = await Promise.all([listModels(), listModelCatalogProviders()])
+
+    models.value = modelList
+    catalogProviders.value = providerList
   } catch (cause) {
     showErrorMessage(cause, '加载模型失败')
   } finally {
@@ -98,8 +277,10 @@ const load = async () => {
   }
 }
 
-const openCreate = () => {
+const openCreate = async () => {
   editingId.value = null
+  baseUrlTouched.value = false
+  modelNameMode.value = 'recommended'
   Object.assign(form, {
     name: '',
     provider: '',
@@ -112,10 +293,27 @@ const openCreate = () => {
   })
   configJsonText.value = ''
   formOpen.value = true
+
+  try {
+    await ensureCatalogProviders()
+    const provider =
+      catalogProviders.value.find((item) => item.value === 'aliyun-bailian') ??
+      catalogProviders.value[0]
+
+    if (provider) {
+      form.provider = provider.value
+      form.baseUrl = provider.defaultBaseUrl ?? ''
+      mergeConfigDefaults(provider.defaultConfigJson)
+      await loadCatalogForCurrentProvider(true)
+    }
+  } catch (cause) {
+    showErrorMessage(cause, '加载模型目录失败')
+  }
 }
 
-const openEdit = (model: AiModel) => {
+const openEdit = async (model: AiModel) => {
   editingId.value = model.id
+  baseUrlTouched.value = false
   Object.assign(form, {
     name: model.name,
     provider: model.provider,
@@ -129,6 +327,66 @@ const openEdit = (model: AiModel) => {
   configJsonText.value =
     Object.keys(model.configJson).length > 0 ? JSON.stringify(model.configJson, null, 2) : ''
   formOpen.value = true
+
+  try {
+    await ensureCatalogProviders()
+    await loadCatalogForCurrentProvider(false)
+    modelNameMode.value = catalogModels.value.some((item) => item.value === form.modelName)
+      ? 'recommended'
+      : 'custom'
+  } catch (cause) {
+    modelNameMode.value = 'custom'
+    showErrorMessage(cause, '加载模型目录失败')
+  }
+}
+
+const handleProviderChange = async (value: unknown) => {
+  if (typeof value !== 'string' || !value) {
+    return
+  }
+
+  form.provider = value
+  modelNameMode.value = 'recommended'
+
+  const provider = catalogProviders.value.find((item) => item.value === value)
+
+  if (!baseUrlTouched.value) {
+    form.baseUrl = provider?.defaultBaseUrl ?? ''
+  }
+
+  mergeConfigDefaults(provider?.defaultConfigJson)
+  await loadCatalogForCurrentProvider(true)
+}
+
+const handleTypeChange = async (value: unknown) => {
+  if (!isAiModelType(value)) {
+    return
+  }
+
+  form.type = value
+  modelNameMode.value = 'recommended'
+  await loadCatalogModelsForCurrentType(true)
+}
+
+const handleModelNameModeChange = (value: unknown) => {
+  if (value !== 'recommended' && value !== 'custom') {
+    return
+  }
+
+  modelNameMode.value = value
+
+  if (value === 'recommended') {
+    const selected = catalogModels.value.find((item) => item.value === form.modelName)
+    selectRecommendedModel(selected?.value ?? catalogModels.value[0]?.value ?? '')
+  }
+}
+
+const handleRecommendedModelChange = (value: unknown) => {
+  if (typeof value !== 'string' || !value) {
+    return
+  }
+
+  selectRecommendedModel(value)
 }
 
 const save = async () => {
@@ -253,10 +511,12 @@ onMounted(load)
                   }}</small>
                 </div>
               </TableCell>
-              <TableCell class="text-muted-foreground">{{ model.provider }}</TableCell>
+              <TableCell class="text-muted-foreground">{{
+                providerLabel(model.provider)
+              }}</TableCell>
               <TableCell>
                 <Badge variant="outline">
-                  {{ modelTypes.find((item) => item.value === model.type)?.label }}
+                  {{ modelTypeLabel(model.type) }}
                 </Badge>
               </TableCell>
               <TableCell class="font-medium text-foreground">{{ model.modelName }}</TableCell>
@@ -295,18 +555,37 @@ onMounted(load)
 
           <div class="grid gap-2">
             <Label for="model-provider">供应商</Label>
-            <Input id="model-provider" v-model="form.provider" placeholder="OpenAI / DeepSeek" />
+            <Select :model-value="form.provider" @update:model-value="handleProviderChange">
+              <SelectTrigger id="model-provider" class="w-full">
+                <SelectValue placeholder="选择供应商" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="provider in providerOptions"
+                    :key="provider.value"
+                    :value="provider.value"
+                  >
+                    {{ provider.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
           <div class="grid gap-2">
             <Label for="model-type">模型类型</Label>
-            <Select v-model="form.type">
+            <Select :model-value="form.type" @update:model-value="handleTypeChange">
               <SelectTrigger id="model-type" class="w-full">
                 <SelectValue placeholder="选择模型类型" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem v-for="type in modelTypes" :key="type.value" :value="type.value">
+                  <SelectItem
+                    v-for="type in modelTypeOptions"
+                    :key="type.value"
+                    :value="type.value"
+                  >
                     {{ type.label }}
                   </SelectItem>
                 </SelectGroup>
@@ -315,8 +594,46 @@ onMounted(load)
           </div>
 
           <div class="grid gap-2">
-            <Label for="model-id">模型标识</Label>
-            <Input id="model-id" v-model="form.modelName" placeholder="gpt-4.1-mini" />
+            <div class="flex items-center justify-between gap-3">
+              <Label for="model-id">模型标识</Label>
+              <ToggleGroup
+                :model-value="modelNameMode"
+                type="single"
+                variant="outline"
+                size="sm"
+                @update:model-value="handleModelNameModeChange"
+              >
+                <ToggleGroupItem value="recommended">推荐</ToggleGroupItem>
+                <ToggleGroupItem value="custom">自定义</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            <Select
+              v-if="modelNameMode === 'recommended'"
+              :model-value="form.modelName"
+              :disabled="catalogLoading || recommendedModelOptions.length === 0"
+              @update:model-value="handleRecommendedModelChange"
+            >
+              <SelectTrigger id="model-id" class="w-full">
+                <SelectValue
+                  :placeholder="
+                    recommendedModelOptions.length > 0 ? '选择推荐模型' : '暂无推荐模型'
+                  "
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="model in recommendedModelOptions"
+                    :key="model.value"
+                    :value="model.value"
+                  >
+                    {{ model.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Input v-else id="model-id" v-model="form.modelName" placeholder="自定义模型标识" />
           </div>
 
           <div class="grid gap-2 md:col-span-2">
@@ -325,6 +642,7 @@ onMounted(load)
               id="model-base-url"
               v-model="form.baseUrl"
               placeholder="https://api.example.com/v1"
+              @update:model-value="baseUrlTouched = true"
             />
           </div>
 

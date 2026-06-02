@@ -27,20 +27,53 @@ export type ModelPayload = {
   configJson?: Record<string, unknown> | null
 }
 
+export type ModelTypeOption = {
+  value: AiModelType
+  label: string
+}
+
+export type ModelCatalogModel = {
+  value: string
+  label: string
+  type: AiModelType
+  description?: string
+  defaultConfigJson?: Record<string, unknown>
+}
+
+export type ModelCatalogProvider = {
+  value: string
+  label: string
+  defaultBaseUrl?: string
+  defaultConfigJson?: Record<string, unknown>
+}
+
 export const listModels = () =>
   responseData(serverApi.get('/models') as Promise<Response<AiModel[]>>)
 
-export const createModel = (payload: ModelPayload) =>
+export const listModelCatalogProviders = () =>
   responseData(
-    serverApi.post('/models', payload) as Promise<Response<AiModel>>,
+    serverApi.get('/models/catalog/providers') as Promise<Response<ModelCatalogProvider[]>>,
   )
+
+export const listModelCatalogTypes = (provider: string) =>
+  responseData(
+    serverApi.get('/models/catalog/types', {
+      params: { provider },
+    }) as Promise<Response<ModelTypeOption[]>>,
+  )
+
+export const listModelCatalogModels = (provider: string, type: AiModelType) =>
+  responseData(
+    serverApi.get('/models/catalog/models', {
+      params: { provider, type },
+    }) as Promise<Response<ModelCatalogModel[]>>,
+  )
+
+export const createModel = (payload: ModelPayload) =>
+  responseData(serverApi.post('/models', payload) as Promise<Response<AiModel>>)
 
 export const updateModel = (id: string, payload: Partial<ModelPayload>) =>
-  responseData(
-    serverApi.patch(`/models/${id}`, payload) as Promise<Response<AiModel>>,
-  )
+  responseData(serverApi.patch(`/models/${id}`, payload) as Promise<Response<AiModel>>)
 
 export const deleteModel = (id: string) =>
-  responseData(
-    serverApi.delete(`/models/${id}`) as Promise<Response<{ id: string }>>,
-  )
+  responseData(serverApi.delete(`/models/${id}`) as Promise<Response<{ id: string }>>)
