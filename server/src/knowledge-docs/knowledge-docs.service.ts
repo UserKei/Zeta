@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { EmbeddingService, type EmbeddingInput } from '@libs/model-adapters';
 import {
   FileParserService,
   FileStorageService,
@@ -35,30 +34,20 @@ import type {
 } from '@zeta/common/knowledge-docs';
 import {
   DocumentAssetService,
+  type DocumentChunkDraft,
   type ImageUnderstandingWarning,
 } from './document-asset.service';
+import {
+  ChunkIndexingService,
+  type EmbeddingModelConfig,
+} from './chunk-indexing.service';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
 
 type DocumentRecord = Prisma.DocumentGetPayload<{
   select: typeof documentSelect;
 }>;
 
-type ChunkDraft = {
-  id: string;
-  title: string | null;
-  content: string;
-  status: ChunkStatus;
-  position: number;
-  charCount: number;
-  metadata: Prisma.InputJsonValue;
-};
-
-type EmbeddableChunk = {
-  id: string;
-  title: string | null;
-  content: string;
-  metadata: Prisma.JsonValue;
-};
+type ChunkDraft = DocumentChunkDraft;
 
 type KnowledgeBaseChunkConfig = {
   chunkSize: number;
@@ -104,11 +93,11 @@ export const MARKDOWN_FILE_SIZE_LIMIT = DOCUMENT_FILE_SIZE_LIMIT;
 export class KnowledgeDocsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly embeddingService: EmbeddingService,
     private readonly fileStorageService: FileStorageService,
     private readonly fileParser: FileParserService,
     private readonly retrievalService: RetrievalService,
     private readonly documentAssetService: DocumentAssetService,
+    private readonly chunkIndexingService: ChunkIndexingService,
   ) {}
 
   async listByKnowledgeBase(knowledgeBaseId: string) {
@@ -213,15 +202,19 @@ export class KnowledgeDocsService {
     }
 
     try {
-      await this.createChunks(knowledgeBase.id, document.id, chunks);
-      await this.refreshDocumentSearchVector(document.id);
+      await this.chunkIndexingService.createChunks(
+        knowledgeBase.id,
+        document.id,
+        chunks,
+      );
+      await this.chunkIndexingService.refreshDocumentSearchVector(document.id);
 
       await this.prisma.document.update({
         where: { id: document.id },
         data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
       });
 
-      await this.rebuildDocumentEmbeddings(
+      await this.chunkIndexingService.rebuildDocumentEmbeddings(
         document.id,
         knowledgeBase.embeddingModel,
       );
@@ -451,15 +444,19 @@ export class KnowledgeDocsService {
         });
       }
 
-      await this.createChunks(knowledgeBase.id, document.id, chunks);
-      await this.refreshDocumentSearchVector(document.id);
+      await this.chunkIndexingService.createChunks(
+        knowledgeBase.id,
+        document.id,
+        chunks,
+      );
+      await this.chunkIndexingService.refreshDocumentSearchVector(document.id);
 
       await this.prisma.document.update({
         where: { id: document.id },
         data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
       });
 
-      await this.rebuildDocumentEmbeddings(
+      await this.chunkIndexingService.rebuildDocumentEmbeddings(
         document.id,
         knowledgeBase.embeddingModel,
       );
@@ -588,16 +585,13 @@ export class KnowledgeDocsService {
       });
     });
 
-    await this.refreshChunkSearchVector(created.id);
-
-    if (created.status === ChunkStatus.ACTIVE) {
-      await this.rebuildChunkEmbedding(
-        created.id,
-        document.knowledgeBase.embeddingModel,
-      );
-    }
-
-    await this.refreshDocumentStats(documentId);
+    await this.chunkIndexingService.refreshChunkSearchVector(created.id);
+    await this.chunkIndexingService.syncChunkEmbedding(
+      created.id,
+      document.knowledgeBase.embeddingModel,
+      created.status,
+    );
+    await this.chunkIndexingService.refreshDocumentStats(documentId);
 
     return this.prisma.chunk.findUniqueOrThrow({
       where: { id: created.id },
@@ -641,18 +635,13 @@ export class KnowledgeDocsService {
       select: chunkSelect,
     });
 
-    await this.refreshChunkSearchVector(updated.id);
-
-    if (updated.status === ChunkStatus.ACTIVE) {
-      await this.rebuildChunkEmbedding(
-        updated.id,
-        chunk.document.knowledgeBase.embeddingModel,
-      );
-    } else {
-      await this.prisma.chunkEmbedding.deleteMany({ where: { chunkId: id } });
-    }
-
-    await this.refreshDocumentStats(updated.documentId);
+    await this.chunkIndexingService.refreshChunkSearchVector(updated.id);
+    await this.chunkIndexingService.syncChunkEmbedding(
+      updated.id,
+      chunk.document.knowledgeBase.embeddingModel,
+      updated.status,
+    );
+    await this.chunkIndexingService.refreshDocumentStats(updated.documentId);
 
     return updated;
   }
@@ -665,10 +654,10 @@ export class KnowledgeDocsService {
     }
 
     await this.prisma.chatCitation.deleteMany({ where: { chunkId: id } });
-    await this.prisma.chunkEmbedding.deleteMany({ where: { chunkId: id } });
+    await this.chunkIndexingService.deleteChunkEmbeddings(id);
     await this.prisma.chunk.delete({ where: { id } });
-    await this.reorderDocumentChunks(chunk.documentId);
-    await this.refreshDocumentStats(chunk.documentId);
+    await this.chunkIndexingService.reorderDocumentChunks(chunk.documentId);
+    await this.chunkIndexingService.refreshDocumentStats(chunk.documentId);
 
     return { id };
   }
@@ -690,10 +679,10 @@ export class KnowledgeDocsService {
     }
 
     await db.chatCitation.deleteMany({ where: { chunkId: id } });
-    await db.chunkEmbedding.deleteMany({ where: { chunkId: id } });
+    await this.chunkIndexingService.deleteChunkEmbeddings(id, db);
     await db.chunk.delete({ where: { id } });
-    await this.reorderDocumentChunks(chunk.documentId, db);
-    await this.refreshDocumentStats(chunk.documentId, db);
+    await this.chunkIndexingService.reorderDocumentChunks(chunk.documentId, db);
+    await this.chunkIndexingService.refreshDocumentStats(chunk.documentId, db);
 
     return { id };
   }
@@ -788,158 +777,6 @@ export class KnowledgeDocsService {
       input.question,
       input.topK,
     );
-  }
-
-  private async createChunks(
-    knowledgeBaseId: string,
-    documentId: string,
-    chunks: ChunkDraft[],
-  ) {
-    await this.prisma.chunk.createMany({
-      data: chunks.map((chunk) => ({
-        id: chunk.id,
-        knowledgeBaseId,
-        documentId,
-        title: chunk.title,
-        content: chunk.content,
-        position: chunk.position,
-        charCount: chunk.charCount,
-        status: chunk.status,
-        metadata: chunk.metadata,
-      })),
-    });
-  }
-
-  private async rebuildDocumentEmbeddings(
-    documentId: string,
-    embeddingModel: EmbeddingModelConfig,
-  ) {
-    const activeChunks = await this.prisma.chunk.findMany({
-      where: { documentId, status: ChunkStatus.ACTIVE },
-      orderBy: { position: 'asc' },
-      select: { id: true, title: true, content: true, metadata: true },
-    });
-
-    if (activeChunks.length === 0) {
-      throw new BadRequestException('document must have active chunks');
-    }
-
-    const chunkIds = activeChunks.map((chunk) => chunk.id);
-
-    await this.prisma.chunkEmbedding.deleteMany({
-      where: {
-        embeddingModelId: embeddingModel.id,
-        chunkId: { in: chunkIds },
-      },
-    });
-
-    await this.createEmbeddings(
-      embeddingModel.id,
-      activeChunks,
-      await this.embeddingService.embedInputs(
-        embeddingModel,
-        await this.toEmbeddingInputs(activeChunks, embeddingModel),
-      ),
-    );
-  }
-
-  private async rebuildChunkEmbedding(
-    chunkId: string,
-    embeddingModel: EmbeddingModelConfig,
-  ) {
-    const chunk = await this.prisma.chunk.findUniqueOrThrow({
-      where: { id: chunkId },
-      select: { id: true, title: true, content: true, metadata: true },
-    });
-
-    await this.prisma.chunkEmbedding.deleteMany({
-      where: { chunkId, embeddingModelId: embeddingModel.id },
-    });
-
-    await this.createEmbeddings(
-      embeddingModel.id,
-      [chunk],
-      await this.embeddingService.embedInputs(
-        embeddingModel,
-        await this.toEmbeddingInputs([chunk], embeddingModel),
-      ),
-    );
-  }
-
-  private async createEmbeddings(
-    embeddingModelId: string,
-    chunks: EmbeddableChunk[],
-    embeddings: number[][],
-  ) {
-    if (chunks.length !== embeddings.length) {
-      throw new BadRequestException('chunk and embedding counts do not match');
-    }
-
-    for (const [index, chunk] of chunks.entries()) {
-      const embedding = embeddings[index];
-
-      await this.prisma.$executeRaw`
-        INSERT INTO "chunk_embeddings"
-          ("id", "chunk_id", "embedding_model_id", "embedding", "dimension")
-        VALUES
-          (${randomUUID()}::uuid, ${chunk.id}::uuid, ${embeddingModelId}::uuid,
-           ${this.toVectorLiteral(embedding)}::vector, ${embedding.length})
-      `;
-    }
-  }
-
-  private async refreshDocumentSearchVector(documentId: string) {
-    await this.prisma.$executeRaw`
-      UPDATE "chunks"
-      SET "search_vector" = to_tsvector('simple', COALESCE("title", '') || ' ' || "content")
-      WHERE "document_id" = ${documentId}::uuid
-    `;
-  }
-
-  private async refreshChunkSearchVector(chunkId: string) {
-    await this.prisma.$executeRaw`
-      UPDATE "chunks"
-      SET "search_vector" = to_tsvector('simple', COALESCE("title", '') || ' ' || "content")
-      WHERE "id" = ${chunkId}::uuid
-    `;
-  }
-
-  private async refreshDocumentStats(
-    documentId: string,
-    db: KnowledgeDocsDbClient = this.prisma,
-  ) {
-    const chunks = await db.chunk.findMany({
-      where: { documentId },
-      select: { charCount: true },
-    });
-
-    await db.document.update({
-      where: { id: documentId },
-      data: {
-        charCount: chunks.reduce((total, chunk) => total + chunk.charCount, 0),
-        chunkCount: chunks.length,
-        status: DocumentStatus.INDEXED,
-        errorMessage: null,
-      },
-    });
-  }
-
-  private async reorderDocumentChunks(
-    documentId: string,
-    db: KnowledgeDocsDbClient = this.prisma,
-  ) {
-    const chunks = await db.chunk.findMany({
-      where: { documentId },
-      orderBy: { position: 'asc' },
-      select: { id: true },
-    });
-
-    for (const [position, chunk] of chunks.entries()) {
-      await db.chunk.update({
-        where: { id: chunk.id },
-        data: { position },
-      });
-    }
   }
 
   private toChunkDrafts(chunks: ChunkDraftPayload[] | undefined) {
@@ -1241,74 +1078,6 @@ export class KnowledgeDocsService {
     return status;
   }
 
-  private toEmbeddingText(chunk: EmbeddableChunk) {
-    return chunk.title ? `${chunk.title}\n${chunk.content}` : chunk.content;
-  }
-
-  private async toEmbeddingInputs(
-    chunks: EmbeddableChunk[],
-    embeddingModel: EmbeddingModelConfig,
-  ): Promise<EmbeddingInput[]> {
-    return Promise.all(
-      chunks.map(async (chunk) => {
-        const text = this.toEmbeddingText(chunk);
-        const assetFileId = this.getImageAssetFileIdForEmbedding(
-          chunk,
-          embeddingModel,
-        );
-
-        if (!assetFileId) {
-          return { text };
-        }
-
-        const asset = await this.fileStorageService.readBuffer(assetFileId);
-
-        return {
-          text,
-          image: {
-            dataUrl: this.toDataUrl(
-              asset.mimeType || 'application/octet-stream',
-              asset.buffer,
-            ),
-          },
-        };
-      }),
-    );
-  }
-
-  private getImageAssetFileIdForEmbedding(
-    chunk: EmbeddableChunk,
-    embeddingModel: EmbeddingModelConfig,
-  ) {
-    if (!this.isDashScopeMultimodalModel(embeddingModel)) {
-      return null;
-    }
-
-    const metadata = this.toMetadataObject(chunk.metadata);
-
-    if (metadata.contentKind !== 'PDF_PAGE_IMAGE') {
-      return null;
-    }
-
-    return typeof metadata.assetFileId === 'string'
-      ? metadata.assetFileId
-      : null;
-  }
-
-  private isDashScopeMultimodalModel(model: EmbeddingModelConfig) {
-    const config = this.toMetadataObject(model.configJson);
-
-    return config.protocol === 'dashscope-multimodal';
-  }
-
-  private toDataUrl(mimeType: string, buffer: Buffer) {
-    return `data:${mimeType};base64,${buffer.toString('base64')}`;
-  }
-
-  private toVectorLiteral(embedding: number[]) {
-    return `[${embedding.join(',')}]`;
-  }
-
   private async assertCanDeactivateChunk(chunkId: string, documentId: string) {
     const activeChunkCount = await this.prisma.chunk.count({
       where: {
@@ -1572,14 +1341,6 @@ type IndexableKnowledgeBaseWithEmbedding = IndexableKnowledgeBase & {
     type: AiModelType;
     isEnabled: boolean;
   };
-};
-
-type EmbeddingModelConfig = {
-  id: string;
-  modelName: string;
-  baseUrl: string | null;
-  apiKey: string | null;
-  configJson: Prisma.JsonValue;
 };
 
 type ImageUnderstandingModelConfig = EmbeddingModelConfig;

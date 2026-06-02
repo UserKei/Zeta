@@ -43,6 +43,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
 
 import { KnowledgeDocsService } from './knowledge-docs.service';
 import { DocumentAssetService } from './document-asset.service';
+import { ChunkIndexingService } from './chunk-indexing.service';
 
 type CreatedChunk = {
   id: string;
@@ -207,13 +208,18 @@ describe('KnowledgeDocsService image understanding chunks', () => {
       fileStorageService as never,
       imageUnderstandingService as never,
     );
-    const service = new KnowledgeDocsService(
+    const chunkIndexingService = new ChunkIndexingService(
       prisma as never,
       embeddingService as never,
+      fileStorageService as never,
+    );
+    const service = new KnowledgeDocsService(
+      prisma as never,
       fileStorageService as never,
       fileParser as never,
       retrievalService as never,
       documentAssetService,
+      chunkIndexingService,
     );
 
     return {
@@ -317,8 +323,8 @@ describe('KnowledgeDocsService parser chunk settings', () => {
     const service = new KnowledgeDocsService(
       prisma as never,
       {} as never,
-      {} as never,
       fileParser as never,
+      {} as never,
       {} as never,
       {} as never,
     );
@@ -398,16 +404,18 @@ describe('KnowledgeDocsService manual documents', () => {
       },
       $executeRaw: jest.fn(),
     };
-    const embeddingService = {
-      embedInputs: jest.fn(),
+    const chunkIndexingService = {
+      createChunks: jest.fn(),
+      refreshDocumentSearchVector: jest.fn(),
+      rebuildDocumentEmbeddings: jest.fn(),
     };
     const service = new KnowledgeDocsService(
       prisma as never,
-      embeddingService as never,
       {} as never,
       {} as never,
       {} as never,
       {} as never,
+      chunkIndexingService as never,
     );
 
     const document = await service.createManual('kb-1', {
@@ -432,7 +440,10 @@ describe('KnowledgeDocsService manual documents', () => {
       },
     });
     expect(prisma.chunk.createMany).not.toHaveBeenCalled();
-    expect(embeddingService.embedInputs).not.toHaveBeenCalled();
+    expect(chunkIndexingService.createChunks).not.toHaveBeenCalled();
+    expect(
+      chunkIndexingService.rebuildDocumentEmbeddings,
+    ).not.toHaveBeenCalled();
     expect(documentUpdate).not.toHaveBeenCalled();
   });
 });
