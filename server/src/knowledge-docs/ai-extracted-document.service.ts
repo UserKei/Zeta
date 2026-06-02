@@ -23,6 +23,13 @@ import { chunkSelect, documentSelect } from './knowledge-docs.select';
 type DocumentRecord = Prisma.DocumentGetPayload<{
   select: typeof documentSelect;
 }>;
+type ChunkRecord = Prisma.ChunkGetPayload<{
+  select: typeof chunkSelect;
+}>;
+type KnowledgeDocsDbClient = PrismaService | Prisma.TransactionClient;
+type AiExtractedDocumentRecord = Omit<DocumentRecord, 'metadata'> & {
+  description: string | null;
+};
 
 export type AiExtractedChunkInput = {
   documentId?: string;
@@ -30,6 +37,12 @@ export type AiExtractedChunkInput = {
   title?: string | null;
   content: string;
   sourceMessageId: string;
+};
+
+export type AiExtractedChunkRecord = {
+  document: AiExtractedDocumentRecord;
+  chunk: ChunkRecord;
+  embeddingModel: EmbeddingModelConfig;
 };
 
 @Injectable()
@@ -40,20 +53,22 @@ export class AiExtractedDocumentService {
   ) {}
 
   async createChunk(knowledgeBaseId: string, input: AiExtractedChunkInput) {
-    await this.requireIndexableKnowledgeBase(knowledgeBaseId);
+    const created = await this.prisma.$transaction((tx) =>
+      this.createChunkRecord(knowledgeBaseId, input, tx),
+    );
 
-    const document = input.documentId
-      ? await this.requireTargetDocument(knowledgeBaseId, input.documentId)
-      : await this.findOrCreateDocument(
-          knowledgeBaseId,
-          input.documentName,
-          input.sourceMessageId,
-        );
-    const chunk = await this.createActiveChunk(document, input);
-    const updatedDocument = await this.prisma.document.findUnique({
-      where: { id: document.id },
-      select: documentSelect,
-    });
+    await this.indexCreatedChunk(created);
+
+    const [updatedDocument, chunk] = await Promise.all([
+      this.prisma.document.findUnique({
+        where: { id: created.document.id },
+        select: documentSelect,
+      }),
+      this.prisma.chunk.findUniqueOrThrow({
+        where: { id: created.chunk.id },
+        select: chunkSelect,
+      }),
+    ]);
 
     if (!updatedDocument) {
       throw new NotFoundException('document does not exist');
@@ -65,9 +80,52 @@ export class AiExtractedDocumentService {
     };
   }
 
-  private async createActiveChunk(
+  async createChunkRecord(
+    knowledgeBaseId: string,
+    input: AiExtractedChunkInput,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ): Promise<AiExtractedChunkRecord> {
+    await this.requireIndexableKnowledgeBase(knowledgeBaseId, db);
+
+    const document = input.documentId
+      ? await this.requireTargetDocument(knowledgeBaseId, input.documentId, db)
+      : await this.findOrCreateDocument(
+          knowledgeBaseId,
+          input.documentName,
+          input.sourceMessageId,
+          db,
+        );
+    const chunk = await this.createActiveChunkRecord(document, input, db);
+    const persistedDocument = await db.document.findUnique({
+      where: { id: document.id },
+      select: documentSelect,
+    });
+
+    if (!persistedDocument) {
+      throw new NotFoundException('document does not exist');
+    }
+
+    return {
+      document: this.toDocumentResponse(persistedDocument),
+      chunk,
+      embeddingModel: document.knowledgeBase.embeddingModel,
+    };
+  }
+
+  async indexCreatedChunk(created: AiExtractedChunkRecord) {
+    await this.chunkIndexingService.refreshChunkSearchVector(created.chunk.id);
+    await this.chunkIndexingService.syncChunkEmbedding(
+      created.chunk.id,
+      created.embeddingModel,
+      created.chunk.status,
+    );
+    await this.chunkIndexingService.refreshDocumentStats(created.document.id);
+  }
+
+  private async createActiveChunkRecord(
     document: IndexableDocument,
     input: AiExtractedChunkInput,
+    db: KnowledgeDocsDbClient,
   ) {
     const content = this.normalizeText(input.content);
 
@@ -82,37 +140,22 @@ export class AiExtractedDocumentService {
     }
 
     const title = this.normalizeTitle(input.title);
-    const created = await this.prisma.$transaction(async (tx) => {
-      const position = await tx.chunk.count({
-        where: { documentId: document.id },
-      });
-
-      return tx.chunk.create({
-        data: {
-          id: randomUUID(),
-          knowledgeBaseId: document.knowledgeBaseId,
-          documentId: document.id,
-          title,
-          content,
-          position,
-          charCount: content.length,
-          status: ChunkStatus.ACTIVE,
-          metadata: {},
-        },
-        select: chunkSelect,
-      });
+    const position = await db.chunk.count({
+      where: { documentId: document.id },
     });
 
-    await this.chunkIndexingService.refreshChunkSearchVector(created.id);
-    await this.chunkIndexingService.syncChunkEmbedding(
-      created.id,
-      document.knowledgeBase.embeddingModel,
-      created.status,
-    );
-    await this.chunkIndexingService.refreshDocumentStats(document.id);
-
-    return this.prisma.chunk.findUniqueOrThrow({
-      where: { id: created.id },
+    return db.chunk.create({
+      data: {
+        id: randomUUID(),
+        knowledgeBaseId: document.knowledgeBaseId,
+        documentId: document.id,
+        title,
+        content,
+        position,
+        charCount: content.length,
+        status: ChunkStatus.ACTIVE,
+        metadata: {},
+      },
       select: chunkSelect,
     });
   }
@@ -120,8 +163,9 @@ export class AiExtractedDocumentService {
   private async requireTargetDocument(
     knowledgeBaseId: string,
     documentId: string,
+    db: KnowledgeDocsDbClient = this.prisma,
   ) {
-    const document = await this.requireIndexableDocument(documentId);
+    const document = await this.requireIndexableDocument(documentId, db);
 
     if (document.knowledgeBaseId !== knowledgeBaseId) {
       throw new BadRequestException(
@@ -136,9 +180,10 @@ export class AiExtractedDocumentService {
     knowledgeBaseId: string,
     documentName: string | undefined,
     sourceMessageId: string,
+    db: KnowledgeDocsDbClient = this.prisma,
   ) {
     const name = documentName?.trim() || '聊天补充知识';
-    const existingDocument = await this.prisma.document.findFirst({
+    const existingDocument = await db.document.findFirst({
       where: {
         knowledgeBaseId,
         sourceType: DocumentSourceType.AI_EXTRACTED,
@@ -149,10 +194,10 @@ export class AiExtractedDocumentService {
     });
 
     if (existingDocument) {
-      return this.requireIndexableDocument(existingDocument.id);
+      return this.requireIndexableDocument(existingDocument.id, db);
     }
 
-    const document = await this.prisma.document.create({
+    const document = await db.document.create({
       data: {
         knowledgeBase: { connect: { id: knowledgeBaseId } },
         name,
@@ -166,11 +211,14 @@ export class AiExtractedDocumentService {
       select: { id: true },
     });
 
-    return this.requireIndexableDocument(document.id);
+    return this.requireIndexableDocument(document.id, db);
   }
 
-  private async requireIndexableDocument(id: string) {
-    const document = await this.prisma.document.findUnique({
+  private async requireIndexableDocument(
+    id: string,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ) {
+    const document = await db.document.findUnique({
       where: { id },
       select: {
         id: true,
@@ -198,8 +246,11 @@ export class AiExtractedDocumentService {
     };
   }
 
-  private async requireIndexableKnowledgeBase(id: string) {
-    const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
+  private async requireIndexableKnowledgeBase(
+    id: string,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ) {
+    const knowledgeBase = await db.knowledgeBase.findUnique({
       where: { id },
       select: this.indexableKnowledgeBaseSelect,
     });

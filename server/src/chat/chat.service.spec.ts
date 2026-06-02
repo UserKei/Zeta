@@ -32,7 +32,13 @@ import { ChatService } from './chat.service';
 
 describe('ChatService listAgentSessionSummaries', () => {
   const createService = (prisma: Record<string, unknown>) =>
-    new ChatService(prisma as never, {} as never, {} as never, {} as never);
+    new ChatService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
 
   it('returns session counts without loading full message payloads', async () => {
     const updatedAt = new Date('2026-06-02T08:00:00.000Z');
@@ -118,6 +124,10 @@ describe('ChatService improveMessage', () => {
     createAiExtractedChunk: jest.fn(),
     removeImprovedChunk: jest.fn(),
   };
+  const aiExtractedDocumentService = {
+    createChunkRecord: jest.fn(),
+    indexCreatedChunk: jest.fn(),
+  };
   const chatModelService = {
     complete: jest.fn(),
     stream: jest.fn(),
@@ -131,6 +141,7 @@ describe('ChatService improveMessage', () => {
       prisma as never,
       retrievalService as never,
       knowledgeDocsService as never,
+      aiExtractedDocumentService as never,
       chatModelService as never,
     );
 
@@ -212,8 +223,13 @@ describe('ChatService improveMessage', () => {
     expect(knowledgeDocsService.createAiExtractedChunk).not.toHaveBeenCalled();
   });
 
-  it('creates an extracted chunk and stores improve metadata', async () => {
+  it('creates an extracted chunk and stores improve metadata in one transaction', async () => {
     const updatedAt = new Date('2026-05-28T08:00:00.000Z');
+    const transactionClient = {
+      chatMessage: {
+        update: jest.fn(),
+      },
+    };
     type UpdateChatMessageInput = {
       where: { id: string };
       data: {
@@ -251,7 +267,12 @@ describe('ChatService improveMessage', () => {
         createdAt: updatedAt,
         citations: [],
       });
+    transactionClient.chatMessage.update = updateChatMessage;
     const prisma = {
+      $transaction: jest.fn(
+        async (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+          callback(transactionClient),
+      ),
       chatMessage: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'message-1',
@@ -267,7 +288,11 @@ describe('ChatService improveMessage', () => {
         update: updateChatMessage,
       },
     };
-    knowledgeDocsService.createAiExtractedChunk.mockResolvedValue({
+    aiExtractedDocumentService.createChunkRecord.mockResolvedValue({
+      document: { id: 'doc-1', name: '聊天补充知识' },
+      chunk: { id: 'chunk-1', title: '标题', position: 0 },
+    });
+    aiExtractedDocumentService.indexCreatedChunk.mockResolvedValue({
       document: { id: 'doc-1', name: '聊天补充知识' },
       chunk: { id: 'chunk-1', title: '标题', position: 0 },
     });
@@ -279,7 +304,7 @@ describe('ChatService improveMessage', () => {
       content: '补充内容',
     });
 
-    expect(knowledgeDocsService.createAiExtractedChunk).toHaveBeenCalledWith(
+    expect(aiExtractedDocumentService.createChunkRecord).toHaveBeenCalledWith(
       'kb-1',
       {
         title: '标题',
@@ -288,8 +313,15 @@ describe('ChatService improveMessage', () => {
         documentName: undefined,
         sourceMessageId: 'message-1',
       },
+      transactionClient,
     );
+    expect(knowledgeDocsService.createAiExtractedChunk).not.toHaveBeenCalled();
     expect(updateChatMessage).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(aiExtractedDocumentService.indexCreatedChunk).toHaveBeenCalledWith({
+      document: { id: 'doc-1', name: '聊天补充知识' },
+      chunk: { id: 'chunk-1', title: '标题', position: 0 },
+    });
 
     const updateInput = updateChatMessage.mock.calls[0]?.[0];
 
@@ -305,9 +337,18 @@ describe('ChatService improveMessage', () => {
     expect(result.message.improveRecords).toHaveLength(1);
   });
 
-  it('removes the extracted chunk if improve metadata update fails', async () => {
+  it('does not create index side effects or cleanup when improve transaction fails', async () => {
     const updateError = new Error('metadata update failed');
+    const transactionClient = {
+      chatMessage: {
+        update: jest.fn().mockRejectedValue(updateError),
+      },
+    };
     const prisma = {
+      $transaction: jest.fn(
+        async (callback: (tx: typeof transactionClient) => Promise<unknown>) =>
+          callback(transactionClient),
+      ),
       chatMessage: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'message-1',
@@ -320,10 +361,9 @@ describe('ChatService improveMessage', () => {
             },
           },
         }),
-        update: jest.fn().mockRejectedValue(updateError),
       },
     };
-    knowledgeDocsService.createAiExtractedChunk.mockResolvedValue({
+    aiExtractedDocumentService.createChunkRecord.mockResolvedValue({
       document: { id: 'doc-1', name: '聊天补充知识' },
       chunk: { id: 'chunk-1', title: '标题', position: 0 },
     });
@@ -337,9 +377,13 @@ describe('ChatService improveMessage', () => {
       }),
     ).rejects.toThrow(updateError);
 
-    expect(knowledgeDocsService.removeImprovedChunk).toHaveBeenCalledWith(
-      'chunk-1',
+    expect(aiExtractedDocumentService.createChunkRecord).toHaveBeenCalledWith(
+      'kb-1',
+      expect.objectContaining({ sourceMessageId: 'message-1' }),
+      transactionClient,
     );
+    expect(aiExtractedDocumentService.indexCreatedChunk).not.toHaveBeenCalled();
+    expect(knowledgeDocsService.removeImprovedChunk).not.toHaveBeenCalled();
   });
 
   it('lists improve records with current chunk content', async () => {
@@ -521,6 +565,10 @@ describe('ChatService chat citations', () => {
     createAiExtractedChunk: jest.fn(),
     removeImprovedChunk: jest.fn(),
   };
+  const aiExtractedDocumentService = {
+    createChunkRecord: jest.fn(),
+    indexCreatedChunk: jest.fn(),
+  };
   const chatModelService = {
     complete: jest.fn(),
     stream: jest.fn(),
@@ -534,6 +582,7 @@ describe('ChatService chat citations', () => {
       prisma as never,
       retrievalService as never,
       knowledgeDocsService as never,
+      aiExtractedDocumentService as never,
       chatModelService as never,
     );
 

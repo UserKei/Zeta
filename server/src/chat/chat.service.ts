@@ -26,6 +26,7 @@ import type {
   ChatStreamEvent,
 } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
+import { AiExtractedDocumentService } from '../knowledge-docs/ai-extracted-document.service';
 import { KnowledgeDocsService } from '../knowledge-docs/knowledge-docs.service';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
 
@@ -47,6 +48,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly retrievalService: RetrievalService,
     private readonly knowledgeDocsService: KnowledgeDocsService,
+    private readonly aiExtractedDocumentService: AiExtractedDocumentService,
     private readonly chatModelService: ChatModelService,
   ) {}
 
@@ -208,12 +210,8 @@ export class ChatService {
       );
     }
 
-    let result: Awaited<
-      ReturnType<KnowledgeDocsService['createAiExtractedChunk']>
-    > | null = null;
-
-    try {
-      result = await this.knowledgeDocsService.createAiExtractedChunk(
+    const transactionResult = await this.prisma.$transaction(async (tx) => {
+      const result = await this.aiExtractedDocumentService.createChunkRecord(
         input.knowledgeBaseId,
         {
           title: input.title,
@@ -222,6 +220,7 @@ export class ChatService {
           documentName: input.documentName,
           sourceMessageId: message.id,
         },
+        tx,
       );
       const metadata = this.toMetadataObject(message.metadata);
       const improveRecord: ChatImproveRecord = {
@@ -233,7 +232,7 @@ export class ChatService {
         chunkPosition: result.chunk.position,
         createdAt: new Date().toISOString(),
       };
-      const updated = await this.prisma.chatMessage.update({
+      const updated = await tx.chatMessage.update({
         where: { id: message.id },
         data: {
           metadata: {
@@ -248,20 +247,20 @@ export class ChatService {
       });
 
       return {
-        message: this.toMessageResponse(updated),
+        result,
+        updated,
         improveRecord,
       };
-    } catch (cause) {
-      if (result) {
-        try {
-          await this.knowledgeDocsService.removeImprovedChunk(result.chunk.id);
-        } catch {
-          // Keep the original metadata write failure as the user-facing error.
-        }
-      }
+    });
 
-      throw cause;
-    }
+    await this.aiExtractedDocumentService.indexCreatedChunk(
+      transactionResult.result,
+    );
+
+    return {
+      message: this.toMessageResponse(transactionResult.updated),
+      improveRecord: transactionResult.improveRecord,
+    };
   }
 
   async listImproveRecords(

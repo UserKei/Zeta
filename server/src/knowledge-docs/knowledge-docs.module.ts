@@ -27,6 +27,6 @@ import { KnowledgeDocsService } from './knowledge-docs.service';
     DocumentImportService,
     KnowledgeDocsService,
   ],
-  exports: [KnowledgeDocsService],
+  exports: [AiExtractedDocumentService, KnowledgeDocsService],
 })
 export class KnowledgeDocsModule {}

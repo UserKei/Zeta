@@ -107,22 +107,7 @@ describe('AiExtractedDocumentService', () => {
       document: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: documentCreate,
-        findUnique: jest
-          .fn()
-          .mockResolvedValueOnce({
-            id: 'doc-1',
-            knowledgeBaseId: 'kb-1',
-            knowledgeBase: {
-              id: 'kb-1',
-              status: 'ACTIVE',
-              metadata: {},
-              chunkSize: 1024,
-              chunkOverlap: 128,
-              embeddingModel,
-              visionModel: null,
-            },
-          })
-          .mockResolvedValueOnce(indexedDocument),
+        findUnique: jest.fn().mockResolvedValue(indexedDocument),
       },
       chunk: {
         count: jest.fn().mockResolvedValue(0),
@@ -145,6 +130,37 @@ describe('AiExtractedDocumentService', () => {
       $transaction: jest.fn(
         async (callback: (tx: unknown) => Promise<unknown>) =>
           callback({
+            knowledgeBase: {
+              findUnique: jest.fn().mockResolvedValue({
+                id: 'kb-1',
+                status: 'ACTIVE',
+                metadata: {},
+                chunkSize: 1024,
+                chunkOverlap: 128,
+                embeddingModel,
+                visionModel: null,
+              }),
+            },
+            document: {
+              findFirst: jest.fn().mockResolvedValue(null),
+              create: documentCreate,
+              findUnique: jest
+                .fn()
+                .mockResolvedValueOnce({
+                  id: 'doc-1',
+                  knowledgeBaseId: 'kb-1',
+                  knowledgeBase: {
+                    id: 'kb-1',
+                    status: 'ACTIVE',
+                    metadata: {},
+                    chunkSize: 1024,
+                    chunkOverlap: 128,
+                    embeddingModel,
+                    visionModel: null,
+                  },
+                })
+                .mockResolvedValueOnce(indexedDocument),
+            },
             chunk: {
               count: jest.fn().mockResolvedValue(0),
               create: chunkCreate,
@@ -233,6 +249,37 @@ describe('AiExtractedDocumentService', () => {
           },
         }),
       },
+      $transaction: jest.fn(
+        async (callback: (tx: unknown) => Promise<unknown>) =>
+          callback({
+            knowledgeBase: {
+              findUnique: jest.fn().mockResolvedValue({
+                id: 'kb-1',
+                status: 'ACTIVE',
+                metadata: {},
+                chunkSize: 1024,
+                chunkOverlap: 128,
+                embeddingModel,
+                visionModel: null,
+              }),
+            },
+            document: {
+              findUnique: jest.fn().mockResolvedValue({
+                id: 'doc-2',
+                knowledgeBaseId: 'other-kb',
+                knowledgeBase: {
+                  id: 'other-kb',
+                  status: 'ACTIVE',
+                  metadata: {},
+                  chunkSize: 1024,
+                  chunkOverlap: 128,
+                  embeddingModel,
+                  visionModel: null,
+                },
+              }),
+            },
+          }),
+      ),
     };
     const service = new AiExtractedDocumentService(
       prisma as never,
