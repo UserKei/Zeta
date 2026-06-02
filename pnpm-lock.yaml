@@ -63,7 +63,7 @@ importers:
         version: 2.9.8(vue@3.5.34(typescript@6.0.3))
       shadcn-vue:
         specifier: ^2.7.3
-        version: 2.7.3(eslint@10.4.0(jiti@2.7.0))(vue@3.5.34(typescript@6.0.3))
+        version: 2.7.3(@cfworker/json-schema@4.1.1)(eslint@10.4.0(jiti@2.7.0))(vue@3.5.34(typescript@6.0.3))
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -142,6 +142,12 @@ importers:
 
   server:
     dependencies:
+      "@langchain/core":
+        specifier: ^1.1.48
+        version: 1.1.48(openai@6.41.0(zod@4.4.3))
+      "@langchain/openai":
+        specifier: ^1.4.7
+        version: 1.4.7(@langchain/core@1.1.48(openai@6.41.0(zod@4.4.3)))
       "@nestjs/common":
         specifier: ^11.0.1
         version: 11.1.21(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -898,6 +904,12 @@ packages:
     resolution:
       {
         integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==,
+      }
+
+  "@cfworker/json-schema@4.1.1":
+    resolution:
+      {
+        integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==,
       }
 
   "@codemirror/autocomplete@6.20.2":
@@ -1751,6 +1763,22 @@ packages:
       {
         integrity: sha512-M5UknZPHRu3DEDWoipU6sE8PdkZ6Z/S+v4dD+Ke8IaNlpdSQah50lz1KtcFBa2vsdOnwbbnxJwVM4wty6udA5w==,
       }
+
+  "@langchain/core@1.1.48":
+    resolution:
+      {
+        integrity: sha512-fQU6Guyb1pwc2fEplmA8FPbKfOMAofjnyJzExevro0FxEiuGHE18Ov/ZHmT9trWCDTZRI9eW1VIc6aChxV8pAQ==,
+      }
+    engines: { node: ">=20" }
+
+  "@langchain/openai@1.4.7":
+    resolution:
+      {
+        integrity: sha512-i1YLV4pWbGC6W8m0ZNpLObJuf1nyU4o8aWyX4AF9fHn7eM67HfIJWQ5n5XzcCpuSa41otrxA9jvH5XRKwI1qDA==,
+      }
+    engines: { node: ">=20" }
+    peerDependencies:
+      "@langchain/core": ^1.1.48
 
   "@lezer/common@1.5.2":
     resolution:
@@ -5530,6 +5558,12 @@ packages:
       }
     engines: { node: ">= 0.6" }
 
+  eventemitter3@4.0.7:
+    resolution:
+      {
+        integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==,
+      }
+
   eventemitter3@5.0.4:
     resolution:
       {
@@ -6654,6 +6688,12 @@ packages:
         integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==,
       }
 
+  js-tiktoken@1.0.21:
+    resolution:
+      {
+        integrity: sha512-biOj/6M5qdgx5TKjDnFT1ymSpM5tbd3ylwDtrQvFQSu0Z7bBYko2dF+W/aUkXUPuk6IVpRxk/3Q2sHOzGlS36g==,
+      }
+
   js-tokens@4.0.0:
     resolution:
       {
@@ -6788,6 +6828,29 @@ packages:
       {
         integrity: sha512-Y+60/zizpJ3HRH8DCss+q95yr6145JXZo46OTpFvDZWLfRCE4qChOyk1b26nMaNpfHHgxagk9dXT5OP0Tfe+dQ==,
       }
+
+  langsmith@0.7.3:
+    resolution:
+      {
+        integrity: sha512-Gg+IeRGoF1/aStu80aEnIXJCu+N6+4NoV4tAVFS51ZPRBsRa2KG0LkS7K7/ryZ/yES7O9xdqah5QuuWMIeMjQw==,
+      }
+    peerDependencies:
+      "@opentelemetry/api": "*"
+      "@opentelemetry/exporter-trace-otlp-proto": "*"
+      "@opentelemetry/sdk-trace-base": "*"
+      openai: "*"
+      ws: ">=7"
+    peerDependenciesMeta:
+      "@opentelemetry/api":
+        optional: true
+      "@opentelemetry/exporter-trace-otlp-proto":
+        optional: true
+      "@opentelemetry/sdk-trace-base":
+        optional: true
+      openai:
+        optional: true
+      ws:
+        optional: true
 
   leven@3.1.0:
     resolution:
@@ -7411,6 +7474,13 @@ packages:
       }
     engines: { node: ">= 10.16.0" }
 
+  mustache@4.2.0:
+    resolution:
+      {
+        integrity: sha512-71ippSywq5Yb7/tVYyGbkBggbU8H3u5Rz56fH60jGFgr8uHwxs+aSKeqmluIVzM0m0kB7xQjKS6qPfd0b2ZoqQ==,
+      }
+    hasBin: true
+
   mute-stream@2.0.0:
     resolution:
       {
@@ -7636,6 +7706,20 @@ packages:
       }
     engines: { node: ">=18" }
 
+  openai@6.41.0:
+    resolution:
+      {
+        integrity: sha512-IGWPopZq6Rjoynjfb3NSLf/z2MTw7UiOsm9TAjPGAjUESH7Uq41Trg4QWehBEn58p74i+m7uoRPV2vXcpPXhyA==,
+      }
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   option@0.2.4:
     resolution:
       {
@@ -7683,6 +7767,13 @@ packages:
       }
     engines: { node: ">=16.17" }
 
+  p-finally@1.0.0:
+    resolution:
+      {
+        integrity: sha512-LICb2p9CB7FS+0eR1oqWnHhp0FljGLZCWBE9aix0Uye9W8LTQPwMTYVGWQWIw9RdQiDg4+epXQODwIYJtSJaow==,
+      }
+    engines: { node: ">=4" }
+
   p-limit@2.3.0:
     resolution:
       {
@@ -7710,6 +7801,20 @@ packages:
         integrity: sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw==,
       }
     engines: { node: ">=10" }
+
+  p-queue@6.6.2:
+    resolution:
+      {
+        integrity: sha512-RwFpb72c/BhQLEXIZ5K2e+AhgNVmIejGlTgiB9MzZ0e93GRvqZ7uSi0dvRF7/XIXDeNkra2fNHBxTyPDGySpjQ==,
+      }
+    engines: { node: ">=8" }
+
+  p-timeout@3.2.0:
+    resolution:
+      {
+        integrity: sha512-rhIwUycgwwKcP9yTOOFK/AKsAopjjCakVqLHePO3CC6Mir1Z99xT+R63jZxAT5lFZLa2inS5h+ZS2GvR99/FBg==,
+      }
+    engines: { node: ">=8" }
 
   p-timeout@6.1.4:
     resolution:
@@ -10409,6 +10514,8 @@ snapshots:
 
   "@borewit/text-codec@0.2.2": {}
 
+  "@cfworker/json-schema@4.1.1": {}
+
   "@codemirror/autocomplete@6.20.2":
     dependencies:
       "@codemirror/language": 6.12.3
@@ -11210,6 +11317,31 @@ snapshots:
 
   "@kurkle/color@0.3.4": {}
 
+  "@langchain/core@1.1.48(openai@6.41.0(zod@4.4.3))":
+    dependencies:
+      "@cfworker/json-schema": 4.1.1
+      "@standard-schema/spec": 1.1.0
+      js-tiktoken: 1.0.21
+      langsmith: 0.7.3(openai@6.41.0(zod@4.4.3))
+      mustache: 4.2.0
+      p-queue: 6.6.2
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - "@opentelemetry/api"
+      - "@opentelemetry/exporter-trace-otlp-proto"
+      - "@opentelemetry/sdk-trace-base"
+      - openai
+      - ws
+
+  "@langchain/openai@1.4.7(@langchain/core@1.1.48(openai@6.41.0(zod@4.4.3)))":
+    dependencies:
+      "@langchain/core": 1.1.48(openai@6.41.0(zod@4.4.3))
+      js-tiktoken: 1.0.21
+      openai: 6.41.0(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - ws
+
   "@lezer/common@1.5.2": {}
 
   "@lezer/cpp@1.1.5":
@@ -11315,7 +11447,7 @@ snapshots:
 
   "@microsoft/tsdoc@0.16.0": {}
 
-  "@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)":
+  "@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)":
     dependencies:
       "@hono/node-server": 1.19.11(hono@4.12.21)
       ajv: 8.20.0
@@ -11334,6 +11466,8 @@ snapshots:
       raw-body: 3.0.2
       zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@3.25.76)
+    optionalDependencies:
+      "@cfworker/json-schema": 4.1.1
     transitivePeerDependencies:
       - supports-color
 
@@ -11978,7 +12112,7 @@ snapshots:
 
   "@types/babel__core@7.20.5":
     dependencies:
-      "@babel/parser": 7.29.3
+      "@babel/parser": 7.29.7
       "@babel/types": 7.29.0
       "@types/babel__generator": 7.27.0
       "@types/babel__template": 7.4.4
@@ -11990,7 +12124,7 @@ snapshots:
 
   "@types/babel__template@7.4.4":
     dependencies:
-      "@babel/parser": 7.29.3
+      "@babel/parser": 7.29.7
       "@babel/types": 7.29.0
 
   "@types/babel__traverse@7.28.0":
@@ -13563,6 +13697,8 @@ snapshots:
 
   etag@1.8.1: {}
 
+  eventemitter3@4.0.7: {}
+
   eventemitter3@5.0.4: {}
 
   events@3.3.0: {}
@@ -14040,7 +14176,7 @@ snapshots:
   istanbul-lib-instrument@6.0.3:
     dependencies:
       "@babel/core": 7.29.0
-      "@babel/parser": 7.29.3
+      "@babel/parser": 7.29.7
       "@istanbuljs/schema": 0.1.6
       istanbul-lib-coverage: 3.2.2
       semver: 7.8.0
@@ -14400,6 +14536,10 @@ snapshots:
 
   jose@6.2.3: {}
 
+  js-tiktoken@1.0.21:
+    dependencies:
+      base64-js: 1.5.1
+
   js-tokens@4.0.0: {}
 
   js-yaml@3.14.2:
@@ -14475,6 +14615,12 @@ snapshots:
   kleur@3.0.3: {}
 
   kolorist@1.8.0: {}
+
+  langsmith@0.7.3(openai@6.41.0(zod@4.4.3)):
+    dependencies:
+      p-queue: 6.6.2
+    optionalDependencies:
+      openai: 6.41.0(zod@4.4.3)
 
   leven@3.1.0: {}
 
@@ -14808,6 +14954,8 @@ snapshots:
       concat-stream: 2.0.0
       type-is: 1.6.18
 
+  mustache@4.2.0: {}
+
   mute-stream@2.0.0: {}
 
   mysql2@3.15.3:
@@ -14925,6 +15073,10 @@ snapshots:
       is-inside-container: 1.0.0
       wsl-utils: 0.1.0
 
+  openai@6.41.0(zod@4.4.3):
+    optionalDependencies:
+      zod: 4.4.3
+
   option@0.2.4: {}
 
   optionator@0.9.4:
@@ -14985,6 +15137,8 @@ snapshots:
     dependencies:
       p-timeout: 6.1.4
 
+  p-finally@1.0.0: {}
+
   p-limit@2.3.0:
     dependencies:
       p-try: 2.2.0
@@ -15000,6 +15154,15 @@ snapshots:
   p-locate@5.0.0:
     dependencies:
       p-limit: 3.1.0
+
+  p-queue@6.6.2:
+    dependencies:
+      eventemitter3: 4.0.7
+      p-timeout: 3.2.0
+
+  p-timeout@3.2.0:
+    dependencies:
+      p-finally: 1.0.0
 
   p-timeout@6.1.4: {}
 
@@ -15467,10 +15630,10 @@ snapshots:
 
   setprototypeof@1.2.0: {}
 
-  shadcn-vue@2.7.3(eslint@10.4.0(jiti@2.7.0))(vue@3.5.34(typescript@6.0.3)):
+  shadcn-vue@2.7.3(@cfworker/json-schema@4.1.1)(eslint@10.4.0(jiti@2.7.0))(vue@3.5.34(typescript@6.0.3)):
     dependencies:
       "@dotenvx/dotenvx": 1.69.2
-      "@modelcontextprotocol/sdk": 1.29.0(zod@3.25.76)
+      "@modelcontextprotocol/sdk": 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
       "@unovue/detypes": 0.8.5
       "@vue/compiler-sfc": 3.5.34
       c12: 3.3.4

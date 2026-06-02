@@ -25,6 +25,7 @@ import type {
 } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { KnowledgeDocsService } from '../knowledge-docs/knowledge-docs.service';
+import { ChatModelService, type ChatModelRequest } from './chat-model.service';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
 
 type ChatSessionRecord = Prisma.ChatSessionGetPayload<{
@@ -33,26 +34,6 @@ type ChatSessionRecord = Prisma.ChatSessionGetPayload<{
 type ChatMessageRecord = Prisma.ChatMessageGetPayload<{
   select: typeof chatMessageSelect;
 }>;
-
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: unknown;
-    };
-  }>;
-  usage?: unknown;
-};
-
-type ChatCompletionStreamChunk = {
-  choices?: Array<{
-    delta?: {
-      content?: unknown;
-    };
-  }>;
-  error?: {
-    message?: unknown;
-  };
-};
 
 const DEFAULT_CHAT_TOP_K = 5;
 const MAX_CHAT_TOP_K = 20;
@@ -65,6 +46,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly retrievalService: RetrievalService,
     private readonly knowledgeDocsService: KnowledgeDocsService,
+    private readonly chatModelService: ChatModelService,
   ) {}
 
   async chat(
@@ -413,39 +395,9 @@ export class ChatService {
     message: string,
     hits: RetrievalHit[],
   ) {
-    const response = await fetch(
-      `${this.trimBaseUrl(agent.model.baseUrl ?? '')}/chat/completions`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${agent.model.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(
-          this.createChatCompletionBody(agent, message, hits, false),
-        ),
-      },
+    return this.chatModelService.complete(
+      this.createChatModelRequest(agent, message, hits),
     );
-
-    if (!response.ok) {
-      const detail = await response.text();
-
-      throw new BadGatewayException(
-        `chat provider request failed: ${detail || response.statusText}`,
-      );
-    }
-
-    const payload = (await response.json()) as ChatCompletionResponse;
-    const content = payload.choices?.[0]?.message?.content;
-
-    if (typeof content !== 'string' || !content.trim()) {
-      throw new BadGatewayException('chat provider returned empty answer');
-    }
-
-    return {
-      content: content.trim(),
-      usage: payload.usage ?? {},
-    };
   }
 
   private async *callChatModelStream(
@@ -454,138 +406,32 @@ export class ChatService {
     hits: RetrievalHit[],
     signal?: AbortSignal,
   ): AsyncGenerator<string> {
-    const response = await fetch(
-      `${this.trimBaseUrl(agent.model.baseUrl ?? '')}/chat/completions`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${agent.model.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(
-          this.createChatCompletionBody(agent, message, hits, true),
-        ),
-        signal,
-      },
+    yield* this.chatModelService.stream(
+      this.createChatModelRequest(agent, message, hits, signal),
     );
-
-    if (!response.ok) {
-      const detail = await response.text();
-
-      throw new BadGatewayException(
-        `chat provider request failed: ${detail || response.statusText}`,
-      );
-    }
-
-    if (!response.body) {
-      throw new BadGatewayException('chat provider did not return stream');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const blocks = buffer.split(/\r?\n\r?\n/);
-        buffer = blocks.pop() ?? '';
-
-        for (const block of blocks) {
-          for (const delta of this.parseChatStreamBlock(block)) {
-            yield delta;
-          }
-        }
-      }
-
-      buffer += decoder.decode();
-
-      if (buffer.trim()) {
-        for (const delta of this.parseChatStreamBlock(buffer)) {
-          yield delta;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
   }
 
-  private parseChatStreamBlock(block: string) {
-    const deltas: string[] = [];
-
-    for (const line of block.split(/\r?\n/)) {
-      const trimmedLine = line.trim();
-
-      if (!trimmedLine.startsWith('data:')) {
-        continue;
-      }
-
-      const data = trimmedLine.slice('data:'.length).trim();
-
-      if (!data || data === '[DONE]') {
-        continue;
-      }
-
-      let payload: ChatCompletionStreamChunk;
-
-      try {
-        payload = JSON.parse(data) as ChatCompletionStreamChunk;
-      } catch {
-        throw new BadGatewayException(
-          'chat provider returned invalid stream chunk',
-        );
-      }
-
-      const providerError = payload.error?.message;
-
-      if (typeof providerError === 'string' && providerError) {
-        throw new BadGatewayException(
-          `chat provider request failed: ${providerError}`,
-        );
-      }
-
-      const content = payload.choices?.[0]?.delta?.content;
-
-      if (typeof content === 'string' && content) {
-        deltas.push(content);
-      }
-    }
-
-    return deltas;
-  }
-
-  private createChatCompletionBody(
+  private createChatModelRequest(
     agent: Awaited<ReturnType<ChatService['requireChatAgent']>>,
     message: string,
     hits: RetrievalHit[],
-    stream: boolean,
-  ) {
-    const body = {
-      model: agent.model.modelName,
+    signal?: AbortSignal,
+  ): ChatModelRequest {
+    return {
+      apiKey: agent.model.apiKey,
+      baseUrl: agent.model.baseUrl,
+      modelName: agent.model.modelName,
       messages: [
-        {
-          role: 'system',
-          content: this.buildSystemPrompt(agent.systemPrompt, hits),
-        },
-        {
-          role: 'user',
-          content: message,
-        },
+        ['system', this.buildSystemPrompt(agent.systemPrompt, hits)],
+        ['human', message],
       ],
       temperature:
         agent.temperature === null
           ? DEFAULT_TEMPERATURE
           : Number(agent.temperature),
-      top_p: agent.topP === null ? undefined : Number(agent.topP),
+      topP: agent.topP === null ? undefined : Number(agent.topP),
+      signal,
     };
-
-    return stream ? { ...body, stream: true } : body;
   }
 
   private async saveChatResult(
@@ -698,10 +544,6 @@ export class ChatService {
 
   private createSessionTitle(message: string) {
     return message.length > 40 ? `${message.slice(0, 40)}...` : message;
-  }
-
-  private trimBaseUrl(baseUrl: string) {
-    return baseUrl.replace(/\/+$/, '');
   }
 
   private toSessionResponse(session: ChatSessionRecord): ChatSession {
