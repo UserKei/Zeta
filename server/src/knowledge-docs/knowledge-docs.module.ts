@@ -4,6 +4,7 @@ import {
   ImageUnderstandingModule,
 } from '@libs/model-adapters';
 import { FileStorageModule, ParserModule, RetrievalModule } from '@libs/shared';
+import { DocumentAssetService } from './document-asset.service';
 import { KnowledgeDocsController } from './knowledge-docs.controller';
 import { KnowledgeDocsService } from './knowledge-docs.service';
 
@@ -16,7 +17,7 @@ import { KnowledgeDocsService } from './knowledge-docs.service';
     RetrievalModule,
   ],
   controllers: [KnowledgeDocsController],
-  providers: [KnowledgeDocsService],
+  providers: [DocumentAssetService, KnowledgeDocsService],
   exports: [KnowledgeDocsService],
 })
 export class KnowledgeDocsModule {}

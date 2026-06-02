@@ -42,6 +42,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
 }));
 
 import { KnowledgeDocsService } from './knowledge-docs.service';
+import { DocumentAssetService } from './document-asset.service';
 
 type CreatedChunk = {
   id: string;
@@ -202,13 +203,17 @@ describe('KnowledgeDocsService image understanding chunks', () => {
         .mockResolvedValue('图片文字：VPN 申请单。业务信息：需要主管审批。'),
     };
     const retrievalService = {};
+    const documentAssetService = new DocumentAssetService(
+      fileStorageService as never,
+      imageUnderstandingService as never,
+    );
     const service = new KnowledgeDocsService(
       prisma as never,
       embeddingService as never,
       fileStorageService as never,
       fileParser as never,
       retrievalService as never,
-      imageUnderstandingService as never,
+      documentAssetService,
     );
 
     return {
