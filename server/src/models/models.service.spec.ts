@@ -55,7 +55,7 @@ describe('ModelsService catalog', () => {
     expect(aliyunProvider).toMatchObject({
       value: 'aliyun-bailian',
       label: '阿里云百炼',
-      defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-api/v1',
+      defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     });
     expect(deepseekProvider).toMatchObject({
       value: 'deepseek',
@@ -87,6 +87,19 @@ describe('ModelsService catalog', () => {
         expect.objectContaining({
           value: 'qwen3-rerank',
           label: 'qwen3-rerank',
+          defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-api/v1',
+        }),
+      ]),
+    );
+
+    expect(
+      service.listCatalogModels('aliyun-bailian', AiModelType.IMAGE),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          value: 'qwen-vl-max',
+          label: 'qwen-vl-max',
+          defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         }),
       ]),
     );

@@ -37,6 +37,7 @@ export type ModelCatalogModel = {
   label: string
   type: AiModelType
   description?: string
+  defaultBaseUrl?: string
   defaultConfigJson?: Record<string, unknown>
 }
 

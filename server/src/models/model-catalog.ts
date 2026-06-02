@@ -10,6 +10,7 @@ export type ModelCatalogModel = {
   label: string;
   type: AiModelType;
   description?: string;
+  defaultBaseUrl?: string;
   defaultConfigJson?: Record<string, unknown>;
 };
 
@@ -33,7 +34,7 @@ export const modelProviders: ModelCatalogProvider[] = [
   {
     value: 'aliyun-bailian',
     label: '阿里云百炼',
-    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-api/v1',
+    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     supportedTypes: [
       AiModelType.CHAT,
       AiModelType.EMBEDDING,
@@ -67,16 +68,30 @@ export const modelProviders: ModelCatalogProvider[] = [
         defaultConfigJson: { dimensions: 1024 },
       },
       {
+        value: 'qwen3-vl-embedding',
+        label: 'qwen3-vl-embedding',
+        type: AiModelType.EMBEDDING,
+        description: '百炼多模态向量模型',
+        defaultBaseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+        defaultConfigJson: {
+          protocol: 'dashscope-multimodal',
+          dimension: 1024,
+          enableFusion: true,
+        },
+      },
+      {
         value: 'qwen3-rerank',
         label: 'qwen3-rerank',
         type: AiModelType.RERANKER,
         description: '百炼文本重排序模型',
+        defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-api/v1',
       },
       {
         value: 'qwen-vl-max',
         label: 'qwen-vl-max',
         type: AiModelType.IMAGE,
         description: '百炼视觉理解模型',
+        defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       },
     ],
   },

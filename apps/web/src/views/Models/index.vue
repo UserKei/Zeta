@@ -151,6 +151,11 @@ const modelTypeLabel = (type: AiModelType) =>
   fallbackModelTypes.find((item) => item.value === type)?.label ??
   type
 
+const resolveDefaultBaseUrl = (model?: ModelCatalogModel) =>
+  model?.defaultBaseUrl ??
+  catalogProviders.value.find((item) => item.value === form.provider)?.defaultBaseUrl ??
+  ''
+
 const safeConfigJson = () => {
   const content = configJsonText.value.trim()
 
@@ -196,6 +201,11 @@ const selectRecommendedModel = (modelName: string) => {
   form.modelName = modelName
 
   const catalogModel = catalogModels.value.find((item) => item.value === modelName)
+
+  if (!baseUrlTouched.value) {
+    form.baseUrl = resolveDefaultBaseUrl(catalogModel)
+  }
+
   mergeConfigDefaults(catalogModel?.defaultConfigJson)
 }
 
