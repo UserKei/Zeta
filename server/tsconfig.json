@@ -25,6 +25,8 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
+      "@libs/model-adapters": ["libs/model-adapters/src"],
+      "@libs/model-adapters/*": ["libs/model-adapters/src/*"],
       "@libs/shared": ["libs/shared/src"],
       "@libs/shared/*": ["libs/shared/src/*"]
     }

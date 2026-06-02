@@ -3,14 +3,13 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
-import { Prisma } from '@libs/shared/generated/prisma/client';
 
 type EmbeddingModelConfig = {
   id: string;
   modelName: string;
   baseUrl: string | null;
   apiKey: string | null;
-  configJson: Prisma.JsonValue;
+  configJson: unknown;
 };
 
 type EmbeddingResponse = {
@@ -229,30 +228,27 @@ export class EmbeddingService {
     return baseUrl.replace(/\/+$/, '');
   }
 
-  private getDimensions(configJson: Prisma.JsonValue) {
+  private getDimensions(configJson: unknown) {
     const config = this.getJsonRecord(configJson);
     const dimensions = config?.dimensions;
 
     return typeof dimensions === 'number' ? dimensions : undefined;
   }
 
-  private getEncodingFormat(configJson: Prisma.JsonValue) {
+  private getEncodingFormat(configJson: unknown) {
     const config = this.getJsonRecord(configJson);
     const encodingFormat = config?.encodingFormat;
 
     return typeof encodingFormat === 'string' ? encodingFormat : 'float';
   }
 
-  private isDashScopeMultimodalModel(configJson: Prisma.JsonValue) {
+  private isDashScopeMultimodalModel(configJson: unknown) {
     const config = this.getJsonRecord(configJson);
 
     return config?.protocol === 'dashscope-multimodal';
   }
 
-  private getDashScopeMultimodalUrl(
-    baseUrl: string,
-    configJson: Prisma.JsonValue,
-  ) {
+  private getDashScopeMultimodalUrl(baseUrl: string, configJson: unknown) {
     const config = this.getJsonRecord(configJson);
     const endpoint = config?.multimodalEndpoint;
 
@@ -293,7 +289,7 @@ export class EmbeddingService {
     return contents;
   }
 
-  private getDashScopeParameters(configJson: Prisma.JsonValue) {
+  private getDashScopeParameters(configJson: unknown) {
     const config = this.getJsonRecord(configJson);
     const dimension =
       typeof config?.dimension === 'number'
@@ -313,13 +309,13 @@ export class EmbeddingService {
     return parameters;
   }
 
-  private getJsonRecord(configJson: Prisma.JsonValue): JsonRecord | null {
+  private getJsonRecord(configJson: unknown): JsonRecord | null {
     if (
       configJson &&
       typeof configJson === 'object' &&
       !Array.isArray(configJson)
     ) {
-      return configJson;
+      return configJson as JsonRecord;
     }
 
     return null;

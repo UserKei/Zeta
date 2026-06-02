@@ -3,9 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EmbeddingService, RerankService } from '@libs/model-adapters';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmbeddingService } from '../embedding/embedding.service';
-import { RerankService } from '../rerank/rerank.service';
 import { AiModelType, KnowledgeBaseStatus } from '../generated/prisma/enums';
 import { Prisma } from '../generated/prisma/client';
 import type {

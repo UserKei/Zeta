@@ -4,12 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  ChatModelService,
-  PrismaService,
-  RetrievalService,
-  type ChatModelRequest,
-} from '@libs/shared';
+import { ChatModelService, type ChatModelRequest } from '@libs/model-adapters';
+import { PrismaService, RetrievalService } from '@libs/shared';
 import {
   AgentStatus,
   AiModelType,

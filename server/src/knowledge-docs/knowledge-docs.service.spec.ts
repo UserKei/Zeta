@@ -1,10 +1,13 @@
 jest.mock('@libs/shared', () => ({
-  EmbeddingService: class EmbeddingService {},
   FileParserService: class FileParserService {},
   FileStorageService: class FileStorageService {},
-  ImageUnderstandingService: class ImageUnderstandingService {},
   PrismaService: class PrismaService {},
   RetrievalService: class RetrievalService {},
+}));
+
+jest.mock('@libs/model-adapters', () => ({
+  EmbeddingService: class EmbeddingService {},
+  ImageUnderstandingService: class ImageUnderstandingService {},
 }));
 
 jest.mock('@libs/shared/generated/prisma/client', () => ({

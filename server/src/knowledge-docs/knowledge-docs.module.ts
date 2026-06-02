@@ -1,11 +1,9 @@
 import { Module } from '@nestjs/common';
 import {
   EmbeddingModule,
-  FileStorageModule,
   ImageUnderstandingModule,
-  ParserModule,
-  RetrievalModule,
-} from '@libs/shared';
+} from '@libs/model-adapters';
+import { FileStorageModule, ParserModule, RetrievalModule } from '@libs/shared';
 import { KnowledgeDocsController } from './knowledge-docs.controller';
 import { KnowledgeDocsService } from './knowledge-docs.service';
 

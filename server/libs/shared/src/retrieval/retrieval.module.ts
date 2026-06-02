@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
-import { EmbeddingModule } from '../embedding/embedding.module';
-import { RerankModule } from '../rerank/rerank.module';
+import { EmbeddingModule, RerankModule } from '@libs/model-adapters';
 import { RetrievalService } from './retrieval.service';
 
 @Module({

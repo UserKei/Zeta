@@ -3,14 +3,13 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
-import type { Prisma } from '../generated/prisma/client';
 
 type RerankModelConfig = {
   id: string;
   modelName: string;
   baseUrl: string | null;
   apiKey: string | null;
-  configJson: Prisma.JsonValue;
+  configJson: unknown;
 };
 
 type RerankInput = {
@@ -119,7 +118,7 @@ export class RerankService {
     return Math.min(Math.max(score, 0), 1);
   }
 
-  private getInstruct(configJson: Prisma.JsonValue) {
+  private getInstruct(configJson: unknown) {
     if (
       !configJson ||
       typeof configJson !== 'object' ||
@@ -128,7 +127,7 @@ export class RerankService {
       return null;
     }
 
-    const instruct = (configJson as Record<string, Prisma.JsonValue>).instruct;
+    const instruct = (configJson as Record<string, unknown>).instruct;
 
     return typeof instruct === 'string' && instruct.trim()
       ? instruct.trim()

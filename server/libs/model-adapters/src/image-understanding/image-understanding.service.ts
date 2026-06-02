@@ -3,14 +3,13 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
-import type { Prisma } from '../generated/prisma/client';
 
 type ImageUnderstandingModelConfig = {
   id: string;
   modelName: string;
   baseUrl: string | null;
   apiKey: string | null;
-  configJson: Prisma.JsonValue;
+  configJson: unknown;
 };
 
 type ImageUnderstandingInput = {

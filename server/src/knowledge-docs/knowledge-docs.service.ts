@@ -7,12 +7,14 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   EmbeddingService,
+  ImageUnderstandingService,
+  type EmbeddingInput,
+} from '@libs/model-adapters';
+import {
   FileParserService,
   FileStorageService,
-  ImageUnderstandingService,
   PrismaService,
   RetrievalService,
-  type EmbeddingInput,
   type FileParseResult,
 } from '@libs/shared';
 import {

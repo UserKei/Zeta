@@ -1,5 +1,4 @@
 import { EmbeddingService } from './embedding.service';
-import type { Prisma } from '../generated/prisma/client';
 
 type TestEmbeddingInput = {
   text?: string;
@@ -155,7 +154,7 @@ function mockSuccessfulFetch(payload: unknown) {
 function createModel(input: {
   modelName?: string;
   baseUrl?: string;
-  configJson?: Prisma.JsonValue;
+  configJson?: unknown;
 }) {
   return {
     id: 'model-id',

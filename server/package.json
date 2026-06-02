@@ -92,6 +92,7 @@
       "<rootDir>/libs/"
     ],
     "moduleNameMapper": {
+      "^@libs/model-adapters(|/.*)$": "<rootDir>/libs/model-adapters/src/$1",
       "^@libs/shared(|/.*)$": "<rootDir>/libs/shared/src/$1"
     }
   }

@@ -5,15 +5,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ResponseModule } from './response/response.module';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthGuard } from './auth/auth.guard';
-import { EmbeddingModule } from './embedding/embedding.module';
 import { RetrievalModule } from './retrieval/retrieval.module';
 import { ParserModule } from './parser/parser.module';
 import { TextSplitterModule } from './text-splitter/text-splitter.module';
 import { FileStorageModule } from './file-storage/file-storage.module';
 import { getZetaEnvFilePath } from './env/load-env';
-import { ImageUnderstandingModule } from './image-understanding/image-understanding.module';
-import { RerankModule } from './rerank/rerank.module';
-import { ChatModelModule } from './chat-model/chat-model.module';
 
 const envFilePath = getZetaEnvFilePath();
 
@@ -26,26 +22,18 @@ const envFilePath = getZetaEnvFilePath();
     ResponseModule,
     ConfigModule,
     JwtModule,
-    EmbeddingModule,
     RetrievalModule,
     ParserModule,
     TextSplitterModule,
     FileStorageModule,
-    ImageUnderstandingModule,
-    RerankModule,
-    ChatModelModule,
   ],
   imports: [
     PrismaModule,
     ResponseModule,
-    EmbeddingModule,
     RetrievalModule,
     ParserModule,
     TextSplitterModule,
     FileStorageModule,
-    ImageUnderstandingModule,
-    RerankModule,
-    ChatModelModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: envFilePath ? [envFilePath] : [],
