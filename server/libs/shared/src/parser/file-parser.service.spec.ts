@@ -172,6 +172,9 @@ describe('FileParserService', () => {
   const readDemoFile = (fileName: string) =>
     readFileSync(join(__dirname, '../../../../../docs/demo', fileName));
 
+  const readDemoMediaFile = (fileName: string) =>
+    readDemoFile(join('media', fileName));
+
   it('parses txt files into chunks', async () => {
     const result = await service.parse({
       fileName: '员工手册.txt',
@@ -244,6 +247,28 @@ describe('FileParserService', () => {
 
     expect(content).toContain('审批前准备材料');
     expect(content).not.toContain('审 批 前准 备 材 料');
+  });
+
+  it('parses demo multimodal pdf files as text documents', async () => {
+    const files = ['approval-flow.pdf', 'risk-rules.pdf'];
+
+    for (const fileName of files) {
+      const result = await service.parse({
+        fileName,
+        mimeType: 'application/pdf',
+        buffer: readDemoMediaFile(fileName),
+      });
+      const content = result.chunks
+        .map((chunk) => `${chunk.title ?? ''}\n${chunk.content}`)
+        .join('\n');
+      const normalizedContent = content.normalize('NFKC');
+
+      expect(result.sourceFormat).toBe('PDF');
+      expect(result.chunks.length).toBeGreaterThan(0);
+      expect(result.assets ?? []).toEqual([]);
+      expect(normalizedContent).toContain('图示');
+      expect(normalizedContent).toContain('图片理解能力');
+    }
   });
 
   it('infers pdf sections from larger font sizes', async () => {
@@ -468,6 +493,34 @@ describe('FileParserService', () => {
     expect(result.chunks[0]?.content).toContain(
       '![image1.png](./files/image1.png)',
     );
+  });
+
+  it('extracts images from demo multimodal docx files', async () => {
+    const files = ['approval-flow.docx', 'risk-rules.docx'];
+
+    for (const fileName of files) {
+      const result = await service.parse({
+        fileName,
+        mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        buffer: readDemoMediaFile(fileName),
+      });
+      const content = result.chunks.map((chunk) => chunk.content).join('\n');
+
+      expect(result.sourceFormat).toBe('DOCX');
+      expect(result.assets?.length).toBeGreaterThan(0);
+      expect(result.assets).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: 'DOCX_IMAGE',
+            mimeType: 'image/png',
+          }),
+        ]),
+      );
+      expect(result.assets?.[0]?.buffer.byteLength).toBeGreaterThan(0);
+      expect(content).toContain('./files/');
+      expect(content).toContain('图片理解能力');
+    }
   });
 
   it('rejects damaged docx files', async () => {
