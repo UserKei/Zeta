@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ChunkStatus } from '../../generated/prisma/enums';
-import { TextSplitterService } from '../../text-splitter/text-splitter.service';
+import { HtmlToMarkdownService } from './html-to-markdown.service';
+import { MarkdownParserService } from './markdown-parser.service';
 import type {
   DocumentFileParser,
   FileParseInput,
@@ -10,14 +11,16 @@ import type {
 import {
   getDocumentNameFromFileName,
   normalizeFileName,
-  normalizeTextContent,
 } from '../core/parser.utils';
 
 @Injectable()
 export class HtmlParserService implements DocumentFileParser {
   readonly sourceFormat = 'HTML' as const;
 
-  constructor(private readonly textSplitter: TextSplitterService) {}
+  constructor(
+    private readonly markdownParser: MarkdownParserService,
+    private readonly htmlToMarkdown: HtmlToMarkdownService,
+  ) {}
 
   supports(fileName: string, mimeType?: string | null) {
     const lowerFileName = fileName.toLowerCase();
@@ -32,16 +35,15 @@ export class HtmlParserService implements DocumentFileParser {
   parse(input: FileParseInput, options: FileParseOptions): FileParseResult {
     const fileName = normalizeFileName(input.fileName);
     const documentName = getDocumentNameFromFileName(fileName);
-    const content = this.extractText(input.buffer.toString('utf8'));
+    const markdown = this.htmlToMarkdown.toMarkdown(
+      input.buffer.toString('utf8'),
+    );
 
-    if (!content) {
+    if (!markdown) {
       throw new BadRequestException('HTML 文件不能为空');
     }
 
-    const chunks = this.textSplitter.split(content, {
-      maxLength: options.maxChunkLength,
-      overlapLength: options.overlapLength,
-    });
+    const chunks = this.markdownParser.parse(markdown, options);
 
     if (chunks.length === 0) {
       throw new BadRequestException('HTML 文件无法解析');
@@ -58,32 +60,10 @@ export class HtmlParserService implements DocumentFileParser {
       documentName,
       sourceFormat: this.sourceFormat,
       chunks: chunks.map((chunk) => ({
-        title: documentName,
-        content: chunk,
+        ...chunk,
+        title: chunk.title || documentName,
         status: ChunkStatus.ACTIVE,
       })),
     };
-  }
-
-  private extractText(content: string) {
-    return normalizeTextContent(
-      content
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '\n')
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '\n')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(
-          /<\/(p|div|section|article|header|footer|h[1-6]|li|tr)>/gi,
-          '\n',
-        )
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{2,}/g, '\n'),
-    );
   }
 }

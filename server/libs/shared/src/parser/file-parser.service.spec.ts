@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileParserService } from './core/file-parser.service';
 import { DocxParserService } from './document/docx-parser.service';
+import { HtmlToMarkdownService } from './document/html-to-markdown.service';
 import { HtmlParserService } from './document/html-parser.service';
 import { MarkdownParserService } from './document/markdown-parser.service';
 import { PdfParserService } from './document/pdf-parser.service';
@@ -13,12 +14,13 @@ import { TextSplitterService } from '../text-splitter/text-splitter.service';
 describe('FileParserService', () => {
   const textSplitter = new TextSplitterService();
   const markdownParser = new MarkdownParserService(textSplitter);
+  const htmlToMarkdown = new HtmlToMarkdownService();
   const service = new FileParserService(
     markdownParser,
     new TextParserService(textSplitter),
-    new HtmlParserService(textSplitter),
+    new HtmlParserService(markdownParser, htmlToMarkdown),
     new PdfParserService(markdownParser),
-    new DocxParserService(markdownParser),
+    new DocxParserService(markdownParser, htmlToMarkdown),
     new SpreadsheetParserService(),
   );
 
@@ -197,9 +199,49 @@ describe('FileParserService', () => {
     expect(result.documentName).toBe('制度说明');
     expect(result.chunks[0]).toMatchObject({
       title: '制度说明',
-      content: '制度说明\n正文内容',
+      content: '正文内容',
       status: 'ACTIVE',
     });
+  });
+
+  it('preserves html headings lists and tables as markdown chunks', async () => {
+    const result = await service.parse({
+      fileName: 'upload.html',
+      mimeType: 'text/html',
+      buffer: Buffer.from(`
+        <article>
+          <h1>采购制度</h1>
+          <p>审批说明 &amp; 归档要求。</p>
+          <ul>
+            <li>合同超过 100 万需要法务复核</li>
+            <li>归档需在 5 个工作日内完成</li>
+          </ul>
+          <table>
+            <thead>
+              <tr><th>金额</th><th>审批人</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>10 万以下</td><td>直属负责人</td></tr>
+            </tbody>
+          </table>
+          <script>alert(1)</script>
+          <style>.hidden { display: none; }</style>
+        </article>
+      `),
+    });
+
+    expect(result.sourceFormat).toBe('HTML');
+    expect(result.documentName).toBe('upload');
+    expect(result.chunks).toHaveLength(1);
+
+    const [chunk] = result.chunks;
+
+    expect(chunk?.title).toBe('采购制度');
+    expect(chunk?.status).toBe('ACTIVE');
+    expect(chunk?.content).toContain('审批说明 & 归档要求。');
+    expect(chunk?.content).toContain('- 合同超过 100 万需要法务复核');
+    expect(chunk?.content).toContain('| 金额 | 审批人 |');
+    expect(chunk?.content).not.toContain('alert(1)');
   });
 
   it('parses text pdf files into chunks', async () => {

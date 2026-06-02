@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TextSplitterModule } from '../text-splitter/text-splitter.module';
 import { FileParserService } from './core/file-parser.service';
 import { DocxParserService } from './document/docx-parser.service';
+import { HtmlToMarkdownService } from './document/html-to-markdown.service';
 import { HtmlParserService } from './document/html-parser.service';
 import { MarkdownParserService } from './document/markdown-parser.service';
 import { PdfParserService } from './document/pdf-parser.service';
@@ -12,6 +13,7 @@ import { SpreadsheetParserService } from './table/spreadsheet-parser.service';
   imports: [TextSplitterModule],
   providers: [
     MarkdownParserService,
+    HtmlToMarkdownService,
     TextParserService,
     HtmlParserService,
     PdfParserService,
@@ -21,6 +23,7 @@ import { SpreadsheetParserService } from './table/spreadsheet-parser.service';
   ],
   exports: [
     MarkdownParserService,
+    HtmlToMarkdownService,
     TextParserService,
     HtmlParserService,
     PdfParserService,
