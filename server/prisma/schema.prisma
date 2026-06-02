@@ -46,6 +46,7 @@ enum DocumentSourceType {
 }
 
 enum DocumentStatus {
+  DRAFT
   UPLOADED
   PARSING
   CHUNKING

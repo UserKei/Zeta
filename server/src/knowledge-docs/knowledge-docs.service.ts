@@ -218,9 +218,7 @@ export class KnowledgeDocsService {
         name,
         sourceType: DocumentSourceType.MANUAL,
         status:
-          chunks.length === 0
-            ? DocumentStatus.INDEXED
-            : DocumentStatus.CHUNKING,
+          chunks.length === 0 ? DocumentStatus.DRAFT : DocumentStatus.CHUNKING,
         charCount: this.countChars(chunks),
         chunkCount: chunks.length,
         metadata: {

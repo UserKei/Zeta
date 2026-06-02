@@ -29,6 +29,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
     AI_EXTRACTED: 'AI_EXTRACTED',
   },
   DocumentStatus: {
+    DRAFT: 'DRAFT',
     CHUNKING: 'CHUNKING',
     EMBEDDING: 'EMBEDDING',
     INDEXED: 'INDEXED',
@@ -354,7 +355,7 @@ describe('KnowledgeDocsService manual documents', () => {
         sourceFileId: null,
         name: '空白文档',
         sourceType: 'MANUAL',
-        status: 'INDEXED',
+        status: 'DRAFT',
         charCount: 0,
         chunkCount: 0,
         errorMessage: null,
@@ -413,14 +414,14 @@ describe('KnowledgeDocsService manual documents', () => {
       expect.objectContaining({
         id: 'doc-blank',
         name: '空白文档',
-        status: 'INDEXED',
+        status: 'DRAFT',
         chunkCount: 0,
         charCount: 0,
       }),
     );
     expect(documentCreate.mock.calls[0]?.[0]).toMatchObject({
       data: {
-        status: 'INDEXED',
+        status: 'DRAFT',
         charCount: 0,
         chunkCount: 0,
       },

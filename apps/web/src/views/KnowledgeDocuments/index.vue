@@ -81,6 +81,7 @@ const editForm = reactive({
 })
 
 const documentStatusOptions: Array<{ label: string; value: DocumentStatus }> = [
+  { label: '草稿', value: 'DRAFT' },
   { label: '已上传', value: 'UPLOADED' },
   { label: '解析中', value: 'PARSING' },
   { label: '分段中', value: 'CHUNKING' },
@@ -263,6 +264,7 @@ const formatTime = (value: string) =>
 
 const statusText = (status: DocumentStatus) =>
   ({
+    DRAFT: '草稿',
     UPLOADED: '已上传',
     PARSING: '解析中',
     CHUNKING: '分段中',
@@ -283,7 +285,7 @@ const statusBadgeVariant = (
     return 'destructive'
   }
 
-  if (status === 'UPLOADED') {
+  if (status === 'DRAFT' || status === 'UPLOADED') {
     return 'outline'
   }
 

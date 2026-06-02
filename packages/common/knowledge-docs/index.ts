@@ -9,6 +9,7 @@ export type DocumentSourceType =
   (typeof DocumentSourceType)[keyof typeof DocumentSourceType];
 
 export const DocumentStatus = {
+  DRAFT: "DRAFT",
   UPLOADED: "UPLOADED",
   PARSING: "PARSING",
   CHUNKING: "CHUNKING",
