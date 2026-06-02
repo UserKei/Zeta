@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService, RetrievalService } from '@libs/shared';
+import {
+  ChatModelService,
+  PrismaService,
+  RetrievalService,
+  type ChatModelRequest,
+} from '@libs/shared';
 import {
   AgentStatus,
   AiModelType,
@@ -25,7 +30,6 @@ import type {
 } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { KnowledgeDocsService } from '../knowledge-docs/knowledge-docs.service';
-import { ChatModelService, type ChatModelRequest } from './chat-model.service';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
 
 type ChatSessionRecord = Prisma.ChatSessionGetPayload<{

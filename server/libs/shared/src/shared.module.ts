@@ -13,6 +13,7 @@ import { FileStorageModule } from './file-storage/file-storage.module';
 import { getZetaEnvFilePath } from './env/load-env';
 import { ImageUnderstandingModule } from './image-understanding/image-understanding.module';
 import { RerankModule } from './rerank/rerank.module';
+import { ChatModelModule } from './chat-model/chat-model.module';
 
 const envFilePath = getZetaEnvFilePath();
 
@@ -32,6 +33,7 @@ const envFilePath = getZetaEnvFilePath();
     FileStorageModule,
     ImageUnderstandingModule,
     RerankModule,
+    ChatModelModule,
   ],
   imports: [
     PrismaModule,
@@ -43,6 +45,7 @@ const envFilePath = getZetaEnvFilePath();
     FileStorageModule,
     ImageUnderstandingModule,
     RerankModule,
+    ChatModelModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: envFilePath ? [envFilePath] : [],

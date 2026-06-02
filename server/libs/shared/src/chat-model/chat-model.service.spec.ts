@@ -11,9 +11,9 @@ jest.mock('@langchain/openai', () => ({
 }));
 
 import { ChatOpenAI } from '@langchain/openai';
-import { ChatModelService } from './chat-model.service';
+import { ChatModelService, type ChatModelRequest } from './chat-model.service';
 
-const baseRequest = {
+const baseRequest: ChatModelRequest = {
   apiKey: 'secret',
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1/',
   modelName: 'qwen-plus',
@@ -22,7 +22,7 @@ const baseRequest = {
   messages: [
     ['system', '你是知识库助手。'],
     ['human', '线段树是什么'],
-  ] as const,
+  ],
 };
 
 describe('ChatModelService', () => {
