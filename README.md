@@ -4,8 +4,17 @@ AI 知识库管理平台，围绕企业知识从生产、管理、检索到 Agen
 
 当前主链路：
 
-```text
-模型配置 -> 知识库 -> 文档分段 -> 检索测试 -> 专家 Agent -> 流式问答与引用来源 -> 对话日志标注入库
+```mermaid
+flowchart LR
+    model[模型配置]
+    kb[知识库]
+    docs[文档分段]
+    retrieval[检索测试]
+    agent[专家 Agent]
+    chat[流式问答<br/>引用来源]
+    improve[对话日志<br/>标注入库]
+
+    model --> kb --> docs --> retrieval --> agent --> chat --> improve
 ```
 
 Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用，内部包含管理端页面和独立 Chat 页面；后端是 NestJS 模块化单体，统一负责数据库、检索、模型调用和业务流程。
@@ -24,6 +33,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 ![SSE](https://img.shields.io/badge/SSE-fetch--event--source-111827)
 ![Markdown](https://img.shields.io/badge/Markdown-md--editor--v3-000000?logo=markdown&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-Chat_Adapter-1C3C3C)
 ![JWT](https://img.shields.io/badge/JWT-Auth-000000?logo=jsonwebtokens&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
@@ -38,7 +48,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 - 后端框架：NestJS 11、TypeScript、JWT、bcrypt、全局拦截器和统一响应封装。
 - 数据访问：Prisma 7、Prisma migration、Prisma seed、PostgreSQL 16。
 - 检索能力：PostgreSQL 全文检索、pgvector 向量检索、可选文本 Rerank、Chunk Embedding、RAG 检索增强生成。
-- AI 接入：阿里云百炼 `text-embedding-v4`、`qwen3-rerank`、视觉模型和 DeepSeek 对话模型，主要走 OpenAI-compatible 协议。
+- AI 接入：后端 `model-adapters` lib 统一承接模型调用；Agent Chat 生成层使用 LangChain `ChatOpenAI` 适配 OpenAI-compatible 接口，Embedding、Rerank 和图片理解按模型能力独立适配。
 - 工程工具：pnpm workspace、ESLint、Oxlint、Prettier、Husky、lint-staged。
 - 部署运行：Docker Compose、Nginx、生产多阶段 Dockerfile。
 
@@ -65,6 +75,13 @@ flowchart LR
         chatSvc[Chat]
     end
 
+    subgraph adapters[Model Adapters Lib]
+        chatAdapter[Chat Model Adapter<br/>LangChain ChatOpenAI]
+        embeddingAdapter[Embedding Adapter]
+        rerankAdapter[Rerank Adapter]
+        visionAdapter[Image Understanding Adapter]
+    end
+
     subgraph pg[PostgreSQL]
         data[(业务数据)]
         fts[(全文检索<br/>tsvector + GIN)]
@@ -75,6 +92,7 @@ flowchart LR
     subgraph ai[外部 AI 能力]
         embedding[Embedding Model]
         rerank[Rerank Model]
+        vision[Vision Model]
         llm[Chat LLM]
     end
 
@@ -97,16 +115,22 @@ flowchart LR
     docs --> fts
     docs --> vector
     docs --> files
-    docs --> embedding
+    docs --> embeddingAdapter
 
     retrieval --> fts
     retrieval --> vector
-    retrieval --> embedding
-    retrieval --> rerank
+    retrieval --> embeddingAdapter
+    retrieval --> rerankAdapter
 
     chatSvc --> retrieval
-    chatSvc --> llm
+    chatSvc --> chatAdapter
     chatSvc --> data
+
+    docs --> visionAdapter
+    embeddingAdapter --> embedding
+    rerankAdapter --> rerank
+    visionAdapter --> vision
+    chatAdapter --> llm
 ```
 
 ### Agent 问答流程
@@ -119,15 +143,17 @@ flowchart LR
     embed[问题向量化]
     retrieve[召回相关 Chunk]
     prompt[组装 Prompt 和引用上下文]
+    adapter[Chat Model Adapter<br/>LangChain]
     llm[调用 Chat LLM]
     stream[SSE 流式返回回答]
     persist[保存消息和引用]
     source[展示引用来源]
 
-    question --> session --> agent --> embed --> retrieve --> prompt --> llm --> stream --> persist --> source
+    question --> session --> agent --> embed --> retrieve --> prompt --> adapter --> llm --> stream --> persist --> source
 
     style question fill:#e1f5fe
     style retrieve fill:#fff3e0
+    style adapter fill:#f3e5f5
     style llm fill:#ede7f6
     style stream fill:#e8f5e9
     style source fill:#fce4ec
@@ -136,7 +162,7 @@ flowchart LR
 ## 核心功能
 
 - 登录与默认账号：首版只做登录，不做注册；默认账号由 Prisma seed 初始化。
-- 模型管理：维护 Chat、Embedding、Reranker 和视觉模型配置。
+- 模型管理：维护 Chat、Embedding、Reranker 和视觉模型配置；供应商、模型类别和推荐模型标识来自后端模型目录。
 - 知识库管理：创建知识库，绑定 Embedding 模型，可选绑定文本重排模型、图片理解模型和图片理解提示词。
 - 文档列表：按知识库管理文档、来源、状态、字符数和分段数。
 - 文档导入：上传 Markdown、TXT、HTML、PDF、DOCX、CSV、XLSX、XLS，解析为分段草稿，人工调整后确认入库。
@@ -155,11 +181,11 @@ flowchart LR
 2. 在模型管理中确认已有 Chat 模型、启用的 Embedding 模型；如需演示精排和图片理解，再配置 `qwen3-rerank` 重排模型和一个视觉模型。
 3. 创建一个知识库，例如“企业制度知识库”，在知识库设置中选择 Embedding 模型；如已配置重排或视觉模型，可同时选择重排模型、图片理解模型并调整提示词。
 4. 进入知识库文档管理，上传 `docs/demo/it-account-onboarding.md`。
-5. 在上传页查看 Markdown 解析出的分段草稿，编辑一个分段标题或内容后确认入库。
+5. 在上传页先选择一个或多个文件，点击下一步后查看解析出的分段草稿，编辑分段标题或内容后确认入库。
 6. 继续上传 CSV、PDF 或 DOCX 样例，演示表格按行分段、PDF 结构化分段、DOCX 标题和图片资产保留。
 7. 进入分段页，演示分段的新增、编辑、启停、排序和删除；如果知识库配置了视觉模型，可查看图片理解 Chunk。
 8. 回到文档列表，打开检索测试，提问“VPN 权限多久生效？”并查看命中分段、来源、命中原因和分数；如果配置了重排模型，结果会显示“已重排”和重排分数。
-9. 创建或选择一个绑定该知识库的专家 Agent，进入 Chat 页面提问“采购合同超过 100 万需要哪些审批？”。
+9. 创建一个专家 Agent，进入 Agent 设置页绑定 Chat 模型和知识库，再进入 Chat 页面提问“采购合同超过 100 万需要哪些审批？”。
 10. 查看 AI 回答下方的引用来源，并打开引用详情确认回答可追溯到文档分段。
 11. 回到 Agent 管理页，进入对话日志，将某条 AI 回答标注入库。
 12. 回到知识库文档列表或分段页，确认出现“AI 提炼”来源的文档或新增分段。
@@ -202,7 +228,7 @@ cp .env.example .env
 DATABASE_URL="postgresql://zeta@localhost:5432/zeta?schema=public"
 ```
 
-如果需要使用默认阿里云百炼 Embedding 模型，把真实 key 写入本地 `.env`：
+如果需要启用 seed 中的默认阿里云百炼 Embedding / 多模态 Embedding 模型，把真实 key 写入本地 `.env`：
 
 ```env
 DASHSCOPE_API_KEY="your-api-key"
@@ -328,9 +354,13 @@ Zeta/
 │       │       ├── Models/          # 模型管理
 │       │       ├── KnowledgeBases/  # 知识库列表
 │       │       ├── KnowledgeDocuments/ # 文档列表
+│       │       ├── KnowledgeRetrieval/ # 检索测试
+│       │       ├── KnowledgeSettings/  # 知识库设置
+│       │       ├── KnowledgeUsage/     # 知识热度
 │       │       ├── DocumentUpload/  # 上传文档流程页
-│       │       ├── Paragraph/       # 分段预览与编辑
+│       │       ├── Paragraph/       # 分段管理
 │       │       ├── Agents/          # Agent 管理
+│       │       ├── AgentSettings/   # Agent 设置
 │       │       ├── ChatLogs/        # Agent 对话日志与标注入库
 │       │       └── Chat/            # 独立聊天页
 │       ├── package.json
@@ -348,9 +378,14 @@ Zeta/
 │   │   └── chat/                    # 会话、消息、SSE 流式问答
 │   │
 │   └── libs/
+│       ├── model-adapters/          # 模型调用适配层
+│       │   ├── chat-model/          # LangChain ChatOpenAI 适配
+│       │   ├── embedding/           # Embedding 调用封装
+│       │   ├── image-understanding/ # 图片理解模型调用
+│       │   └── rerank/              # 文本重排服务
+│       │
 │       └── shared/                  # 后端内部共享库
 │           ├── auth/                # AuthGuard 等认证公共能力
-│           ├── embedding/           # Embedding 调用封装
 │           ├── file-storage/        # 文件元数据与 Large Object 存储
 │           ├── generated/           # Prisma Client 生成代码
 │           ├── interceptor/         # 全局拦截器
@@ -358,14 +393,15 @@ Zeta/
 │           ├── prisma/              # Prisma Module / Service
 │           ├── response/            # 统一响应封装
 │           ├── retrieval/           # 混合检索服务
-│           ├── rerank/              # 文本重排服务
 │           └── text-splitter/       # 文本切分能力
 │
 ├── packages/
 │   └── common/                      # 前后端共享 API 契约类型
 │       ├── agents/
 │       ├── chat/
+│       ├── knowledge-bases/
 │       ├── knowledge-docs/
+│       ├── models/
 │       └── user/
 │
 ├── docker-infra/                    # 本地基础设施配置
@@ -393,6 +429,7 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
 3. **NestJS 模块化单体**
    - 后端按业务模块拆分，但部署上仍是一个 API 服务。
    - 前端只访问 NestJS API，不直接访问 PostgreSQL、Prisma、模型供应商密钥或文件存储。
+   - 外部模型调用集中在 `server/libs/model-adapters`，业务模块通过 Nest Module 显式引入需要的模型能力。
 
 4. **PostgreSQL 作为核心存储**
    - 业务数据、文档元数据、分段、聊天记录和引用关系都落在 PostgreSQL。
@@ -404,7 +441,7 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
 5. **RAG 问答链路**
    - 用户提问后，后端在 Agent 绑定知识库内召回 Chunk。
    - 如果知识库配置了重排模型，后端会先召回更多候选，再按 Rerank 分数筛选最终 TopK。
-   - 后端组装 Prompt 并调用 Chat 模型。
+   - 后端组装 Prompt，并通过 LangChain Chat Adapter 调用 OpenAI-compatible Chat 模型。
    - 回答通过 SSE 流式返回。
    - 回答结束后保存 ChatMessage 和 ChatCitation，引用可回溯到 Document 和 Chunk。
 
@@ -412,19 +449,19 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
 
 本地开发环境变量位于仓库根目录 `.env`，可以从 `.env.example` 复制。
 
-| 变量                        | 说明                                        |
-| --------------------------- | ------------------------------------------- |
-| `DATABASE_URL`              | PostgreSQL 连接串                           |
-| `AUTH_TOKEN_SECRET`         | JWT 签名密钥                                |
-| `ACCESS_TOKEN_TTL_SECONDS`  | Access Token 有效期                         |
-| `REFRESH_TOKEN_TTL_SECONDS` | Refresh Token 有效期                        |
-| `SEED_ADMIN_USERNAME`       | seed 默认管理员用户名                       |
-| `SEED_ADMIN_PASSWORD`       | seed 默认管理员密码                         |
-| `SEED_ADMIN_DISPLAY_NAME`   | seed 默认管理员展示名                       |
-| `DASHSCOPE_API_KEY`         | 阿里云百炼 API Key，用于默认 Embedding 模型 |
-| `POSTGRES_DB`               | 本地 PostgreSQL 数据库名                    |
-| `POSTGRES_USER`             | 本地 PostgreSQL 用户名                      |
-| `POSTGRES_PORT`             | 本地 PostgreSQL 宿主机端口                  |
+| 变量                        | 说明                                                                 |
+| --------------------------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`              | PostgreSQL 连接串                                                    |
+| `AUTH_TOKEN_SECRET`         | JWT 签名密钥                                                         |
+| `ACCESS_TOKEN_TTL_SECONDS`  | Access Token 有效期                                                  |
+| `REFRESH_TOKEN_TTL_SECONDS` | Refresh Token 有效期                                                 |
+| `SEED_ADMIN_USERNAME`       | seed 默认管理员用户名                                                |
+| `SEED_ADMIN_PASSWORD`       | seed 默认管理员密码                                                  |
+| `SEED_ADMIN_DISPLAY_NAME`   | seed 默认管理员展示名                                                |
+| `DASHSCOPE_API_KEY`         | 阿里云百炼 API Key，用于 seed 默认 Embedding / 多模态 Embedding 模型 |
+| `POSTGRES_DB`               | 本地 PostgreSQL 数据库名                                             |
+| `POSTGRES_USER`             | 本地 PostgreSQL 用户名                                               |
+| `POSTGRES_PORT`             | 本地 PostgreSQL 宿主机端口                                           |
 
 生产部署环境变量位于 `.env.production`，可以从 `.env.production.example` 复制。生产环境必须设置数据库密码和高强度 `AUTH_TOKEN_SECRET`。
 
@@ -457,15 +494,3 @@ Web 容器使用 Nginx 托管前端静态产物，并把 `/api/` 反向代理到
 cp .env.production.example .env.production
 bash scripts/deploy.sh
 ```
-
-## 后续计划
-
-- 多模态深化：当前已支持图片资产保留，并可通过视觉模型生成文本型图片理解 Chunk；后续候选是独立图片上传、OCR 专用服务和真正的图文向量检索。
-- 检索准确率深化：当前已支持混合召回后的文本 Rerank；后续继续优化中文全文检索、重排参数解释和不同知识库场景下的命中稳定性。
-- 复杂知识关系：后续评估跨文档引用、流程型知识、表格关系和知识版本变化的表达方式。
-- UI 收口：继续参考 MaxKB 优化知识库 Workspace、文档管理、上传流程、分段页和 Agent 日志页面。
-- 演示材料：根据后续答辩要求补充稳定的知识库样例、Agent 样例和演示脚本。
-
-当前不引入 Playwright 等端到端自动化测试框架。交付前先按“推荐演示路径”进行人工验收；等功能稳定后，再考虑用 Playwright 自动化登录、上传、检索、聊天和引用回归。
-
-暂不扩展 ZIP 批量导入、音频、视频、多租户、复杂权限和通用工具编排，优先把知识生产、检索解释和 Agent 消费这条主链路做扎实。
