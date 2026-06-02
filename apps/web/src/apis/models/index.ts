@@ -44,7 +44,11 @@ export type ModelCatalogModel = {
 export type ModelCatalogProvider = {
   value: string
   label: string
+  icon?: string
+  description?: string
+  note?: string
   defaultBaseUrl?: string
+  supportedTypes: AiModelType[]
   defaultConfigJson?: Record<string, unknown>
 }
 

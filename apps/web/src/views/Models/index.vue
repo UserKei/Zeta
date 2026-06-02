@@ -42,6 +42,9 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import aliyunBailianIconUrl from '@/assets/model-providers/aliyun-bailian.svg?url'
+import deepSeekIconUrl from '@/assets/model-providers/deepseek.svg?url'
+import openAiCompatibleIconUrl from '@/assets/model-providers/openai-compatible.svg?url'
 import {
   createModel,
   deleteModel,
@@ -68,6 +71,8 @@ const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
+const providerPickerOpen = ref(false)
+const providerPickerShouldReturnToForm = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 const deletingModel = ref<AiModel | null>(null)
@@ -80,11 +85,25 @@ const modelNameMode = ref<'recommended' | 'custom'>('recommended')
 const baseUrlTouched = ref(false)
 
 const fallbackModelTypes: { value: AiModelType; label: string }[] = [
-  { value: 'CHAT', label: '对话模型' },
-  { value: 'EMBEDDING', label: 'Embedding' },
-  { value: 'RERANKER', label: 'Reranker' },
+  { value: 'CHAT', label: '大语言模型' },
+  { value: 'EMBEDDING', label: '向量模型' },
+  { value: 'RERANKER', label: '重排模型' },
   { value: 'IMAGE', label: '视觉模型' },
 ]
+
+const providerIconUrls: Record<string, string> = {
+  'aliyun-bailian': aliyunBailianIconUrl,
+  deepseek: deepSeekIconUrl,
+  'openai-compatible': openAiCompatibleIconUrl,
+}
+
+const canonicalModelTypeLabel = (type: AiModelType) =>
+  fallbackModelTypes.find((item) => item.value === type)?.label ?? type
+
+const normalizeModelTypeOption = (option: ModelTypeOption): ModelTypeOption => ({
+  ...option,
+  label: canonicalModelTypeLabel(option.value),
+})
 
 const form = reactive<ModelPayload>({
   name: '',
@@ -99,23 +118,19 @@ const form = reactive<ModelPayload>({
 
 const title = computed(() => (editingId.value ? '编辑模型' : '添加模型'))
 
-const providerOptions = computed(() => {
-  const options = [...catalogProviders.value]
+const providerOptions = computed(() => catalogProviders.value)
 
-  if (form.provider && !options.some((item) => item.value === form.provider)) {
-    options.push({ value: form.provider, label: form.provider })
-  }
-
-  return options
-})
+const selectedProviderOption = computed(
+  () => providerOptions.value.find((item) => item.value === form.provider) ?? null,
+)
 
 const modelTypeOptions = computed(() => {
-  const options = [...catalogTypes.value]
+  const options = catalogTypes.value.map(normalizeModelTypeOption)
 
   if (form.type && !options.some((item) => item.value === form.type)) {
     options.push({
       value: form.type,
-      label: fallbackModelTypes.find((item) => item.value === form.type)?.label ?? form.type,
+      label: canonicalModelTypeLabel(form.type),
     })
   }
 
@@ -146,10 +161,13 @@ const isAiModelType = (value: unknown): value is AiModelType =>
 const providerLabel = (provider: string) =>
   catalogProviders.value.find((item) => item.value === provider)?.label ?? provider
 
-const modelTypeLabel = (type: AiModelType) =>
-  catalogTypes.value.find((item) => item.value === type)?.label ??
-  fallbackModelTypes.find((item) => item.value === type)?.label ??
-  type
+const providerIconUrl = (provider?: ModelCatalogProvider | null) =>
+  provider?.icon ? providerIconUrls[provider.icon] : undefined
+
+const providerSupportedTypeLabels = (provider?: ModelCatalogProvider | null) =>
+  provider?.supportedTypes.map(canonicalModelTypeLabel) ?? []
+
+const modelTypeLabel = (type: AiModelType) => canonicalModelTypeLabel(type)
 
 const resolveDefaultBaseUrl = (model?: ModelCatalogModel) =>
   model?.defaultBaseUrl ??
@@ -241,10 +259,17 @@ const loadCatalogForCurrentProvider = async (selectFirstModel = false) => {
     return
   }
 
+  if (!catalogProviders.value.some((item) => item.value === form.provider)) {
+    catalogTypes.value = []
+    catalogModels.value = []
+    modelNameMode.value = 'custom'
+    return
+  }
+
   catalogLoading.value = true
 
   try {
-    catalogTypes.value = await listModelCatalogTypes(form.provider)
+    catalogTypes.value = (await listModelCatalogTypes(form.provider)).map(normalizeModelTypeOption)
 
     if (!catalogTypes.value.some((item) => item.value === form.type)) {
       const nextType =
@@ -272,6 +297,22 @@ const ensureCatalogProviders = async () => {
   catalogProviders.value = await listModelCatalogProviders()
 }
 
+const resetForm = () => {
+  Object.assign(form, {
+    name: '',
+    provider: '',
+    type: 'CHAT',
+    modelName: '',
+    baseUrl: '',
+    apiKey: '',
+    isEnabled: true,
+    configJson: {},
+  })
+  configJsonText.value = ''
+  catalogTypes.value = []
+  catalogModels.value = []
+}
+
 const load = async () => {
   loading.value = true
 
@@ -291,31 +332,58 @@ const openCreate = async () => {
   editingId.value = null
   baseUrlTouched.value = false
   modelNameMode.value = 'recommended'
-  Object.assign(form, {
-    name: '',
-    provider: '',
-    type: 'CHAT',
-    modelName: '',
-    baseUrl: '',
-    apiKey: '',
-    isEnabled: true,
-    configJson: {},
-  })
-  configJsonText.value = ''
-  formOpen.value = true
+  resetForm()
 
   try {
     await ensureCatalogProviders()
-    const provider =
-      catalogProviders.value.find((item) => item.value === 'aliyun-bailian') ??
-      catalogProviders.value[0]
+    providerPickerShouldReturnToForm.value = false
+    providerPickerOpen.value = true
+  } catch (cause) {
+    showErrorMessage(cause, '加载模型目录失败')
+  }
+}
 
-    if (provider) {
-      form.provider = provider.value
-      form.baseUrl = provider.defaultBaseUrl ?? ''
-      mergeConfigDefaults(provider.defaultConfigJson)
-      await loadCatalogForCurrentProvider(true)
+const openProviderPickerFromForm = async () => {
+  try {
+    await ensureCatalogProviders()
+    providerPickerShouldReturnToForm.value = true
+    formOpen.value = false
+    providerPickerOpen.value = true
+  } catch (cause) {
+    showErrorMessage(cause, '加载模型目录失败')
+  }
+}
+
+const handleProviderPickerOpenChange = (open: boolean) => {
+  providerPickerOpen.value = open
+
+  if (!open && providerPickerShouldReturnToForm.value) {
+    providerPickerShouldReturnToForm.value = false
+
+    if (form.provider) {
+      formOpen.value = true
     }
+  }
+}
+
+const chooseProvider = async (provider: ModelCatalogProvider) => {
+  form.provider = provider.value
+  form.type = provider.supportedTypes.includes(form.type)
+    ? form.type
+    : (provider.supportedTypes[0] ?? 'CHAT')
+  modelNameMode.value = 'recommended'
+
+  if (!baseUrlTouched.value) {
+    form.baseUrl = provider.defaultBaseUrl ?? ''
+  }
+
+  mergeConfigDefaults(provider.defaultConfigJson)
+
+  try {
+    await loadCatalogForCurrentProvider(true)
+    providerPickerShouldReturnToForm.value = false
+    providerPickerOpen.value = false
+    formOpen.value = true
   } catch (cause) {
     showErrorMessage(cause, '加载模型目录失败')
   }
@@ -340,32 +408,20 @@ const openEdit = async (model: AiModel) => {
 
   try {
     await ensureCatalogProviders()
-    await loadCatalogForCurrentProvider(false)
-    modelNameMode.value = catalogModels.value.some((item) => item.value === form.modelName)
-      ? 'recommended'
-      : 'custom'
+    if (catalogProviders.value.some((item) => item.value === form.provider)) {
+      await loadCatalogForCurrentProvider(false)
+      modelNameMode.value = catalogModels.value.some((item) => item.value === form.modelName)
+        ? 'recommended'
+        : 'custom'
+    } else {
+      catalogTypes.value = []
+      catalogModels.value = []
+      modelNameMode.value = 'custom'
+    }
   } catch (cause) {
     modelNameMode.value = 'custom'
     showErrorMessage(cause, '加载模型目录失败')
   }
-}
-
-const handleProviderChange = async (value: unknown) => {
-  if (typeof value !== 'string' || !value) {
-    return
-  }
-
-  form.provider = value
-  modelNameMode.value = 'recommended'
-
-  const provider = catalogProviders.value.find((item) => item.value === value)
-
-  if (!baseUrlTouched.value) {
-    form.baseUrl = provider?.defaultBaseUrl ?? ''
-  }
-
-  mergeConfigDefaults(provider?.defaultConfigJson)
-  await loadCatalogForCurrentProvider(true)
 }
 
 const handleTypeChange = async (value: unknown) => {
@@ -550,11 +606,63 @@ onMounted(load)
       </Table>
     </CardContent>
 
+    <Dialog :open="providerPickerOpen" @update:open="handleProviderPickerOpenChange">
+      <DialogContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>选择供应商</DialogTitle>
+          <DialogDescription>
+            先选择模型供应商，再配置模型类型、标识和调用凭证。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <button
+            v-for="provider in providerOptions"
+            :key="provider.value"
+            type="button"
+            class="flex min-h-36 rounded-lg border border-border bg-card p-4 text-left transition hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            @click="chooseProvider(provider)"
+          >
+            <div class="flex min-w-0 flex-1 gap-3">
+              <span class="grid size-11 shrink-0 place-items-center rounded-lg bg-muted">
+                <img
+                  v-if="providerIconUrl(provider)"
+                  :src="providerIconUrl(provider)"
+                  alt=""
+                  class="size-8"
+                />
+              </span>
+              <span class="flex min-w-0 flex-1 flex-col gap-2">
+                <span class="truncate text-base font-semibold text-foreground">
+                  {{ provider.label }}
+                </span>
+                <span v-if="provider.description" class="text-sm text-muted-foreground">
+                  {{ provider.description }}
+                </span>
+                <span class="flex flex-wrap gap-1">
+                  <Badge
+                    v-for="typeLabel in providerSupportedTypeLabels(provider)"
+                    :key="typeLabel"
+                    variant="secondary"
+                  >
+                    {{ typeLabel }}
+                  </Badge>
+                </span>
+                <span v-if="provider.note" class="text-xs leading-relaxed text-muted-foreground">
+                  {{ provider.note }}
+                </span>
+              </span>
+            </div>
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+
     <Dialog v-model:open="formOpen">
       <DialogContent class="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{{ title }}</DialogTitle>
-          <DialogDescription> 配置模型供应商、模型标识和调用凭证。 </DialogDescription>
+          <DialogDescription> 配置模型类型、模型标识和调用凭证。 </DialogDescription>
         </DialogHeader>
 
         <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="save">
@@ -563,24 +671,36 @@ onMounted(load)
             <Input id="model-name" v-model="form.name" />
           </div>
 
-          <div class="grid gap-2">
-            <Label for="model-provider">供应商</Label>
-            <Select :model-value="form.provider" @update:model-value="handleProviderChange">
-              <SelectTrigger id="model-provider" class="w-full">
-                <SelectValue placeholder="选择供应商" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem
-                    v-for="provider in providerOptions"
-                    :key="provider.value"
-                    :value="provider.value"
+          <div class="grid gap-2 md:col-span-2">
+            <Label>供应商</Label>
+            <div
+              class="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="grid size-10 shrink-0 place-items-center rounded-lg bg-card">
+                  <img
+                    v-if="providerIconUrl(selectedProviderOption)"
+                    :src="providerIconUrl(selectedProviderOption)"
+                    alt=""
+                    class="size-7"
+                  />
+                </span>
+                <div class="min-w-0">
+                  <p class="m-0 truncate font-medium text-foreground">
+                    {{ selectedProviderOption?.label ?? (form.provider || '未选择供应商') }}
+                  </p>
+                  <p
+                    v-if="selectedProviderOption?.note || selectedProviderOption?.description"
+                    class="m-0 mt-1 line-clamp-2 text-sm text-muted-foreground"
                   >
-                    {{ provider.label }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                    {{ selectedProviderOption.note || selectedProviderOption.description }}
+                  </p>
+                </div>
+              </div>
+              <Button type="button" variant="outline" size="sm" @click="openProviderPickerFromForm">
+                重新选择供应商
+              </Button>
+            </div>
           </div>
 
           <div class="grid gap-2">

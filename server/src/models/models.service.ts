@@ -44,10 +44,23 @@ export class ModelsService {
 
   listCatalogProviders() {
     return modelProviders.map(
-      ({ value, label, defaultBaseUrl, defaultConfigJson }) => ({
+      ({
         value,
         label,
+        icon,
+        description,
+        note,
         defaultBaseUrl,
+        supportedTypes,
+        defaultConfigJson,
+      }) => ({
+        value,
+        label,
+        icon,
+        description,
+        note,
+        defaultBaseUrl,
+        supportedTypes,
         defaultConfigJson,
       }),
     );
@@ -88,12 +101,19 @@ export class ModelsService {
   }
 
   async update(id: string, input: ModelInput) {
-    await this.requireModel(id);
+    const existingModel = await this.requireModel(id);
     const data = this.updateData(input);
 
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('at least one model field is required');
     }
+
+    const provider =
+      typeof data.provider === 'string'
+        ? data.provider
+        : existingModel.provider;
+    const type = this.isModelType(data.type) ? data.type : existingModel.type;
+    this.requireProviderSupportsType(provider, type);
 
     const model = await this.prisma.aiModel.update({
       where: { id },
@@ -127,6 +147,8 @@ export class ModelsService {
         'name, provider, type and modelName are required',
       );
     }
+
+    this.requireProviderSupportsType(provider, input.type);
 
     return {
       name,
@@ -217,17 +239,31 @@ export class ModelsService {
   private async requireModel(id: string) {
     const model = await this.prisma.aiModel.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, provider: true, type: true },
     });
 
     if (!model) {
       throw new NotFoundException('model does not exist');
     }
+
+    return model;
   }
 
   private requireCatalogProvider(provider: string) {
     if (!findModelProvider(provider)) {
       throw new BadRequestException('provider is not supported by catalog');
+    }
+  }
+
+  private requireProviderSupportsType(provider: string, type: AiModelType) {
+    const catalogProvider = findModelProvider(provider);
+
+    if (!catalogProvider) {
+      throw new BadRequestException('provider is not supported by catalog');
+    }
+
+    if (!catalogProvider.supportedTypes.includes(type)) {
+      throw new BadRequestException('type is not supported by provider');
     }
   }
 

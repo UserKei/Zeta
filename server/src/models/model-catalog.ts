@@ -17,6 +17,9 @@ export type ModelCatalogModel = {
 export type ModelCatalogProvider = {
   value: string;
   label: string;
+  icon?: string;
+  description?: string;
+  note?: string;
   defaultBaseUrl?: string;
   supportedTypes: AiModelType[];
   models: ModelCatalogModel[];
@@ -24,9 +27,9 @@ export type ModelCatalogProvider = {
 };
 
 export const modelTypes: ModelTypeOption[] = [
-  { value: AiModelType.CHAT, label: '对话模型' },
-  { value: AiModelType.EMBEDDING, label: 'Embedding' },
-  { value: AiModelType.RERANKER, label: 'Reranker' },
+  { value: AiModelType.CHAT, label: '大语言模型' },
+  { value: AiModelType.EMBEDDING, label: '向量模型' },
+  { value: AiModelType.RERANKER, label: '重排模型' },
   { value: AiModelType.IMAGE, label: '视觉模型' },
 ];
 
@@ -34,6 +37,8 @@ export const modelProviders: ModelCatalogProvider[] = [
   {
     value: 'aliyun-bailian',
     label: '阿里云百炼',
+    icon: 'aliyun-bailian',
+    description: '阿里云百炼模型服务',
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     supportedTypes: [
       AiModelType.CHAT,
@@ -98,6 +103,8 @@ export const modelProviders: ModelCatalogProvider[] = [
   {
     value: 'deepseek',
     label: 'DeepSeek',
+    icon: 'deepseek',
+    description: 'DeepSeek 对话模型',
     defaultBaseUrl: 'https://api.deepseek.com',
     supportedTypes: [AiModelType.CHAT],
     models: [
@@ -124,16 +131,19 @@ export const modelProviders: ModelCatalogProvider[] = [
   {
     value: 'openai-compatible',
     label: 'OpenAI Compatible',
+    icon: 'openai-compatible',
+    description: '通用兼容接口',
+    note: '适合火山引擎、硅基流动、自部署 OpenAI-compatible 接口等，需自行确认 Base URL 和模型标识。',
+    defaultBaseUrl: 'https://api.openai.com/v1',
     supportedTypes: [
       AiModelType.CHAT,
       AiModelType.EMBEDDING,
-      AiModelType.RERANKER,
       AiModelType.IMAGE,
     ],
     models: [
       {
-        value: 'gpt-4.1-mini',
-        label: 'gpt-4.1-mini',
+        value: 'gpt-4o-mini',
+        label: 'gpt-4o-mini',
         type: AiModelType.CHAT,
         description: 'OpenAI-compatible 对话模型示例',
       },
@@ -142,6 +152,12 @@ export const modelProviders: ModelCatalogProvider[] = [
         label: 'text-embedding-3-small',
         type: AiModelType.EMBEDDING,
         description: 'OpenAI-compatible 向量模型示例',
+      },
+      {
+        value: 'gpt-4o',
+        label: 'gpt-4o',
+        type: AiModelType.IMAGE,
+        description: 'OpenAI-compatible 视觉模型示例',
       },
     ],
   },
