@@ -77,6 +77,13 @@ type ImageUnderstandingWarning = {
   message: string;
 };
 
+type KnowledgeBaseChunkConfig = {
+  chunkSize: number;
+  chunkOverlap: number;
+};
+
+type KnowledgeDocsDbClient = PrismaService | Prisma.TransactionClient;
+
 export type UploadedDocumentFile = {
   originalname: string;
   mimetype?: string;
@@ -266,9 +273,9 @@ export class KnowledgeDocsService {
     knowledgeBaseId: string,
     file: UploadedDocumentFile | undefined,
   ) {
-    await this.requireKnowledgeBase(knowledgeBaseId);
+    const knowledgeBase = await this.requireKnowledgeBase(knowledgeBaseId);
 
-    const parsedFile = await this.parseUploadedFile(file);
+    const parsedFile = await this.parseUploadedFile(file, knowledgeBase);
 
     if (parsedFile.sourceFormat !== 'MARKDOWN') {
       throw new BadRequestException('仅支持 .md 或 .markdown 文件');
@@ -285,14 +292,14 @@ export class KnowledgeDocsService {
     knowledgeBaseId: string,
     files: UploadedDocumentFile[] | undefined,
   ): Promise<FilePreviewResult> {
-    await this.requireKnowledgeBase(knowledgeBaseId);
+    const knowledgeBase = await this.requireKnowledgeBase(knowledgeBaseId);
 
     const uploadedFiles = this.assertUploadedFiles(files);
 
     return {
       files: await Promise.all(
         uploadedFiles.map(async (file, fileIndex) => {
-          const parsedFile = await this.parseUploadedFile(file);
+          const parsedFile = await this.parseUploadedFile(file, knowledgeBase);
 
           return {
             fileIndex,
@@ -311,7 +318,8 @@ export class KnowledgeDocsService {
     file: UploadedDocumentFile | undefined,
     fields: MarkdownImportFields,
   ) {
-    const parsedFile = await this.parseUploadedFile(file);
+    const knowledgeBase = await this.requireKnowledgeBase(knowledgeBaseId);
+    const parsedFile = await this.parseUploadedFile(file, knowledgeBase);
 
     if (parsedFile.sourceFormat !== 'MARKDOWN') {
       throw new BadRequestException('仅支持 .md 或 .markdown 文件');
@@ -346,7 +354,7 @@ export class KnowledgeDocsService {
 
     for (const importDocument of importDocuments) {
       const file = uploadedFiles[importDocument.fileIndex];
-      const parsedFile = await this.parseUploadedFile(file);
+      const parsedFile = await this.parseUploadedFile(file, knowledgeBase);
       const chunks = this.toChunkDrafts(importDocument.chunks);
       const name = importDocument.name?.trim() || parsedFile.documentName;
 
@@ -684,8 +692,11 @@ export class KnowledgeDocsService {
     return { id };
   }
 
-  async removeImprovedChunk(id: string) {
-    const chunk = await this.prisma.chunk.findUnique({
+  async removeImprovedChunk(
+    id: string,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ) {
+    const chunk = await db.chunk.findUnique({
       where: { id },
       select: {
         id: true,
@@ -697,11 +708,11 @@ export class KnowledgeDocsService {
       throw new NotFoundException('chunk does not exist');
     }
 
-    await this.prisma.chatCitation.deleteMany({ where: { chunkId: id } });
-    await this.prisma.chunkEmbedding.deleteMany({ where: { chunkId: id } });
-    await this.prisma.chunk.delete({ where: { id } });
-    await this.reorderDocumentChunks(chunk.documentId);
-    await this.refreshDocumentStats(chunk.documentId);
+    await db.chatCitation.deleteMany({ where: { chunkId: id } });
+    await db.chunkEmbedding.deleteMany({ where: { chunkId: id } });
+    await db.chunk.delete({ where: { id } });
+    await this.reorderDocumentChunks(chunk.documentId, db);
+    await this.refreshDocumentStats(chunk.documentId, db);
 
     return { id };
   }
@@ -1143,13 +1154,16 @@ export class KnowledgeDocsService {
     `;
   }
 
-  private async refreshDocumentStats(documentId: string) {
-    const chunks = await this.prisma.chunk.findMany({
+  private async refreshDocumentStats(
+    documentId: string,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ) {
+    const chunks = await db.chunk.findMany({
       where: { documentId },
       select: { charCount: true },
     });
 
-    await this.prisma.document.update({
+    await db.document.update({
       where: { id: documentId },
       data: {
         charCount: chunks.reduce((total, chunk) => total + chunk.charCount, 0),
@@ -1160,15 +1174,18 @@ export class KnowledgeDocsService {
     });
   }
 
-  private async reorderDocumentChunks(documentId: string) {
-    const chunks = await this.prisma.chunk.findMany({
+  private async reorderDocumentChunks(
+    documentId: string,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ) {
+    const chunks = await db.chunk.findMany({
       where: { documentId },
       orderBy: { position: 'asc' },
       select: { id: true },
     });
 
     for (const [position, chunk] of chunks.entries()) {
-      await this.prisma.chunk.update({
+      await db.chunk.update({
         where: { id: chunk.id },
         data: { position },
       });
@@ -1275,8 +1292,20 @@ export class KnowledgeDocsService {
       .filter((fileId): fileId is string => Boolean(fileId));
   }
 
-  private async parseUploadedFile(file: UploadedDocumentFile | undefined) {
+  private async parseUploadedFile(
+    file: UploadedDocumentFile | undefined,
+    knowledgeBase: KnowledgeBaseChunkConfig,
+  ) {
     this.assertUploadedFile(file);
+
+    const maxChunkLength = Math.min(
+      knowledgeBase.chunkSize,
+      MAX_CHUNK_CONTENT_LENGTH,
+    );
+    const overlapLength = Math.min(
+      knowledgeBase.chunkOverlap,
+      Math.max(maxChunkLength - 1, 0),
+    );
 
     const parsedFile = await this.fileParser.parse(
       {
@@ -1285,7 +1314,8 @@ export class KnowledgeDocsService {
         buffer: file.buffer,
       },
       {
-        maxChunkLength: MAX_CHUNK_CONTENT_LENGTH,
+        maxChunkLength,
+        overlapLength,
         maxChunkCount: MAX_CHUNK_COUNT,
       },
     );
@@ -1586,7 +1616,7 @@ export class KnowledgeDocsService {
   private async requireKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, chunkSize: true, chunkOverlap: true },
     });
 
     if (!knowledgeBase) {
@@ -1761,6 +1791,8 @@ export class KnowledgeDocsService {
     id: true,
     status: true,
     metadata: true,
+    chunkSize: true,
+    chunkOverlap: true,
     embeddingModel: {
       select: {
         id: true,
@@ -1790,6 +1822,8 @@ type IndexableKnowledgeBase = {
   id: string;
   status: KnowledgeBaseStatus;
   metadata: Prisma.JsonValue;
+  chunkSize: number;
+  chunkOverlap: number;
   embeddingModel:
     | (EmbeddingModelConfig & {
         type: AiModelType;

@@ -1,9 +1,9 @@
-import type { RetrievalHit } from '../knowledge-docs';
+import type { RetrievalHit } from "../knowledge-docs";
 
 export const ChatMessageRole = {
-  SYSTEM: 'SYSTEM',
-  USER: 'USER',
-  ASSISTANT: 'ASSISTANT',
+  SYSTEM: "SYSTEM",
+  USER: "USER",
+  ASSISTANT: "ASSISTANT",
 } as const;
 
 export type ChatMessageRole =
@@ -22,6 +22,11 @@ export type ChatSession = {
   createdAt: string;
   updatedAt: string;
   agent: ChatAgentSummary;
+};
+
+export type ChatSessionSummary = ChatSession & {
+  messageCount: number;
+  improveCount: number;
 };
 
 export type ChatCitation = {
@@ -94,15 +99,15 @@ export type ChatResponse = {
 
 export type ChatStreamEvent =
   | {
-      type: 'delta';
-      role: 'assistant';
+      type: "delta";
+      role: "assistant";
       content: string;
     }
   | {
-      type: 'done';
+      type: "done";
       response: ChatResponse;
     }
   | {
-      type: 'error';
+      type: "error";
       message: string;
     };

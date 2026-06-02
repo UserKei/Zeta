@@ -47,13 +47,14 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   deleteChatMessageImprove,
   improveChatMessage,
+  listAgentChatSessionSummaries,
   listChatMessageImproves,
   listChatMessages,
-  listChatSessions,
   type ChatImproveRecord,
   type ChatImproveRecordDetail,
   type ChatMessage,
   type ChatSession,
+  type ChatSessionSummary,
 } from '@/apis/chat'
 import { getAgent, type Agent } from '@/apis/agents'
 import { listDocuments, updateDocumentChunk, type KnowledgeDocument } from '@/apis/knowledge-docs'
@@ -64,12 +65,7 @@ defineOptions({
   name: 'AgentChatLogsView',
 })
 
-type SessionStats = {
-  messageCount: number
-  improveCount: number
-}
-
-type SessionRow = ChatSession & SessionStats
+type SessionRow = ChatSessionSummary
 type NoticeState = {
   type: 'success' | 'error'
   title: string
@@ -80,8 +76,7 @@ const route = useRoute()
 const router = useRouter()
 const agentId = computed(() => route.params.agentId as string)
 const agent = ref<Agent | null>(null)
-const sessions = ref<ChatSession[]>([])
-const sessionStats = ref<Record<string, SessionStats>>({})
+const sessions = ref<ChatSessionSummary[]>([])
 const messageCache = ref<Record<string, ChatMessage[]>>({})
 const messages = ref<ChatMessage[]>([])
 const documents = ref<KnowledgeDocument[]>([])
@@ -89,7 +84,6 @@ const selectedSessionId = ref('')
 const searchText = ref('')
 const markFilter = ref<'ALL' | 'MARKED' | 'UNMARKED'>('ALL')
 const loading = ref(false)
-const summaryLoading = ref(false)
 const messageLoading = ref(false)
 const documentLoading = ref(false)
 const drawerOpen = ref(false)
@@ -115,17 +109,9 @@ const form = reactive({
   content: '',
 })
 
-const currentSessions = computed(() =>
-  sessions.value.filter((session) => session.agentId === agentId.value),
-)
+const currentSessions = computed(() => sessions.value)
 
-const sessionRows = computed<SessionRow[]>(() =>
-  currentSessions.value.map((session) => ({
-    ...session,
-    messageCount: sessionStats.value[session.id]?.messageCount ?? 0,
-    improveCount: sessionStats.value[session.id]?.improveCount ?? 0,
-  })),
-)
+const sessionRows = computed<SessionRow[]>(() => currentSessions.value.map((session) => session))
 
 const filteredSessionRows = computed(() => {
   const keyword = searchText.value.trim().toLowerCase()
@@ -177,47 +163,16 @@ const load = async () => {
   loading.value = true
 
   try {
-    const [agentDetail, sessionList] = await Promise.all([
+    const [agentDetail, sessionSummaries] = await Promise.all([
       getAgent(agentId.value),
-      listChatSessions(),
+      listAgentChatSessionSummaries(agentId.value),
     ])
     agent.value = agentDetail
-    sessions.value = sessionList
-    await loadSessionStats(sessionList.filter((session) => session.agentId === agentId.value))
+    sessions.value = sessionSummaries
   } catch (cause) {
     showFailure(cause, '加载对话日志失败')
   } finally {
     loading.value = false
-  }
-}
-
-const loadSessionStats = async (agentSessions: ChatSession[]) => {
-  summaryLoading.value = true
-
-  try {
-    const entries = await Promise.all(
-      agentSessions.map(async (session) => {
-        const sessionMessages = await listChatMessages(session.id)
-        messageCache.value = {
-          ...messageCache.value,
-          [session.id]: sessionMessages,
-        }
-
-        return [
-          session.id,
-          {
-            messageCount: sessionMessages.length,
-            improveCount: countImproveRecords(sessionMessages),
-          },
-        ] as const
-      }),
-    )
-
-    sessionStats.value = Object.fromEntries(entries)
-  } catch (cause) {
-    showFailure(cause, '加载日志统计失败')
-  } finally {
-    summaryLoading.value = false
   }
 }
 
@@ -257,13 +212,15 @@ const setSessionMessages = (sessionId: string, sessionMessages: ChatMessage[]) =
     messages.value = sessionMessages
   }
 
-  sessionStats.value = {
-    ...sessionStats.value,
-    [sessionId]: {
-      messageCount: sessionMessages.length,
-      improveCount: countImproveRecords(sessionMessages),
-    },
-  }
+  sessions.value = sessions.value.map((session) =>
+    session.id === sessionId
+      ? {
+          ...session,
+          messageCount: sessionMessages.length,
+          improveCount: countImproveRecords(sessionMessages),
+        }
+      : session,
+  )
 }
 
 const replaceMessage = (message: ChatMessage) => {
@@ -529,8 +486,8 @@ onMounted(load)
           >
             在线使用
           </Button>
-          <Button variant="outline" :disabled="loading || summaryLoading" @click="load">
-            {{ loading || summaryLoading ? '刷新中' : '刷新' }}
+          <Button variant="outline" :disabled="loading" @click="load">
+            {{ loading ? '刷新中' : '刷新' }}
           </Button>
         </div>
       </div>
@@ -547,7 +504,7 @@ onMounted(load)
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow v-if="loading || summaryLoading">
+            <TableRow v-if="loading">
               <TableCell colspan="5" class="h-24 text-center text-muted-foreground">
                 正在加载对话日志...
               </TableCell>

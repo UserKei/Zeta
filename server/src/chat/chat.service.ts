@@ -22,6 +22,7 @@ import type {
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatSessionSummary,
   ChatStreamEvent,
 } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
@@ -131,6 +132,51 @@ export class ChatService {
     return sessions.map((session) => this.toSessionResponse(session));
   }
 
+  async listAgentSessionSummaries(
+    agentId: string,
+    userId: string,
+  ): Promise<ChatSessionSummary[]> {
+    const sessions = await this.prisma.chatSession.findMany({
+      where: { userId, agentId },
+      orderBy: { updatedAt: 'desc' },
+      select: chatSessionSelect,
+    });
+    const sessionIds = sessions.map((session) => session.id);
+
+    if (sessionIds.length === 0) {
+      return [];
+    }
+
+    const messageRows = await this.prisma.chatMessage.findMany({
+      where: { sessionId: { in: sessionIds } },
+      select: { sessionId: true, metadata: true },
+    });
+    const stats = new Map(
+      sessionIds.map((sessionId) => [
+        sessionId,
+        { messageCount: 0, improveCount: 0 },
+      ]),
+    );
+
+    for (const message of messageRows) {
+      const sessionStats = stats.get(message.sessionId);
+
+      if (!sessionStats) {
+        continue;
+      }
+
+      sessionStats.messageCount += 1;
+      sessionStats.improveCount += this.toImproveRecords(
+        message.metadata,
+      ).length;
+    }
+
+    return sessions.map((session) => ({
+      ...this.toSessionResponse(session),
+      ...(stats.get(session.id) ?? { messageCount: 0, improveCount: 0 }),
+    }));
+  }
+
   async listMessages(
     sessionId: string,
     userId: string,
@@ -162,44 +208,60 @@ export class ChatService {
       );
     }
 
-    const result = await this.knowledgeDocsService.createAiExtractedChunk(
-      input.knowledgeBaseId,
-      {
-        title: input.title,
-        content: input.content,
-        documentId: input.documentId,
-        documentName: input.documentName,
-        sourceMessageId: message.id,
-      },
-    );
-    const metadata = this.toMetadataObject(message.metadata);
-    const improveRecord: ChatImproveRecord = {
-      knowledgeBaseId: input.knowledgeBaseId,
-      documentId: result.document.id,
-      documentName: result.document.name,
-      chunkId: result.chunk.id,
-      chunkTitle: result.chunk.title,
-      chunkPosition: result.chunk.position,
-      createdAt: new Date().toISOString(),
-    };
-    const updated = await this.prisma.chatMessage.update({
-      where: { id: message.id },
-      data: {
-        metadata: {
-          ...metadata,
-          improveRecords: [
-            ...this.toImproveRecords(message.metadata),
-            improveRecord,
-          ],
-        },
-      },
-      select: chatMessageSelect,
-    });
+    let result: Awaited<
+      ReturnType<KnowledgeDocsService['createAiExtractedChunk']>
+    > | null = null;
 
-    return {
-      message: this.toMessageResponse(updated),
-      improveRecord,
-    };
+    try {
+      result = await this.knowledgeDocsService.createAiExtractedChunk(
+        input.knowledgeBaseId,
+        {
+          title: input.title,
+          content: input.content,
+          documentId: input.documentId,
+          documentName: input.documentName,
+          sourceMessageId: message.id,
+        },
+      );
+      const metadata = this.toMetadataObject(message.metadata);
+      const improveRecord: ChatImproveRecord = {
+        knowledgeBaseId: input.knowledgeBaseId,
+        documentId: result.document.id,
+        documentName: result.document.name,
+        chunkId: result.chunk.id,
+        chunkTitle: result.chunk.title,
+        chunkPosition: result.chunk.position,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = await this.prisma.chatMessage.update({
+        where: { id: message.id },
+        data: {
+          metadata: {
+            ...metadata,
+            improveRecords: [
+              ...this.toImproveRecords(message.metadata),
+              improveRecord,
+            ],
+          },
+        },
+        select: chatMessageSelect,
+      });
+
+      return {
+        message: this.toMessageResponse(updated),
+        improveRecord,
+      };
+    } catch (cause) {
+      if (result) {
+        try {
+          await this.knowledgeDocsService.removeImprovedChunk(result.chunk.id);
+        } catch {
+          // Keep the original metadata write failure as the user-facing error.
+        }
+      }
+
+      throw cause;
+    }
   }
 
   async listImproveRecords(
@@ -227,19 +289,21 @@ export class ChatService {
       throw new NotFoundException('improve record does not exist');
     }
 
-    await this.knowledgeDocsService.removeImprovedChunk(chunkId);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.knowledgeDocsService.removeImprovedChunk(chunkId, tx);
 
-    const updated = await this.prisma.chatMessage.update({
-      where: { id: message.id },
-      data: {
-        metadata: {
-          ...metadata,
-          improveRecords: improveRecords.filter(
-            (record) => record.chunkId !== chunkId,
-          ),
+      return tx.chatMessage.update({
+        where: { id: message.id },
+        data: {
+          metadata: {
+            ...metadata,
+            improveRecords: improveRecords.filter(
+              (record) => record.chunkId !== chunkId,
+            ),
+          },
         },
-      },
-      select: chatMessageSelect,
+        select: chatMessageSelect,
+      });
     });
 
     return {

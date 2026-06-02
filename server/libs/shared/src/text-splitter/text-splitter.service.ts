@@ -5,6 +5,19 @@ import type { TextSplitOptions } from './text-splitter.types';
 export class TextSplitterService {
   split(content: string, options: TextSplitOptions) {
     const text = content.trim();
+    const overlapLength = options.overlapLength ?? 0;
+
+    if (
+      !Number.isInteger(options.maxLength) ||
+      options.maxLength <= 0 ||
+      !Number.isInteger(overlapLength) ||
+      overlapLength < 0 ||
+      overlapLength >= options.maxLength
+    ) {
+      throw new Error(
+        'maxLength must be positive and overlapLength must be smaller than maxLength',
+      );
+    }
 
     if (!text) {
       return [];
@@ -37,7 +50,10 @@ export class TextSplitterService {
         parts.push(part);
       }
 
-      start = splitAt;
+      start =
+        overlapLength > 0
+          ? Math.max(start + 1, splitAt - overlapLength)
+          : splitAt;
 
       while (start < text.length && /\s/.test(text[start])) {
         start += 1;

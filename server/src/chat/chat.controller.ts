@@ -114,6 +114,14 @@ export class ChatController {
     return this.chatService.listSessions(request.user.id);
   }
 
+  @Get('agents/:agentId/chat-sessions/summary')
+  listAgentSessionSummaries(
+    @Param('agentId') agentId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.chatService.listAgentSessionSummaries(agentId, request.user.id);
+  }
+
   @Get('chat-sessions/:id/messages')
   listMessages(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
     return this.chatService.listMessages(id, request.user.id);

@@ -81,3 +81,51 @@ describe('FileStorageService readBuffer', () => {
     );
   });
 });
+
+describe('FileStorageService removeFilesIfUnreferenced', () => {
+  const createService = (prisma: Record<string, unknown>) =>
+    new FileStorageService(prisma as never);
+
+  it('keeps files referenced by document asset metadata', async () => {
+    const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{ count: 1 }]),
+      file: {
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+      },
+    };
+    const service = createService(prisma);
+
+    await service.removeFilesIfUnreferenced(['asset-file-1']);
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.file.findUnique).not.toHaveBeenCalled();
+    expect(prisma.file.delete).not.toHaveBeenCalled();
+  });
+
+  it('deletes file metadata and unlinks the large object in one transaction', async () => {
+    const tx = {
+      file: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'file-1',
+          loid: 123n,
+        }),
+        delete: jest.fn(),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    const runTransaction = <T>(callback: (client: typeof tx) => T) =>
+      callback(tx);
+    const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{ count: 0 }]),
+      $transaction: jest.fn(runTransaction),
+    };
+    const service = createService(prisma);
+
+    await service.removeFilesIfUnreferenced(['file-1']);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.file.delete).toHaveBeenCalledWith({ where: { id: 'file-1' } });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+});

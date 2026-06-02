@@ -283,6 +283,60 @@ describe('KnowledgeDocsService image understanding chunks', () => {
   });
 });
 
+describe('KnowledgeDocsService parser chunk settings', () => {
+  it('uses knowledge base chunk size and overlap when previewing files', async () => {
+    const fileParser = {
+      parse: jest.fn().mockResolvedValue({
+        fileName: '制度.md',
+        documentName: '制度',
+        sourceFormat: 'MARKDOWN',
+        chunks: [
+          {
+            title: '制度',
+            content: '正文',
+            status: 'ACTIVE',
+          },
+        ],
+      }),
+    };
+    const prisma = {
+      knowledgeBase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'kb-1',
+          chunkSize: 12,
+          chunkOverlap: 3,
+        }),
+      },
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      fileParser as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.previewDocumentFiles('kb-1', [
+      {
+        originalname: '制度.md',
+        mimetype: 'text/markdown',
+        size: 12,
+        buffer: Buffer.from('# 制度\n正文'),
+      },
+    ]);
+
+    expect(fileParser.parse).toHaveBeenCalledWith(
+      expect.objectContaining({ fileName: '制度.md' }),
+      expect.objectContaining({
+        maxChunkLength: 12,
+        overlapLength: 3,
+        maxChunkCount: 200,
+      }),
+    );
+  });
+});
+
 describe('KnowledgeDocsService manual documents', () => {
   it('creates a blank manual document without chunks or embeddings', async () => {
     type BlankDocumentCreateArgs = {

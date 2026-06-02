@@ -34,6 +34,7 @@ export class TextParserService implements DocumentFileParser {
 
     const chunks = this.textSplitter.split(content, {
       maxLength: options.maxChunkLength,
+      overlapLength: options.overlapLength,
     });
 
     if (chunks.length === 0) {

@@ -10,6 +10,7 @@ import type {
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatSessionSummary,
   ChatStreamEvent,
 } from '@zeta/common/chat'
 
@@ -25,6 +26,7 @@ export type {
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatSessionSummary,
   ChatStreamEvent,
 } from '@zeta/common/chat'
 
@@ -35,9 +37,7 @@ type StreamHandlers = {
 
 export const sendAgentMessage = (agentId: string, payload: ChatPayload) =>
   responseData(
-    serverApi.post(`/agents/${agentId}/chat`, payload) as Promise<
-      Response<ChatResponse>
-    >,
+    serverApi.post(`/agents/${agentId}/chat`, payload) as Promise<Response<ChatResponse>>,
   )
 
 export const sendAgentMessageStream = async (
@@ -81,21 +81,21 @@ export const sendAgentMessageStream = async (
 }
 
 export const listChatSessions = () =>
+  responseData(serverApi.get('/chat-sessions') as Promise<Response<ChatSession[]>>)
+
+export const listAgentChatSessionSummaries = (agentId: string) =>
   responseData(
-    serverApi.get('/chat-sessions') as Promise<Response<ChatSession[]>>,
+    serverApi.get(`/agents/${agentId}/chat-sessions/summary`) as Promise<
+      Response<ChatSessionSummary[]>
+    >,
   )
 
 export const listChatMessages = (sessionId: string) =>
   responseData(
-    serverApi.get(`/chat-sessions/${sessionId}/messages`) as Promise<
-      Response<ChatMessage[]>
-    >,
+    serverApi.get(`/chat-sessions/${sessionId}/messages`) as Promise<Response<ChatMessage[]>>,
   )
 
-export const improveChatMessage = (
-  messageId: string,
-  payload: ChatImprovePayload,
-) =>
+export const improveChatMessage = (messageId: string, payload: ChatImprovePayload) =>
   responseData(
     serverApi.post(`/chat-messages/${messageId}/improve`, payload) as Promise<
       Response<ChatImproveResponse>
@@ -111,9 +111,9 @@ export const listChatMessageImproves = (messageId: string) =>
 
 export const deleteChatMessageImprove = (messageId: string, chunkId: string) =>
   responseData(
-    serverApi.delete(
-      `/chat-messages/${messageId}/improve/${chunkId}`,
-    ) as Promise<Response<ChatImproveDeleteResponse>>,
+    serverApi.delete(`/chat-messages/${messageId}/improve/${chunkId}`) as Promise<
+      Response<ChatImproveDeleteResponse>
+    >,
   )
 
 const readStreamError = async (response: globalThis.Response) => {

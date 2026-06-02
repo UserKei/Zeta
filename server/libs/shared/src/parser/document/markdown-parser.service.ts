@@ -83,6 +83,7 @@ export class MarkdownParserService implements DocumentFileParser {
       if (body) {
         for (const contentPart of this.textSplitter.split(body, {
           maxLength: options.maxChunkLength,
+          overlapLength: options.overlapLength,
         })) {
           chunks.push({
             title,

@@ -19,6 +19,8 @@ type StoredFileBuffer = {
   buffer: Buffer;
 };
 
+type FileStorageDbClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class FileStorageService {
   constructor(private readonly prisma: PrismaService) {}
@@ -103,9 +105,7 @@ export class FileStorageService {
 
   async removeFilesIfUnreferenced(fileIds: string[]) {
     for (const fileId of [...new Set(fileIds)]) {
-      const referenceCount = await this.prisma.document.count({
-        where: { sourceFileId: fileId },
-      });
+      const referenceCount = await this.countFileReferences(fileId);
 
       if (referenceCount === 0) {
         await this.removeFile(fileId);
@@ -113,21 +113,40 @@ export class FileStorageService {
     }
   }
 
-  private async removeFile(fileId: string) {
-    const file = await this.prisma.file.findUnique({
-      where: { id: fileId },
-      select: { id: true, loid: true },
+  private async countFileReferences(fileId: string) {
+    const assetReference = JSON.stringify({
+      assets: [{ fileId }],
     });
+    const [result] = await this.prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count"
+      FROM "documents"
+      WHERE "source_file_id" = ${fileId}::uuid
+        OR "metadata" @> ${assetReference}::jsonb
+    `;
 
-    if (!file) {
-      return;
-    }
-
-    await this.unlinkLargeObject(file.loid);
-    await this.prisma.file.delete({ where: { id: file.id } });
+    return result?.count ?? 0;
   }
 
-  private async unlinkLargeObject(loid: bigint) {
-    await this.prisma.$queryRaw`SELECT lo_unlink(${loid}::oid)`;
+  private async removeFile(fileId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const file = await tx.file.findUnique({
+        where: { id: fileId },
+        select: { id: true, loid: true },
+      });
+
+      if (!file) {
+        return;
+      }
+
+      await tx.file.delete({ where: { id: file.id } });
+      await this.unlinkLargeObject(file.loid, tx);
+    });
+  }
+
+  private async unlinkLargeObject(
+    loid: bigint,
+    db: FileStorageDbClient = this.prisma,
+  ) {
+    await db.$queryRaw`SELECT lo_unlink(${loid}::oid)`;
   }
 }

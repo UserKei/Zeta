@@ -63,4 +63,18 @@ describe('MarkdownParserService', () => {
       status: 'ACTIVE',
     });
   });
+
+  it('uses configured overlap when splitting long section content', () => {
+    const chunks = service.parse('# 文档\nabcdefghij', {
+      maxChunkLength: 5,
+      overlapLength: 2,
+      maxChunkCount: 20,
+    });
+
+    expect(chunks.map((chunk) => chunk.content)).toEqual([
+      'abcde',
+      'defgh',
+      'ghij',
+    ]);
+  });
 });

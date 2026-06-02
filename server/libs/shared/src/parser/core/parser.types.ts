@@ -5,6 +5,7 @@ import type {
 
 export type MarkdownParseOptions = {
   maxChunkLength: number;
+  overlapLength?: number;
   maxChunkCount: number;
 };
 
@@ -16,6 +17,7 @@ export type FileParseInput = {
 
 export type FileParseOptions = {
   maxChunkLength: number;
+  overlapLength?: number;
   maxChunkCount: number;
 };
 
@@ -50,5 +52,6 @@ export interface DocumentFileParser {
 
 export const DEFAULT_FILE_PARSE_OPTIONS: FileParseOptions = {
   maxChunkLength: 102_400,
+  overlapLength: 0,
   maxChunkCount: 200,
 };

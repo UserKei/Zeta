@@ -30,6 +30,89 @@ import { ChatMessageRole } from '@libs/shared/generated/prisma/enums';
 import type { ChatStreamEvent } from '@zeta/common/chat';
 import { ChatService } from './chat.service';
 
+describe('ChatService listAgentSessionSummaries', () => {
+  const createService = (prisma: Record<string, unknown>) =>
+    new ChatService(prisma as never, {} as never, {} as never, {} as never);
+
+  it('returns session counts without loading full message payloads', async () => {
+    const updatedAt = new Date('2026-06-02T08:00:00.000Z');
+    const prisma = {
+      chatSession: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'session-1',
+            userId: 'user-1',
+            agentId: 'agent-1',
+            title: '线段树',
+            createdAt: updatedAt,
+            updatedAt,
+            agent: {
+              id: 'agent-1',
+              name: '算法助手',
+            },
+          },
+        ]),
+      },
+      chatMessage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            sessionId: 'session-1',
+            metadata: {
+              improveRecords: [
+                {
+                  knowledgeBaseId: 'kb-1',
+                  documentId: 'doc-1',
+                  documentName: '补充知识',
+                  chunkId: 'chunk-1',
+                  chunkTitle: '标题 1',
+                  chunkPosition: 0,
+                  createdAt: updatedAt.toISOString(),
+                },
+                {
+                  knowledgeBaseId: 'kb-1',
+                  documentId: 'doc-1',
+                  documentName: '补充知识',
+                  chunkId: 'chunk-2',
+                  chunkTitle: '标题 2',
+                  chunkPosition: 1,
+                  createdAt: updatedAt.toISOString(),
+                },
+              ],
+            },
+          },
+          {
+            sessionId: 'session-1',
+            metadata: {},
+          },
+        ]),
+      },
+    };
+    const service = createService(prisma);
+
+    const summaries = await (
+      service as unknown as {
+        listAgentSessionSummaries: (
+          agentId: string,
+          userId: string,
+        ) => Promise<Array<{ messageCount: number; improveCount: number }>>;
+      }
+    ).listAgentSessionSummaries('agent-1', 'user-1');
+
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        id: 'session-1',
+        messageCount: 2,
+        improveCount: 2,
+      }),
+    ]);
+    expect(prisma.chatMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: { sessionId: true, metadata: true },
+      }),
+    );
+  });
+});
+
 describe('ChatService improveMessage', () => {
   const knowledgeDocsService = {
     createAiExtractedChunk: jest.fn(),
@@ -222,6 +305,43 @@ describe('ChatService improveMessage', () => {
     expect(result.message.improveRecords).toHaveLength(1);
   });
 
+  it('removes the extracted chunk if improve metadata update fails', async () => {
+    const updateError = new Error('metadata update failed');
+    const prisma = {
+      chatMessage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'message-1',
+          role: ChatMessageRole.ASSISTANT,
+          metadata: {},
+          session: {
+            userId: 'user-1',
+            agent: {
+              agentKnowledgeBases: [{ knowledgeBaseId: 'kb-1' }],
+            },
+          },
+        }),
+        update: jest.fn().mockRejectedValue(updateError),
+      },
+    };
+    knowledgeDocsService.createAiExtractedChunk.mockResolvedValue({
+      document: { id: 'doc-1', name: '聊天补充知识' },
+      chunk: { id: 'chunk-1', title: '标题', position: 0 },
+    });
+    const service = createService(prisma);
+
+    await expect(
+      service.improveMessage('message-1', 'user-1', {
+        knowledgeBaseId: 'kb-1',
+        title: '标题',
+        content: '补充内容',
+      }),
+    ).rejects.toThrow(updateError);
+
+    expect(knowledgeDocsService.removeImprovedChunk).toHaveBeenCalledWith(
+      'chunk-1',
+    );
+  });
+
   it('lists improve records with current chunk content', async () => {
     const service = createService({
       chatMessage: {
@@ -317,7 +437,17 @@ describe('ChatService improveMessage', () => {
       createdAt: updatedAt,
       citations: [],
     });
+    const transactionClient = {
+      chatMessage: {
+        update: updateChatMessage,
+      },
+    };
+    const runTransaction = <T>(
+      callback: (client: typeof transactionClient) => T,
+    ) => callback(transactionClient);
+    const transaction = jest.fn(runTransaction);
     const service = createService({
+      $transaction: transaction,
       chatMessage: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'message-1',
@@ -344,7 +474,9 @@ describe('ChatService improveMessage', () => {
 
     expect(knowledgeDocsService.removeImprovedChunk).toHaveBeenCalledWith(
       'chunk-1',
+      transactionClient,
     );
+    expect(transaction).toHaveBeenCalledTimes(1);
     expect(updateChatMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'message-1' },
