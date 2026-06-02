@@ -4,6 +4,7 @@ import {
   ImageUnderstandingModule,
 } from '@libs/model-adapters';
 import { FileStorageModule, ParserModule, RetrievalModule } from '@libs/shared';
+import { AiExtractedDocumentService } from './ai-extracted-document.service';
 import { ChunkIndexingService } from './chunk-indexing.service';
 import { DocumentAssetService } from './document-asset.service';
 import { DocumentImportService } from './document-import.service';
@@ -20,6 +21,7 @@ import { KnowledgeDocsService } from './knowledge-docs.service';
   ],
   controllers: [KnowledgeDocsController],
   providers: [
+    AiExtractedDocumentService,
     ChunkIndexingService,
     DocumentAssetService,
     DocumentImportService,

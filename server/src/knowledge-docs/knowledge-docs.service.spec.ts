@@ -108,6 +108,7 @@ describe('KnowledgeDocsService manual documents', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       chunkIndexingService as never,
     );
 
