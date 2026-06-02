@@ -119,7 +119,9 @@ export class AiExtractedDocumentService {
       created.embeddingModel,
       created.chunk.status,
     );
-    await this.chunkIndexingService.refreshDocumentStats(created.document.id);
+    await this.chunkIndexingService.refreshIndexedDocumentStats(
+      created.document.id,
+    );
   }
 
   private async createActiveChunkRecord(

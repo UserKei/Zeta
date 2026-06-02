@@ -151,16 +151,24 @@ export class ChunkIndexingService {
     documentId: string,
     db: KnowledgeDocsDbClient = this.prisma,
   ) {
-    const chunks = await db.chunk.findMany({
-      where: { documentId },
-      select: { charCount: true },
+    const stats = await this.getDocumentStats(documentId, db);
+
+    await db.document.update({
+      where: { id: documentId },
+      data: stats,
     });
+  }
+
+  async refreshIndexedDocumentStats(
+    documentId: string,
+    db: KnowledgeDocsDbClient = this.prisma,
+  ) {
+    const stats = await this.getDocumentStats(documentId, db);
 
     await db.document.update({
       where: { id: documentId },
       data: {
-        charCount: chunks.reduce((total, chunk) => total + chunk.charCount, 0),
-        chunkCount: chunks.length,
+        ...stats,
         status: DocumentStatus.INDEXED,
         errorMessage: null,
       },
@@ -205,6 +213,21 @@ export class ChunkIndexingService {
            ${this.toVectorLiteral(embedding)}::vector, ${embedding.length})
       `;
     }
+  }
+
+  private async getDocumentStats(
+    documentId: string,
+    db: KnowledgeDocsDbClient,
+  ) {
+    const chunks = await db.chunk.findMany({
+      where: { documentId },
+      select: { charCount: true },
+    });
+
+    return {
+      charCount: chunks.reduce((total, chunk) => total + chunk.charCount, 0),
+      chunkCount: chunks.length,
+    };
   }
 
   private async toEmbeddingInputs(

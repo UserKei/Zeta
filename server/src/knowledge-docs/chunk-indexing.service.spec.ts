@@ -215,7 +215,7 @@ describe('ChunkIndexingService', () => {
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
-  it('refreshes document stats and marks document indexed', async () => {
+  it('refreshes document stats without changing document status', async () => {
     const { service, prisma } = createService();
 
     prisma.chunk.findMany.mockResolvedValue([
@@ -224,6 +224,25 @@ describe('ChunkIndexingService', () => {
     ]);
 
     await service.refreshDocumentStats('doc-1');
+
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: 'doc-1' },
+      data: {
+        charCount: 25,
+        chunkCount: 2,
+      },
+    });
+  });
+
+  it('refreshes indexed document stats and marks document indexed', async () => {
+    const { service, prisma } = createService();
+
+    prisma.chunk.findMany.mockResolvedValue([
+      { charCount: 10 },
+      { charCount: 15 },
+    ]);
+
+    await service.refreshIndexedDocumentStats('doc-1');
 
     expect(prisma.document.update).toHaveBeenCalledWith({
       where: { id: 'doc-1' },

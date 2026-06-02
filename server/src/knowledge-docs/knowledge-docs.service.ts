@@ -281,7 +281,7 @@ export class KnowledgeDocsService {
       document.knowledgeBase.embeddingModel,
       created.status,
     );
-    await this.chunkIndexingService.refreshDocumentStats(documentId);
+    await this.chunkIndexingService.refreshIndexedDocumentStats(documentId);
 
     return this.prisma.chunk.findUniqueOrThrow({
       where: { id: created.id },
@@ -331,7 +331,9 @@ export class KnowledgeDocsService {
       chunk.document.knowledgeBase.embeddingModel,
       updated.status,
     );
-    await this.chunkIndexingService.refreshDocumentStats(updated.documentId);
+    await this.chunkIndexingService.refreshIndexedDocumentStats(
+      updated.documentId,
+    );
 
     return updated;
   }
@@ -347,7 +349,9 @@ export class KnowledgeDocsService {
     await this.chunkIndexingService.deleteChunkEmbeddings(id);
     await this.prisma.chunk.delete({ where: { id } });
     await this.chunkIndexingService.reorderDocumentChunks(chunk.documentId);
-    await this.chunkIndexingService.refreshDocumentStats(chunk.documentId);
+    await this.chunkIndexingService.refreshIndexedDocumentStats(
+      chunk.documentId,
+    );
 
     return { id };
   }
@@ -372,7 +376,10 @@ export class KnowledgeDocsService {
     await this.chunkIndexingService.deleteChunkEmbeddings(id, db);
     await db.chunk.delete({ where: { id } });
     await this.chunkIndexingService.reorderDocumentChunks(chunk.documentId, db);
-    await this.chunkIndexingService.refreshDocumentStats(chunk.documentId, db);
+    await this.chunkIndexingService.refreshIndexedDocumentStats(
+      chunk.documentId,
+      db,
+    );
 
     return { id };
   }

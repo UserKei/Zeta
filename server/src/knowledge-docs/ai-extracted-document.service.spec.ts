@@ -171,7 +171,7 @@ describe('AiExtractedDocumentService', () => {
     const chunkIndexingService = {
       refreshChunkSearchVector: jest.fn(),
       syncChunkEmbedding: jest.fn(),
-      refreshDocumentStats: jest.fn(),
+      refreshIndexedDocumentStats: jest.fn(),
     };
     const service = new AiExtractedDocumentService(
       prisma as never,
@@ -209,9 +209,9 @@ describe('AiExtractedDocumentService', () => {
       embeddingModel,
       'ACTIVE',
     );
-    expect(chunkIndexingService.refreshDocumentStats).toHaveBeenCalledWith(
-      'doc-1',
-    );
+    expect(
+      chunkIndexingService.refreshIndexedDocumentStats,
+    ).toHaveBeenCalledWith('doc-1');
     expect(result.document).toEqual(
       expect.objectContaining({
         id: 'doc-1',
