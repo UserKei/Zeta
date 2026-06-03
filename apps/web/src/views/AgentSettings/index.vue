@@ -278,8 +278,8 @@ onMounted(load)
                   class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                 >
                   <Checkbox
-                    :checked="form.knowledgeBaseIds.includes(knowledgeBase.id)"
-                    @update:checked="toggleKnowledgeBase(knowledgeBase.id, $event)"
+                    :model-value="form.knowledgeBaseIds.includes(knowledgeBase.id)"
+                    @update:model-value="toggleKnowledgeBase(knowledgeBase.id, $event)"
                   />
                   <span class="font-medium text-foreground">{{ knowledgeBase.name }}</span>
                 </label>

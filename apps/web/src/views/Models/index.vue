@@ -974,7 +974,7 @@ onMounted(load)
           </div>
 
           <div class="flex items-center gap-2 md:col-span-2">
-            <Checkbox id="model-enabled" v-model:checked="form.isEnabled" />
+            <Checkbox id="model-enabled" v-model="form.isEnabled" />
             <Label for="model-enabled">启用这个模型配置</Label>
           </div>
         </form>
