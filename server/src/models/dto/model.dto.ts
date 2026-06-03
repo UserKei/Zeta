@@ -30,23 +30,21 @@ export class ModelDto implements ModelPayload {
   @MinLength(1)
   modelName!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'https://api.deepseek.com',
-    nullable: true,
-    description: 'OpenAI-compatible Base URL',
+    description: '供应商 API URL / OpenAI-compatible Base URL',
   })
-  @IsOptional()
   @IsString()
-  baseUrl?: string | null;
+  @MinLength(1)
+  baseUrl!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'sk-***',
-    nullable: true,
     description: '供应商 API Key，后端保存',
   })
-  @IsOptional()
   @IsString()
-  apiKey?: string | null;
+  @MinLength(1)
+  apiKey!: string;
 
   @ApiPropertyOptional({ example: true, description: '是否启用' })
   @IsOptional()
@@ -87,12 +85,20 @@ export class ModelUpdateDto implements ModelUpdatePayload {
   @MinLength(1)
   modelName?: string;
 
-  @ApiPropertyOptional({ example: 'https://api.deepseek.com', nullable: true })
+  @ApiPropertyOptional({
+    example: 'https://api.deepseek.com',
+    nullable: true,
+    description: '供应商 API URL / OpenAI-compatible Base URL',
+  })
   @IsOptional()
   @IsString()
   baseUrl?: string | null;
 
-  @ApiPropertyOptional({ example: 'sk-***', nullable: true })
+  @ApiPropertyOptional({
+    example: 'sk-***',
+    nullable: true,
+    description: '供应商 API Key；编辑时不传表示保持原凭证',
+  })
   @IsOptional()
   @IsString()
   apiKey?: string | null;

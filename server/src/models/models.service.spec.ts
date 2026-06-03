@@ -213,6 +213,54 @@ describe('ModelsService custom model names', () => {
     expect(aiModelCreate).not.toHaveBeenCalled();
   });
 
+  it('rejects creating models without api url', async () => {
+    const aiModelCreate = jest.fn();
+    const service = createService({
+      aiModel: {
+        create: aiModelCreate,
+      },
+    });
+
+    await expect(
+      service.create({
+        name: '缺少 API URL 的模型',
+        provider: 'openai-compatible',
+        type: AiModelType.CHAT,
+        modelName: 'custom-chat-model',
+        baseUrl: ' ',
+        apiKey: 'sk-test',
+        isEnabled: true,
+        configJson: {},
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(aiModelCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects creating models without api key', async () => {
+    const aiModelCreate = jest.fn();
+    const service = createService({
+      aiModel: {
+        create: aiModelCreate,
+      },
+    });
+
+    await expect(
+      service.create({
+        name: '缺少 API Key 的模型',
+        provider: 'openai-compatible',
+        type: AiModelType.CHAT,
+        modelName: 'custom-chat-model',
+        baseUrl: 'https://example.com/v1',
+        apiKey: '',
+        isEnabled: true,
+        configJson: {},
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(aiModelCreate).not.toHaveBeenCalled();
+  });
+
   it('rejects creating unsupported model types for a provider', async () => {
     const aiModelCreate = jest.fn();
     const service = createService({

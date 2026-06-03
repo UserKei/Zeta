@@ -86,6 +86,15 @@ const embeddingModels = computed(() =>
 
 const title = computed(() => (editingId.value ? '编辑知识库' : '创建知识库'))
 
+const canSave = computed(
+  () =>
+    form.name.trim().length > 0 &&
+    form.embeddingModelId.length > 0 &&
+    form.chunkSize > 0 &&
+    form.chunkOverlap >= 0 &&
+    form.chunkOverlap < form.chunkSize,
+)
+
 const filteredKnowledgeBases = computed(() => {
   const query = keyword.value.trim().toLowerCase()
 
@@ -164,6 +173,10 @@ const openEdit = (knowledgeBase: KnowledgeBase) => {
 }
 
 const save = async () => {
+  if (!canSave.value) {
+    return
+  }
+
   saving.value = true
 
   try {
@@ -467,13 +480,14 @@ onMounted(load)
               v-model.number="form.chunkOverlap"
               type="number"
               min="0"
+              :max="form.chunkSize - 1"
             />
           </div>
         </form>
 
         <DialogFooter>
           <Button variant="outline" @click="formOpen = false">取消</Button>
-          <Button :disabled="embeddingModels.length === 0 || saving" @click="save">
+          <Button :disabled="!canSave || saving" @click="save">
             {{ saving ? '保存中' : '保存' }}
           </Button>
         </DialogFooter>

@@ -570,17 +570,32 @@ const save = async () => {
   saving.value = true
 
   try {
-    const configJson = parseConfigJson()
-    const payload = {
-      ...form,
-      apiKey: form.apiKey || undefined,
-      baseUrl: form.baseUrl || undefined,
-      configJson,
+    const baseUrl = (form.baseUrl ?? '').trim()
+    const apiKey = (form.apiKey ?? '').trim()
+
+    if (!baseUrl) {
+      throw new Error('请输入 API URL')
     }
 
+    if (!editingId.value && !apiKey) {
+      throw new Error('请输入 API Key')
+    }
+
+    const configJson = parseConfigJson()
+
     const saved = editingId.value
-      ? await updateModel(editingId.value, payload)
-      : await createModel(payload)
+      ? await updateModel(editingId.value, {
+          ...form,
+          apiKey: apiKey || undefined,
+          baseUrl,
+          configJson,
+        })
+      : await createModel({
+          ...form,
+          apiKey,
+          baseUrl,
+          configJson,
+        })
 
     const index = models.value.findIndex((model) => model.id === saved.id)
 
@@ -832,7 +847,9 @@ onMounted(load)
           </div>
 
           <div class="grid gap-2">
-            <Label for="model-type">模型类型</Label>
+            <div class="flex min-h-10 items-center">
+              <Label for="model-type">模型类型</Label>
+            </div>
             <Select :model-value="form.type" @update:model-value="handleTypeChange">
               <SelectTrigger id="model-type" class="w-full">
                 <SelectValue placeholder="选择模型类型" />
@@ -852,13 +869,14 @@ onMounted(load)
           </div>
 
           <div class="grid gap-2">
-            <div class="flex items-center justify-between gap-3">
+            <div class="flex min-h-10 items-center justify-between gap-3">
               <Label for="model-id">模型标识</Label>
               <ToggleGroup
                 :model-value="modelNameMode"
                 type="single"
                 variant="outline"
                 size="sm"
+                class="shrink-0"
                 @update:model-value="handleModelNameModeChange"
               >
                 <ToggleGroupItem value="recommended">推荐</ToggleGroupItem>
@@ -918,7 +936,7 @@ onMounted(load)
           </div>
 
           <div class="grid gap-2 md:col-span-2">
-            <Label for="model-base-url">Base URL</Label>
+            <Label for="model-base-url">API URL <span class="text-destructive">*</span></Label>
             <Input
               id="model-base-url"
               v-model="form.baseUrl"
@@ -928,12 +946,12 @@ onMounted(load)
           </div>
 
           <div class="grid gap-2 md:col-span-2">
-            <Label for="model-api-key">API Key</Label>
+            <Label for="model-api-key">API Key <span class="text-destructive">*</span></Label>
             <Input
               id="model-api-key"
               v-model="form.apiKey"
               autocomplete="off"
-              :placeholder="editingId ? '留空表示保持原凭证' : '可留空'"
+              :placeholder="editingId ? '留空表示保持原凭证' : '请输入 API Key'"
               type="password"
             />
           </div>

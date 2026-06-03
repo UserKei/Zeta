@@ -141,10 +141,19 @@ export class ModelsService {
     const name = input.name?.trim();
     const provider = input.provider?.trim();
     const modelName = input.modelName?.trim();
+    const baseUrl = input.baseUrl?.trim();
+    const apiKey = input.apiKey?.trim();
 
-    if (!name || !provider || !modelName || !this.isModelType(input.type)) {
+    if (
+      !name ||
+      !provider ||
+      !modelName ||
+      !baseUrl ||
+      !apiKey ||
+      !this.isModelType(input.type)
+    ) {
       throw new BadRequestException(
-        'name, provider, type and modelName are required',
+        'name, provider, type, modelName, baseUrl and apiKey are required',
       );
     }
 
@@ -155,8 +164,8 @@ export class ModelsService {
       provider,
       type: input.type,
       modelName,
-      baseUrl: input.baseUrl?.trim() || null,
-      apiKey: input.apiKey?.trim() || null,
+      baseUrl,
+      apiKey,
       isEnabled: input.isEnabled ?? true,
       configJson: this.normalizeConfigJson(input.configJson),
     };
