@@ -6,6 +6,8 @@
     "prepare": "husky",
     "lint": "pnpm --filter @zeta/server lint && pnpm --filter @zeta/web lint",
     "lint-staged": "lint-staged",
+    "import:markdown-corpus": "pnpm --filter @zeta/server import:markdown-corpus",
+    "eval:ragas": "python3 -m evals.ragas.run_ragas",
     "type-check": "pnpm --filter @zeta/server build && pnpm --filter @zeta/web type-check",
     "infra:up": "sh -c 'if [ -f .env ]; then docker compose --env-file .env -f docker-compose.infra.yml up -d; else docker compose -f docker-compose.infra.yml up -d; fi'",
     "infra:down": "sh -c 'if [ -f .env ]; then docker compose --env-file .env -f docker-compose.infra.yml down; else docker compose -f docker-compose.infra.yml down; fi'",
