@@ -207,8 +207,6 @@ const confirmRemove = async () => {
   }
 }
 
-const modelLabel = (model: AiModel) => `${model.name} · ${model.provider} / ${model.modelName}`
-
 onMounted(load)
 </script>
 
@@ -287,7 +285,7 @@ onMounted(load)
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem v-for="model in embeddingModels" :key="model.id" :value="model.id">
-                      {{ modelLabel(model) }}
+                      {{ model.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -304,7 +302,7 @@ onMounted(load)
                   <SelectGroup>
                     <SelectItem :value="NO_RERANKER_MODEL">不启用重排</SelectItem>
                     <SelectItem v-for="model in rerankerModels" :key="model.id" :value="model.id">
-                      {{ modelLabel(model) }}
+                      {{ model.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -362,7 +360,7 @@ onMounted(load)
                   <SelectGroup>
                     <SelectItem :value="NO_VISION_MODEL">不启用图片理解</SelectItem>
                     <SelectItem v-for="model in visionModels" :key="model.id" :value="model.id">
-                      {{ modelLabel(model) }}
+                      {{ model.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>

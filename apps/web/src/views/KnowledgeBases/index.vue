@@ -456,7 +456,7 @@ onMounted(load)
               <SelectContent>
                 <SelectGroup>
                   <SelectItem v-for="model in embeddingModels" :key="model.id" :value="model.id">
-                    {{ model.name }} - {{ model.provider }} / {{ model.modelName }}
+                    {{ model.name }}
                   </SelectItem>
                 </SelectGroup>
               </SelectContent>

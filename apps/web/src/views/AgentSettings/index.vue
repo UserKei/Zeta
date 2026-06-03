@@ -116,8 +116,6 @@ const missingConfig = computed(() => {
   return missing
 })
 
-const modelLabel = (model: AiModel) => `${model.name} - ${model.provider} / ${model.modelName}`
-
 const load = async () => {
   loading.value = true
 
@@ -264,7 +262,7 @@ onMounted(load)
                   <SelectGroup>
                     <SelectItem :value="NO_CHAT_MODEL">暂不配置</SelectItem>
                     <SelectItem v-for="model in chatModels" :key="model.id" :value="model.id">
-                      {{ modelLabel(model) }}
+                      {{ model.name }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>

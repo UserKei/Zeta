@@ -570,8 +570,13 @@ const save = async () => {
   saving.value = true
 
   try {
+    const name = form.name.trim()
     const baseUrl = (form.baseUrl ?? '').trim()
     const apiKey = (form.apiKey ?? '').trim()
+
+    if (!name) {
+      throw new Error('请输入配置名称')
+    }
 
     if (!baseUrl) {
       throw new Error('请输入 API URL')
@@ -586,12 +591,14 @@ const save = async () => {
     const saved = editingId.value
       ? await updateModel(editingId.value, {
           ...form,
+          name,
           apiKey: apiKey || undefined,
           baseUrl,
           configJson,
         })
       : await createModel({
           ...form,
+          name,
           apiKey,
           baseUrl,
           configJson,
@@ -810,7 +817,7 @@ onMounted(load)
 
         <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="save">
           <div class="grid gap-2">
-            <Label for="model-name">配置名称</Label>
+            <Label for="model-name">配置名称 <span class="text-destructive">*</span></Label>
             <Input id="model-name" v-model="form.name" />
           </div>
 
