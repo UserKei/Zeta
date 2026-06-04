@@ -11,12 +11,9 @@ import {
   type FileParseResult,
 } from '@libs/shared';
 import {
-  AiModelType,
   DocumentSourceType,
   DocumentStatus,
-  KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
-import type { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
   ChunkDraftPayload,
   FileImportDocumentPayload,
@@ -40,15 +37,17 @@ import {
   DocumentAssetService,
   type ImageUnderstandingWarning,
 } from './document-asset.service';
-import {
-  ChunkIndexingService,
-  type EmbeddingModelConfig,
-} from './chunk-indexing.service';
+import { ChunkIndexingService } from './chunk-indexing.service';
 import { documentSelect } from './knowledge-docs.select';
-
-type DocumentRecord = Prisma.DocumentGetPayload<{
-  select: typeof documentSelect;
-}>;
+import {
+  toDocumentResponse,
+  type DocumentRecord,
+} from './document-response.mapper';
+import {
+  indexableKnowledgeBaseSelect,
+  withIndexableEmbeddingModel,
+  type IndexableKnowledgeBaseWithEmbedding,
+} from './knowledge-base-model-resolver';
 
 type KnowledgeBaseChunkConfig = {
   chunkSize: number;
@@ -162,7 +161,7 @@ export class DocumentImportService {
       await this.requireIndexableKnowledgeBase(knowledgeBaseId);
     const uploadedFiles = this.assertUploadedFiles(files);
     const importDocuments = this.parseFileImportPayload(fields, uploadedFiles);
-    const documents: Array<ReturnType<typeof this.toDocumentResponse>> = [];
+    const documents: Array<ReturnType<typeof toDocumentResponse>> = [];
 
     for (const importDocument of importDocuments) {
       const file = uploadedFiles[importDocument.fileIndex];
@@ -307,7 +306,7 @@ export class DocumentImportService {
         select: documentSelect,
       });
 
-      return this.toDocumentResponse(indexedDocument);
+      return toDocumentResponse(indexedDocument);
     } catch (cause) {
       if (document) {
         await this.prisma.document.update({
@@ -528,121 +527,13 @@ export class DocumentImportService {
   private async requireIndexableKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
-      select: this.indexableKnowledgeBaseSelect,
+      select: indexableKnowledgeBaseSelect,
     });
 
     if (!knowledgeBase) {
       throw new NotFoundException('knowledge base does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(knowledgeBase);
-
-    return {
-      ...knowledgeBase,
-      embeddingModel,
-    };
+    return withIndexableEmbeddingModel(knowledgeBase);
   }
-
-  private getIndexableEmbeddingModel(knowledgeBase: IndexableKnowledgeBase) {
-    if (knowledgeBase.status !== KnowledgeBaseStatus.ACTIVE) {
-      throw new BadRequestException('knowledge base is disabled');
-    }
-
-    if (!knowledgeBase.embeddingModel) {
-      throw new BadRequestException(
-        'knowledge base embedding model is not configured',
-      );
-    }
-
-    if (
-      knowledgeBase.embeddingModel.type !== AiModelType.EMBEDDING ||
-      !knowledgeBase.embeddingModel.isEnabled
-    ) {
-      throw new BadRequestException(
-        'knowledge base embedding model must be enabled',
-      );
-    }
-
-    return knowledgeBase.embeddingModel;
-  }
-
-  private toDocumentResponse(document: DocumentRecord) {
-    const { metadata, ...documentData } = document;
-    const metadataObject = this.toMetadataObject(metadata);
-
-    return {
-      ...documentData,
-      description:
-        typeof metadataObject.description === 'string'
-          ? metadataObject.description
-          : null,
-    };
-  }
-
-  private toMetadataObject(metadata: Prisma.JsonValue) {
-    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-      return metadata as Record<string, Prisma.JsonValue>;
-    }
-
-    return {};
-  }
-
-  private readonly indexableKnowledgeBaseSelect = {
-    id: true,
-    status: true,
-    metadata: true,
-    chunkSize: true,
-    chunkOverlap: true,
-    embeddingModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-    visionModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-  } as const;
 }
-
-type IndexableKnowledgeBase = {
-  id: string;
-  status: KnowledgeBaseStatus;
-  metadata: Prisma.JsonValue;
-  chunkSize: number;
-  chunkOverlap: number;
-  embeddingModel:
-    | (EmbeddingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-  visionModel:
-    | (ImageUnderstandingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-};
-
-type IndexableKnowledgeBaseWithEmbedding = IndexableKnowledgeBase & {
-  embeddingModel: EmbeddingModelConfig & {
-    type: AiModelType;
-    isEnabled: boolean;
-  };
-};
-
-type ImageUnderstandingModelConfig = EmbeddingModelConfig;

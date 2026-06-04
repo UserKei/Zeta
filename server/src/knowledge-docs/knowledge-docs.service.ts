@@ -6,11 +6,9 @@ import {
 import { randomUUID } from 'node:crypto';
 import { FileStorageService, PrismaService } from '@libs/shared';
 import {
-  AiModelType,
   ChunkStatus,
   DocumentSourceType,
   DocumentStatus,
-  KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import type { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
@@ -36,16 +34,14 @@ import {
   type AiExtractedChunkInput,
 } from './ai-extracted-document.service';
 import { DocumentAssetService } from './document-asset.service';
-import {
-  ChunkIndexingService,
-  type EmbeddingModelConfig,
-} from './chunk-indexing.service';
+import { ChunkIndexingService } from './chunk-indexing.service';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
+import { toDocumentResponse } from './document-response.mapper';
+import {
+  indexableKnowledgeBaseSelect,
+  withIndexableEmbeddingModel,
+} from './knowledge-base-model-resolver';
 import { RetrievalService } from '../retrieval/retrieval.service';
-
-type DocumentRecord = Prisma.DocumentGetPayload<{
-  select: typeof documentSelect;
-}>;
 
 type KnowledgeDocsDbClient = PrismaService | Prisma.TransactionClient;
 
@@ -69,7 +65,7 @@ export class KnowledgeDocsService {
       select: documentSelect,
     });
 
-    return documents.map((document) => this.toDocumentResponse(document));
+    return documents.map(toDocumentResponse);
   }
 
   async getDocument(id: string) {
@@ -82,7 +78,7 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    return this.toDocumentResponse(document);
+    return toDocumentResponse(document);
   }
 
   async updateDocument(id: string, input: DocumentUpdatePayload) {
@@ -115,7 +111,7 @@ export class KnowledgeDocsService {
     }
 
     if (Object.keys(data).length === 0) {
-      return this.toDocumentResponse(document);
+      return toDocumentResponse(document);
     }
 
     const updated = await this.prisma.document.update({
@@ -124,7 +120,7 @@ export class KnowledgeDocsService {
       select: documentSelect,
     });
 
-    return this.toDocumentResponse(updated);
+    return toDocumentResponse(updated);
   }
 
   async createManual(knowledgeBaseId: string, input: ManualDocumentPayload) {
@@ -158,7 +154,7 @@ export class KnowledgeDocsService {
     });
 
     if (chunks.length === 0) {
-      return this.toDocumentResponse(document);
+      return toDocumentResponse(document);
     }
 
     try {
@@ -185,7 +181,7 @@ export class KnowledgeDocsService {
         select: documentSelect,
       });
 
-      return this.toDocumentResponse(indexedDocument);
+      return toDocumentResponse(indexedDocument);
     } catch (cause) {
       await this.prisma.document.update({
         where: { id: document.id },
@@ -472,19 +468,6 @@ export class KnowledgeDocsService {
     );
   }
 
-  private toDocumentResponse(document: DocumentRecord) {
-    const { metadata, ...documentData } = document;
-    const metadataObject = this.toMetadataObject(metadata);
-
-    return {
-      ...documentData,
-      description:
-        typeof metadataObject.description === 'string'
-          ? metadataObject.description
-          : null,
-    };
-  }
-
   private toMetadataObject(metadata: Prisma.JsonValue) {
     if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
       return metadata as Record<string, Prisma.JsonValue>;
@@ -546,7 +529,7 @@ export class KnowledgeDocsService {
         id: true,
         knowledgeBaseId: true,
         knowledgeBase: {
-          select: this.indexableKnowledgeBaseSelect,
+          select: indexableKnowledgeBaseSelect,
         },
       },
     });
@@ -555,16 +538,11 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(
-      document.knowledgeBase,
-    );
+    const knowledgeBase = withIndexableEmbeddingModel(document.knowledgeBase);
 
     return {
       ...document,
-      knowledgeBase: {
-        ...document.knowledgeBase,
-        embeddingModel,
-      },
+      knowledgeBase,
     };
   }
 
@@ -580,7 +558,7 @@ export class KnowledgeDocsService {
         document: {
           select: {
             knowledgeBase: {
-              select: this.indexableKnowledgeBaseSelect,
+              select: indexableKnowledgeBaseSelect,
             },
           },
         },
@@ -591,7 +569,7 @@ export class KnowledgeDocsService {
       throw new NotFoundException('chunk does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(
+    const knowledgeBase = withIndexableEmbeddingModel(
       chunk.document.knowledgeBase,
     );
 
@@ -599,10 +577,7 @@ export class KnowledgeDocsService {
       ...chunk,
       document: {
         ...chunk.document,
-        knowledgeBase: {
-          ...chunk.document.knowledgeBase,
-          embeddingModel,
-        },
+        knowledgeBase,
       },
     };
   }
@@ -610,93 +585,13 @@ export class KnowledgeDocsService {
   private async requireIndexableKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
-      select: this.indexableKnowledgeBaseSelect,
+      select: indexableKnowledgeBaseSelect,
     });
 
     if (!knowledgeBase) {
       throw new NotFoundException('knowledge base does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(knowledgeBase);
-
-    return {
-      ...knowledgeBase,
-      embeddingModel,
-    };
+    return withIndexableEmbeddingModel(knowledgeBase);
   }
-
-  private getIndexableEmbeddingModel(knowledgeBase: IndexableKnowledgeBase) {
-    if (knowledgeBase.status !== KnowledgeBaseStatus.ACTIVE) {
-      throw new BadRequestException('knowledge base is disabled');
-    }
-
-    if (!knowledgeBase.embeddingModel) {
-      throw new BadRequestException(
-        'knowledge base embedding model is not configured',
-      );
-    }
-
-    if (
-      knowledgeBase.embeddingModel.type !== AiModelType.EMBEDDING ||
-      !knowledgeBase.embeddingModel.isEnabled
-    ) {
-      throw new BadRequestException(
-        'knowledge base embedding model must be enabled',
-      );
-    }
-
-    return knowledgeBase.embeddingModel;
-  }
-
-  private readonly indexableKnowledgeBaseSelect = {
-    id: true,
-    status: true,
-    metadata: true,
-    chunkSize: true,
-    chunkOverlap: true,
-    embeddingModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-    visionModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-  } as const;
 }
-
-type IndexableKnowledgeBase = {
-  id: string;
-  status: KnowledgeBaseStatus;
-  metadata: Prisma.JsonValue;
-  chunkSize: number;
-  chunkOverlap: number;
-  embeddingModel:
-    | (EmbeddingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-  visionModel:
-    | (ImageUnderstandingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-};
-
-type ImageUnderstandingModelConfig = EmbeddingModelConfig;

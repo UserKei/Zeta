@@ -6,11 +6,9 @@ import {
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '@libs/shared';
 import {
-  AiModelType,
   ChunkStatus,
   DocumentSourceType,
   DocumentStatus,
-  KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import type { Prisma } from '@libs/shared/generated/prisma/client';
 import { MAX_CHUNK_CONTENT_LENGTH } from './knowledge-docs.constants';
@@ -19,17 +17,20 @@ import {
   type EmbeddingModelConfig,
 } from './chunk-indexing.service';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
+import {
+  toDocumentResponse,
+  type DocumentResponse,
+} from './document-response.mapper';
+import {
+  indexableKnowledgeBaseSelect,
+  withIndexableEmbeddingModel,
+} from './knowledge-base-model-resolver';
 
-type DocumentRecord = Prisma.DocumentGetPayload<{
-  select: typeof documentSelect;
-}>;
 type ChunkRecord = Prisma.ChunkGetPayload<{
   select: typeof chunkSelect;
 }>;
 type KnowledgeDocsDbClient = PrismaService | Prisma.TransactionClient;
-type AiExtractedDocumentRecord = Omit<DocumentRecord, 'metadata'> & {
-  description: string | null;
-};
+type AiExtractedDocumentRecord = DocumentResponse;
 
 export type AiExtractedChunkInput = {
   documentId?: string;
@@ -75,7 +76,7 @@ export class AiExtractedDocumentService {
     }
 
     return {
-      document: this.toDocumentResponse(updatedDocument),
+      document: toDocumentResponse(updatedDocument),
       chunk,
     };
   }
@@ -106,7 +107,7 @@ export class AiExtractedDocumentService {
     }
 
     return {
-      document: this.toDocumentResponse(persistedDocument),
+      document: toDocumentResponse(persistedDocument),
       chunk,
       embeddingModel: document.knowledgeBase.embeddingModel,
     };
@@ -226,7 +227,7 @@ export class AiExtractedDocumentService {
         id: true,
         knowledgeBaseId: true,
         knowledgeBase: {
-          select: this.indexableKnowledgeBaseSelect,
+          select: indexableKnowledgeBaseSelect,
         },
       },
     });
@@ -235,16 +236,11 @@ export class AiExtractedDocumentService {
       throw new NotFoundException('document does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(
-      document.knowledgeBase,
-    );
+    const knowledgeBase = withIndexableEmbeddingModel(document.knowledgeBase);
 
     return {
       ...document,
-      knowledgeBase: {
-        ...document.knowledgeBase,
-        embeddingModel,
-      },
+      knowledgeBase,
     };
   }
 
@@ -254,61 +250,14 @@ export class AiExtractedDocumentService {
   ) {
     const knowledgeBase = await db.knowledgeBase.findUnique({
       where: { id },
-      select: this.indexableKnowledgeBaseSelect,
+      select: indexableKnowledgeBaseSelect,
     });
 
     if (!knowledgeBase) {
       throw new NotFoundException('knowledge base does not exist');
     }
 
-    return {
-      ...knowledgeBase,
-      embeddingModel: this.getIndexableEmbeddingModel(knowledgeBase),
-    };
-  }
-
-  private getIndexableEmbeddingModel(knowledgeBase: IndexableKnowledgeBase) {
-    if (knowledgeBase.status !== KnowledgeBaseStatus.ACTIVE) {
-      throw new BadRequestException('knowledge base is disabled');
-    }
-
-    if (!knowledgeBase.embeddingModel) {
-      throw new BadRequestException(
-        'knowledge base embedding model is not configured',
-      );
-    }
-
-    if (
-      knowledgeBase.embeddingModel.type !== AiModelType.EMBEDDING ||
-      !knowledgeBase.embeddingModel.isEnabled
-    ) {
-      throw new BadRequestException(
-        'knowledge base embedding model must be enabled',
-      );
-    }
-
-    return knowledgeBase.embeddingModel;
-  }
-
-  private toDocumentResponse(document: DocumentRecord) {
-    const { metadata, ...documentData } = document;
-    const metadataObject = this.toMetadataObject(metadata);
-
-    return {
-      ...documentData,
-      description:
-        typeof metadataObject.description === 'string'
-          ? metadataObject.description
-          : null,
-    };
-  }
-
-  private toMetadataObject(metadata: Prisma.JsonValue) {
-    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-      return metadata as Record<string, Prisma.JsonValue>;
-    }
-
-    return {};
+    return withIndexableEmbeddingModel(knowledgeBase);
   }
 
   private normalizeText(content: string | undefined) {
@@ -320,58 +269,8 @@ export class AiExtractedDocumentService {
 
     return normalizedTitle ? normalizedTitle.slice(0, 512) : null;
   }
-
-  private readonly indexableKnowledgeBaseSelect = {
-    id: true,
-    status: true,
-    metadata: true,
-    chunkSize: true,
-    chunkOverlap: true,
-    embeddingModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-    visionModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-  } as const;
 }
 
 type IndexableDocument = Awaited<
   ReturnType<AiExtractedDocumentService['requireIndexableDocument']>
 >;
-
-type IndexableKnowledgeBase = {
-  id: string;
-  status: KnowledgeBaseStatus;
-  metadata: Prisma.JsonValue;
-  chunkSize: number;
-  chunkOverlap: number;
-  embeddingModel:
-    | (EmbeddingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-  visionModel:
-    | (EmbeddingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-};
