@@ -1,0 +1,35 @@
+:root {
+  --vp-c-brand-1: #2563eb;
+  --vp-c-brand-2: #3b82f6;
+  --vp-c-brand-3: #60a5fa;
+  --vp-home-hero-name-color: #1d4ed8;
+}
+
+.VPHome .VPHomeHero .text {
+  max-width: 760px;
+}
+
+.zeta-mermaid {
+  margin: 24px 0;
+  overflow-x: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  padding: 16px;
+}
+
+.zeta-mermaid__canvas {
+  min-width: 640px;
+}
+
+.zeta-mermaid__canvas svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.zeta-mermaid__error {
+  color: var(--vp-c-danger-1);
+  font-size: 14px;
+}

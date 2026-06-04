@@ -1,14 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 
-jest.mock('../prisma/prisma.service', () => ({
+jest.mock('@libs/shared', () => ({
   PrismaService: class PrismaService {},
 }));
 
-jest.mock('../generated/prisma/client', () => ({
+jest.mock('@libs/shared/generated/prisma/client', () => ({
   Prisma: {},
 }));
 
-jest.mock('../generated/prisma/enums', () => ({
+jest.mock('@libs/shared/generated/prisma/enums', () => ({
   AiModelType: {
     EMBEDDING: 'EMBEDDING',
     RERANKER: 'RERANKER',
@@ -40,6 +40,10 @@ describe('RetrievalService', () => {
         createVectorRow({
           chunk_id: 'chunk-a',
           content: 'VPN 申请需要部门负责人审批。',
+          retrieval_hints: [
+            'content/handbook/about/maintenance.md',
+            'handbook about maintenance',
+          ],
           vector_score: 0.8,
         }),
         createVectorRow({
@@ -98,9 +102,9 @@ describe('RetrievalService', () => {
       {
         query: 'IT 账号如何开通？',
         documents: [
-          'VPN 申请需要部门负责人审批。',
-          '密码重置需要短信验证码。',
-          '员工入职会自动创建 IT 账号。',
+          'IT 文档\ncontent/handbook/about/maintenance.md\nhandbook about maintenance\nVPN 申请需要部门负责人审批。',
+          'IT 文档\n密码重置需要短信验证码。',
+          'IT 文档\n员工入职会自动创建 IT 账号。',
         ],
         topN: 2,
       },
@@ -116,6 +120,7 @@ describe('RetrievalService', () => {
         rerankScore: 0.95,
       }),
     );
+    expect(result.hits[1]).not.toHaveProperty('retrievalHints');
   });
 
   it('deduplicates hybrid vector and keyword candidates before reranking', async () => {
@@ -184,9 +189,9 @@ describe('RetrievalService', () => {
       {
         query: 'VPN',
         documents: [
-          'VPN 申请需要部门负责人审批。',
-          '密码重置需要短信验证码。',
-          '员工入职会自动创建 IT 账号。',
+          'IT 文档\nVPN 申请需要部门负责人审批。',
+          'IT 文档\n密码重置需要短信验证码。',
+          'IT 文档\n员工入职会自动创建 IT 账号。',
         ],
         topN: 3,
       },
@@ -252,6 +257,54 @@ describe('RetrievalService', () => {
     ]);
   });
 
+  it('returns the imported document relative path when metadata provides it', async () => {
+    const rerankDocuments = jest.fn();
+    const service = createService(
+      {
+        knowledgeBase: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            status: 'ACTIVE',
+            embeddingModel: createModel({
+              id: 'embedding-1',
+              type: 'EMBEDDING',
+            }),
+            rerankerModel: null,
+          }),
+        },
+        $queryRaw: jest
+          .fn()
+          .mockResolvedValueOnce([
+            createVectorRow({
+              chunk_id: 'chunk-a',
+              document_path: 'content/handbook/about/contributing.md',
+              vector_score: 0.8,
+            }),
+          ])
+          .mockResolvedValueOnce([]),
+      },
+      {
+        embedTexts: jest.fn().mockResolvedValue([[0.1, 0.2]]),
+      },
+      {
+        rerankDocuments,
+      },
+    );
+
+    const result = await service.retrieveFromKnowledgeBase(
+      'kb-1',
+      'handbook',
+      1,
+    );
+
+    expect(result.hits[0]).toEqual(
+      expect.objectContaining({
+        documentName: 'IT 文档',
+        documentPath: 'content/handbook/about/contributing.md',
+      }),
+    );
+  });
+
   it('rejects disabled reranker models', async () => {
     const service = createService(
       {
@@ -301,12 +354,16 @@ function createModel(input: {
 function createVectorRow(input: {
   chunk_id: string;
   content?: string;
+  document_path?: string | null;
+  retrieval_hints?: string[] | null;
   vector_score: number;
 }) {
   return {
     chunk_id: input.chunk_id,
     document_id: 'doc-1',
     document_name: 'IT 文档',
+    document_path: input.document_path ?? null,
+    retrieval_hints: input.retrieval_hints ?? null,
     title: null,
     content: input.content ?? '测试分段',
     position: 0,
@@ -318,12 +375,16 @@ function createVectorRow(input: {
 function createKeywordRow(input: {
   chunk_id: string;
   content?: string;
+  document_path?: string | null;
+  retrieval_hints?: string[] | null;
   keyword_score: number;
 }) {
   return {
     chunk_id: input.chunk_id,
     document_id: 'doc-1',
     document_name: 'IT 文档',
+    document_path: input.document_path ?? null,
+    retrieval_hints: input.retrieval_hints ?? null,
     title: null,
     content: input.content ?? '测试分段',
     position: 0,

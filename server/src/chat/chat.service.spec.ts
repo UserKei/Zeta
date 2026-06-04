@@ -2,6 +2,9 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 jest.mock('@libs/shared', () => ({
   PrismaService: class PrismaService {},
+}));
+
+jest.mock('../retrieval/retrieval.service', () => ({
   RetrievalService: class RetrievalService {},
 }));
 
@@ -27,6 +30,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
 }));
 
 import { ChatMessageRole } from '@libs/shared/generated/prisma/enums';
+import type { ChatModelRequest } from '@libs/model-adapters';
 import type { ChatStreamEvent } from '@zeta/common/chat';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { ChatService } from './chat.service';
@@ -124,14 +128,19 @@ function createRetrievalHit(input: {
   chunkId: string;
   documentId: string;
   documentName: string;
+  documentPath?: string | null;
+  retrievalHints?: string[];
+  title?: string | null;
   content: string;
   score: number;
-}): RetrievalHit {
+}): RetrievalHit & { retrievalHints?: string[] } {
   return {
     chunkId: input.chunkId,
     documentId: input.documentId,
     documentName: input.documentName,
-    title: null,
+    documentPath: input.documentPath ?? null,
+    retrievalHints: input.retrievalHints,
+    title: input.title ?? null,
     content: input.content,
     position: 0,
     charCount: input.content.length,
@@ -735,6 +744,11 @@ describe('ChatService chat citations', () => {
         chunkId: 'chunk-vpn',
         documentId: 'doc-it',
         documentName: 'IT 服务台 FAQ',
+        documentPath: 'content/handbook/about/maintenance.md',
+        retrievalHints: [
+          'content/handbook/about/maintenance.md',
+          'handbook about maintenance',
+        ],
         content: 'VPN 权限需要部门负责人审批。',
         score: 0.987654321,
       }),
@@ -859,6 +873,16 @@ describe('ChatService chat citations', () => {
       message: '线段树是什么',
       topK: 5,
     });
+
+    const [chatModelRequest] = chatModelService.complete.mock.calls[0] as [
+      ChatModelRequest,
+    ];
+    const systemPrompt = String(chatModelRequest.messages[0]?.[1] ?? '');
+
+    expect(systemPrompt).toContain('IT 服务台 FAQ');
+    expect(systemPrompt).toContain('VPN 权限需要部门负责人审批。');
+    expect(systemPrompt).not.toContain('content/handbook/about/maintenance.md');
+    expect(systemPrompt).not.toContain('handbook about maintenance');
 
     const createdCitations =
       chatMessageCreate.mock.calls[1]?.[0].data.citations?.create ?? [];

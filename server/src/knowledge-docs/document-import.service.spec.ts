@@ -433,6 +433,10 @@ describe('DocumentImportService', () => {
               title: chunk.title,
               content: chunk.content,
               metadata: chunk.metadata,
+              document: {
+                name: '扫描件',
+                metadata: {},
+              },
             })),
           ),
         ),
@@ -440,6 +444,11 @@ describe('DocumentImportService', () => {
       chunkEmbedding: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      $transaction: jest
+        .fn()
+        .mockImplementation((callback: (db: unknown) => Promise<unknown>) =>
+          callback(prisma),
+        ),
       $executeRaw: jest.fn().mockResolvedValue(undefined),
     };
     const embeddingService = {
@@ -626,10 +635,10 @@ describe('DocumentImportService', () => {
       expect.objectContaining({ id: 'embedding-1' }),
       [
         {
-          text: '扫描件 / 第 1 页\n![扫描件 第 1 页](./files/asset-file-1)',
+          text: '扫描件\n扫描件 / 第 1 页\n![扫描件 第 1 页](./files/asset-file-1)',
         },
         {
-          text: '图片理解 / 第 1 页\n图片文字：VPN 申请单。业务信息：需要主管审批。',
+          text: '扫描件\n图片理解 / 第 1 页\n图片文字：VPN 申请单。业务信息：需要主管审批。',
         },
       ],
     );

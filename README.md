@@ -289,6 +289,17 @@ pnpm --filter @zeta/web build
 pnpm --filter @zeta/server build
 ```
 
+### 交付文档站
+
+```bash
+pnpm docs:reports
+pnpm docs:dev
+pnpm docs:build
+pnpm docs:preview
+```
+
+文档站位于 `apps/docs-site/`，使用 VitePress 构建。`docs:reports` 会把 `evals/reports/` 中的 Ragas Markdown / CSV 报告导出到文档站静态目录，并生成报告索引页。
+
 ### 本地基础设施
 
 ```bash
@@ -340,6 +351,9 @@ Zeta/
 ├── .husky/                          # Git hooks
 ├── docs/                            # 项目文档和实现方案
 ├── apps/
+│   ├── docs-site/                   # VitePress 交付文档站
+│   │   ├── .vitepress/              # VitePress 配置和主题扩展
+│   │   └── public/eval-reports/     # RAG / DeepEval 静态报告挂载目录
 │   └── web/                         # Vue Web 应用
 │       ├── src/
 │       │   ├── apis/                # 前端 API 请求封装
@@ -449,19 +463,14 @@ Zeta 不拆微服务，也不拆多个前端应用。当前选择是：
 
 本地开发环境变量位于仓库根目录 `.env`，可以从 `.env.example` 复制。
 
-| 变量                        | 说明                                                                 |
-| --------------------------- | -------------------------------------------------------------------- |
-| `DATABASE_URL`              | PostgreSQL 连接串                                                    |
-| `AUTH_TOKEN_SECRET`         | JWT 签名密钥                                                         |
-| `ACCESS_TOKEN_TTL_SECONDS`  | Access Token 有效期                                                  |
-| `REFRESH_TOKEN_TTL_SECONDS` | Refresh Token 有效期                                                 |
-| `SEED_ADMIN_USERNAME`       | seed 默认管理员用户名                                                |
-| `SEED_ADMIN_PASSWORD`       | seed 默认管理员密码                                                  |
-| `SEED_ADMIN_DISPLAY_NAME`   | seed 默认管理员展示名                                                |
-| `DASHSCOPE_API_KEY`         | 阿里云百炼 API Key，用于 seed 默认 Embedding / 多模态 Embedding 模型 |
-| `POSTGRES_DB`               | 本地 PostgreSQL 数据库名                                             |
-| `POSTGRES_USER`             | 本地 PostgreSQL 用户名                                               |
-| `POSTGRES_PORT`             | 本地 PostgreSQL 宿主机端口                                           |
+| 变量                | 说明                                                               |
+| ------------------- | ------------------------------------------------------------------ |
+| `DATABASE_URL`      | PostgreSQL 连接串                                                  |
+| `AUTH_TOKEN_SECRET` | JWT 签名密钥                                                       |
+| `DASHSCOPE_API_KEY` | 阿里云百炼 API Key，用于 seed 默认模型、语料导入和 Ragas Embedding |
+| `DEEPSEEK_API_KEY`  | DeepSeek API Key，用于 Ragas LLM-as-a-Judge                        |
+| `ZETA_USERNAME`     | Ragas 评测登录用户名                                               |
+| `ZETA_PASSWORD`     | Ragas 评测登录密码                                                 |
 
 生产部署环境变量位于 `.env.production`，可以从 `.env.production.example` 复制。生产环境必须设置数据库密码和高强度 `AUTH_TOKEN_SECRET`。
 

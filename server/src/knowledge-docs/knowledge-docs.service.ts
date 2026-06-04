@@ -4,52 +4,44 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { FileStorageService, PrismaService } from '@libs/shared';
 import {
-  FileStorageService,
-  PrismaService,
-  RetrievalService,
-} from '@libs/shared';
-import {
-  AiModelType,
   ChunkStatus,
   DocumentSourceType,
   DocumentStatus,
-  KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import type { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
   ChunkReorderPayload,
-  ChunkDraftPayload,
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
+import { MAX_CHUNK_CONTENT_LENGTH } from './knowledge-docs.constants';
 import {
-  MAX_CHUNK_CONTENT_LENGTH,
-  MAX_CHUNK_COUNT,
-  MAX_DOCUMENT_CONTENT_LENGTH,
-} from './knowledge-docs.constants';
+  assertDocumentChunks,
+  countChunkChars,
+  normalizeChunkStatus,
+  normalizeText,
+  normalizeTitle,
+  toChunkDrafts,
+  toSingleChunkDraft,
+} from './chunk-draft-normalizer';
 import {
   AiExtractedDocumentService,
   type AiExtractedChunkInput,
 } from './ai-extracted-document.service';
-import {
-  DocumentAssetService,
-  type DocumentChunkDraft,
-} from './document-asset.service';
-import {
-  ChunkIndexingService,
-  type EmbeddingModelConfig,
-} from './chunk-indexing.service';
+import { DocumentAssetService } from './document-asset.service';
+import { ChunkIndexingService } from './chunk-indexing.service';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
-
-type DocumentRecord = Prisma.DocumentGetPayload<{
-  select: typeof documentSelect;
-}>;
-
-type ChunkDraft = DocumentChunkDraft;
+import { toDocumentResponse } from './document-response.mapper';
+import {
+  indexableKnowledgeBaseSelect,
+  withIndexableEmbeddingModel,
+} from './knowledge-base-model-resolver';
+import { RetrievalService } from '../retrieval/retrieval.service';
 
 type KnowledgeDocsDbClient = PrismaService | Prisma.TransactionClient;
 
@@ -73,7 +65,7 @@ export class KnowledgeDocsService {
       select: documentSelect,
     });
 
-    return documents.map((document) => this.toDocumentResponse(document));
+    return documents.map(toDocumentResponse);
   }
 
   async getDocument(id: string) {
@@ -86,7 +78,7 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    return this.toDocumentResponse(document);
+    return toDocumentResponse(document);
   }
 
   async updateDocument(id: string, input: DocumentUpdatePayload) {
@@ -119,7 +111,7 @@ export class KnowledgeDocsService {
     }
 
     if (Object.keys(data).length === 0) {
-      return this.toDocumentResponse(document);
+      return toDocumentResponse(document);
     }
 
     const updated = await this.prisma.document.update({
@@ -128,21 +120,21 @@ export class KnowledgeDocsService {
       select: documentSelect,
     });
 
-    return this.toDocumentResponse(updated);
+    return toDocumentResponse(updated);
   }
 
   async createManual(knowledgeBaseId: string, input: ManualDocumentPayload) {
     const knowledgeBase =
       await this.requireIndexableKnowledgeBase(knowledgeBaseId);
     const name = input.name?.trim();
-    const chunks = this.toChunkDrafts(input.chunks);
+    const chunks = toChunkDrafts(input.chunks);
 
     if (!name) {
       throw new BadRequestException('name is required');
     }
 
     if (chunks.length > 0) {
-      this.assertDocumentChunks(chunks);
+      assertDocumentChunks(chunks);
     }
 
     const document = await this.prisma.document.create({
@@ -152,7 +144,7 @@ export class KnowledgeDocsService {
         sourceType: DocumentSourceType.MANUAL,
         status:
           chunks.length === 0 ? DocumentStatus.DRAFT : DocumentStatus.CHUNKING,
-        charCount: this.countChars(chunks),
+        charCount: countChunkChars(chunks),
         chunkCount: chunks.length,
         metadata: {
           description: input.description?.trim() || null,
@@ -162,7 +154,7 @@ export class KnowledgeDocsService {
     });
 
     if (chunks.length === 0) {
-      return this.toDocumentResponse(document);
+      return toDocumentResponse(document);
     }
 
     try {
@@ -189,7 +181,7 @@ export class KnowledgeDocsService {
         select: documentSelect,
       });
 
-      return this.toDocumentResponse(indexedDocument);
+      return toDocumentResponse(indexedDocument);
     } catch (cause) {
       await this.prisma.document.update({
         where: { id: document.id },
@@ -223,7 +215,7 @@ export class KnowledgeDocsService {
 
   async createChunk(documentId: string, input: ChunkPayload) {
     const document = await this.requireIndexableDocument(documentId);
-    const chunk = this.toSingleChunkDraft(input, 0);
+    const chunk = toSingleChunkDraft(input, 0);
     const activeChunkCount = await this.countActiveChunks(document.id);
 
     if (chunk.status === ChunkStatus.DISABLED && activeChunkCount === 0) {
@@ -294,8 +286,8 @@ export class KnowledgeDocsService {
     const nextContent =
       input.content === undefined
         ? chunk.content
-        : this.normalizeText(input.content);
-    const nextStatus = this.normalizeChunkStatus(input.status, chunk.status);
+        : normalizeText(input.content);
+    const nextStatus = normalizeChunkStatus(input.status, chunk.status);
 
     if (!nextContent) {
       throw new BadRequestException('chunk content is required');
@@ -315,9 +307,7 @@ export class KnowledgeDocsService {
       where: { id },
       data: {
         title:
-          input.title === undefined
-            ? chunk.title
-            : this.normalizeTitle(input.title),
+          input.title === undefined ? chunk.title : normalizeTitle(input.title),
         content: nextContent,
         charCount: nextContent.length,
         status: nextStatus,
@@ -439,25 +429,27 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    const chunks = await this.prisma.chunk.findMany({
-      where: { documentId },
-      select: { id: true },
+    await this.prisma.$transaction(async (db) => {
+      const chunks = await db.chunk.findMany({
+        where: { documentId },
+        select: { id: true },
+      });
+      const chunkIds = chunks.map((chunk) => chunk.id);
+
+      if (chunkIds.length > 0) {
+        await db.chatCitation.deleteMany({
+          where: {
+            OR: [{ documentId }, { chunkId: { in: chunkIds } }],
+          },
+        });
+        await db.chunkEmbedding.deleteMany({
+          where: { chunkId: { in: chunkIds } },
+        });
+        await db.chunk.deleteMany({ where: { id: { in: chunkIds } } });
+      }
+
+      await db.document.delete({ where: { id: documentId } });
     });
-    const chunkIds = chunks.map((chunk) => chunk.id);
-
-    if (chunkIds.length > 0) {
-      await this.prisma.chatCitation.deleteMany({
-        where: {
-          OR: [{ documentId }, { chunkId: { in: chunkIds } }],
-        },
-      });
-      await this.prisma.chunkEmbedding.deleteMany({
-        where: { chunkId: { in: chunkIds } },
-      });
-      await this.prisma.chunk.deleteMany({ where: { id: { in: chunkIds } } });
-    }
-
-    await this.prisma.document.delete({ where: { id: documentId } });
     await this.fileStorageService.removeFilesIfUnreferenced(
       [
         document.sourceFileId,
@@ -476,118 +468,12 @@ export class KnowledgeDocsService {
     );
   }
 
-  private toChunkDrafts(chunks: ChunkDraftPayload[] | undefined) {
-    if (!Array.isArray(chunks)) {
-      throw new BadRequestException('chunks are required');
-    }
-
-    return chunks.map((chunk, index) => this.toSingleChunkDraft(chunk, index));
-  }
-
-  private toSingleChunkDraft(input: ChunkDraftPayload, position: number) {
-    const content = this.normalizeText(input.content);
-
-    if (!content) {
-      throw new BadRequestException('chunk content is required');
-    }
-
-    if (content.length > MAX_CHUNK_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `chunk content cannot exceed ${MAX_CHUNK_CONTENT_LENGTH} characters`,
-      );
-    }
-
-    return {
-      id: randomUUID(),
-      title: this.normalizeTitle(input.title),
-      content,
-      status: this.normalizeChunkStatus(input.status, ChunkStatus.ACTIVE),
-      position,
-      charCount: content.length,
-      metadata: this.normalizeChunkMetadata(input.metadata),
-    };
-  }
-
-  private assertDocumentChunks(chunks: ChunkDraft[]) {
-    if (chunks.length === 0) {
-      throw new BadRequestException('at least one chunk is required');
-    }
-
-    if (chunks.length > MAX_CHUNK_COUNT) {
-      throw new BadRequestException(
-        `chunk count cannot exceed ${MAX_CHUNK_COUNT}`,
-      );
-    }
-
-    if (!chunks.some((chunk) => chunk.status === ChunkStatus.ACTIVE)) {
-      throw new BadRequestException('document must have active chunks');
-    }
-
-    if (this.countChars(chunks) > MAX_DOCUMENT_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `document content cannot exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`,
-      );
-    }
-  }
-
-  private countChars(chunks: Array<{ charCount: number }>) {
-    return chunks.reduce((total, chunk) => total + chunk.charCount, 0);
-  }
-
-  private toDocumentResponse(document: DocumentRecord) {
-    const { metadata, ...documentData } = document;
-    const metadataObject = this.toMetadataObject(metadata);
-
-    return {
-      ...documentData,
-      description:
-        typeof metadataObject.description === 'string'
-          ? metadataObject.description
-          : null,
-    };
-  }
-
   private toMetadataObject(metadata: Prisma.JsonValue) {
     if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
       return metadata as Record<string, Prisma.JsonValue>;
     }
 
     return {};
-  }
-
-  private normalizeText(content: string | undefined) {
-    return content?.replace(/\r\n/g, '\n').trim() ?? '';
-  }
-
-  private normalizeTitle(title: string | null | undefined) {
-    const normalizedTitle = title?.trim();
-
-    return normalizedTitle ? normalizedTitle.slice(0, 512) : null;
-  }
-
-  private normalizeChunkMetadata(
-    metadata: ChunkDraftPayload['metadata'],
-  ): Prisma.InputJsonValue {
-    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-      return metadata as Prisma.InputJsonObject;
-    }
-
-    return {};
-  }
-
-  private normalizeChunkStatus(
-    status: ChunkStatus | undefined,
-    fallback: ChunkStatus,
-  ) {
-    if (status === undefined) {
-      return fallback;
-    }
-
-    if (status !== ChunkStatus.ACTIVE && status !== ChunkStatus.DISABLED) {
-      throw new BadRequestException('chunk status is invalid');
-    }
-
-    return status;
   }
 
   private async assertCanDeactivateChunk(chunkId: string, documentId: string) {
@@ -643,7 +529,7 @@ export class KnowledgeDocsService {
         id: true,
         knowledgeBaseId: true,
         knowledgeBase: {
-          select: this.indexableKnowledgeBaseSelect,
+          select: indexableKnowledgeBaseSelect,
         },
       },
     });
@@ -652,16 +538,11 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(
-      document.knowledgeBase,
-    );
+    const knowledgeBase = withIndexableEmbeddingModel(document.knowledgeBase);
 
     return {
       ...document,
-      knowledgeBase: {
-        ...document.knowledgeBase,
-        embeddingModel,
-      },
+      knowledgeBase,
     };
   }
 
@@ -677,7 +558,7 @@ export class KnowledgeDocsService {
         document: {
           select: {
             knowledgeBase: {
-              select: this.indexableKnowledgeBaseSelect,
+              select: indexableKnowledgeBaseSelect,
             },
           },
         },
@@ -688,7 +569,7 @@ export class KnowledgeDocsService {
       throw new NotFoundException('chunk does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(
+    const knowledgeBase = withIndexableEmbeddingModel(
       chunk.document.knowledgeBase,
     );
 
@@ -696,10 +577,7 @@ export class KnowledgeDocsService {
       ...chunk,
       document: {
         ...chunk.document,
-        knowledgeBase: {
-          ...chunk.document.knowledgeBase,
-          embeddingModel,
-        },
+        knowledgeBase,
       },
     };
   }
@@ -707,93 +585,13 @@ export class KnowledgeDocsService {
   private async requireIndexableKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
-      select: this.indexableKnowledgeBaseSelect,
+      select: indexableKnowledgeBaseSelect,
     });
 
     if (!knowledgeBase) {
       throw new NotFoundException('knowledge base does not exist');
     }
 
-    const embeddingModel = this.getIndexableEmbeddingModel(knowledgeBase);
-
-    return {
-      ...knowledgeBase,
-      embeddingModel,
-    };
+    return withIndexableEmbeddingModel(knowledgeBase);
   }
-
-  private getIndexableEmbeddingModel(knowledgeBase: IndexableKnowledgeBase) {
-    if (knowledgeBase.status !== KnowledgeBaseStatus.ACTIVE) {
-      throw new BadRequestException('knowledge base is disabled');
-    }
-
-    if (!knowledgeBase.embeddingModel) {
-      throw new BadRequestException(
-        'knowledge base embedding model is not configured',
-      );
-    }
-
-    if (
-      knowledgeBase.embeddingModel.type !== AiModelType.EMBEDDING ||
-      !knowledgeBase.embeddingModel.isEnabled
-    ) {
-      throw new BadRequestException(
-        'knowledge base embedding model must be enabled',
-      );
-    }
-
-    return knowledgeBase.embeddingModel;
-  }
-
-  private readonly indexableKnowledgeBaseSelect = {
-    id: true,
-    status: true,
-    metadata: true,
-    chunkSize: true,
-    chunkOverlap: true,
-    embeddingModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-    visionModel: {
-      select: {
-        id: true,
-        type: true,
-        isEnabled: true,
-        modelName: true,
-        baseUrl: true,
-        apiKey: true,
-        configJson: true,
-      },
-    },
-  } as const;
 }
-
-type IndexableKnowledgeBase = {
-  id: string;
-  status: KnowledgeBaseStatus;
-  metadata: Prisma.JsonValue;
-  chunkSize: number;
-  chunkOverlap: number;
-  embeddingModel:
-    | (EmbeddingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-  visionModel:
-    | (ImageUnderstandingModelConfig & {
-        type: AiModelType;
-        isEnabled: boolean;
-      })
-    | null;
-};
-
-type ImageUnderstandingModelConfig = EmbeddingModelConfig;

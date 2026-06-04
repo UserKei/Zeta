@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EmbeddingService, type EmbeddingInput } from '@libs/model-adapters';
 import { FileStorageService, PrismaService } from '@libs/shared';
+import { buildRetrievalText } from '@libs/shared/retrieval/retrieval-text';
 import {
   ChunkStatus,
   DocumentStatus,
@@ -16,6 +17,10 @@ type EmbeddableChunk = {
   title: string | null;
   content: string;
   metadata: Prisma.JsonValue;
+  document: {
+    name: string;
+    metadata: Prisma.JsonValue;
+  };
 };
 
 export type EmbeddingModelConfig = {
@@ -61,7 +66,13 @@ export class ChunkIndexingService {
     const activeChunks = await this.prisma.chunk.findMany({
       where: { documentId, status: ChunkStatus.ACTIVE },
       orderBy: { position: 'asc' },
-      select: { id: true, title: true, content: true, metadata: true },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        metadata: true,
+        document: { select: { name: true, metadata: true } },
+      },
     });
 
     if (activeChunks.length === 0) {
@@ -70,20 +81,23 @@ export class ChunkIndexingService {
 
     const chunkIds = activeChunks.map((chunk) => chunk.id);
 
-    await this.prisma.chunkEmbedding.deleteMany({
-      where: {
+    const embeddingInputs = await this.toEmbeddingInputs(
+      activeChunks,
+      embeddingModel,
+    );
+    const embeddings = await this.embeddingService.embedInputs(
+      embeddingModel,
+      embeddingInputs,
+    );
+
+    await this.replaceEmbeddings(
+      {
         embeddingModelId: embeddingModel.id,
         chunkId: { in: chunkIds },
       },
-    });
-
-    await this.createEmbeddings(
       embeddingModel.id,
       activeChunks,
-      await this.embeddingService.embedInputs(
-        embeddingModel,
-        await this.toEmbeddingInputs(activeChunks, embeddingModel),
-      ),
+      embeddings,
     );
   }
 
@@ -93,20 +107,29 @@ export class ChunkIndexingService {
   ) {
     const chunk = await this.prisma.chunk.findUniqueOrThrow({
       where: { id: chunkId },
-      select: { id: true, title: true, content: true, metadata: true },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        metadata: true,
+        document: { select: { name: true, metadata: true } },
+      },
     });
 
-    await this.prisma.chunkEmbedding.deleteMany({
-      where: { chunkId, embeddingModelId: embeddingModel.id },
-    });
+    const embeddingInputs = await this.toEmbeddingInputs(
+      [chunk],
+      embeddingModel,
+    );
+    const embeddings = await this.embeddingService.embedInputs(
+      embeddingModel,
+      embeddingInputs,
+    );
 
-    await this.createEmbeddings(
+    await this.replaceEmbeddings(
+      { chunkId, embeddingModelId: embeddingModel.id },
       embeddingModel.id,
       [chunk],
-      await this.embeddingService.embedInputs(
-        embeddingModel,
-        await this.toEmbeddingInputs([chunk], embeddingModel),
-      ),
+      embeddings,
     );
   }
 
@@ -133,17 +156,69 @@ export class ChunkIndexingService {
 
   async refreshDocumentSearchVector(documentId: string) {
     await this.prisma.$executeRaw`
-      UPDATE "chunks"
-      SET "search_vector" = to_tsvector('simple', COALESCE("title", '') || ' ' || "content")
-      WHERE "document_id" = ${documentId}::uuid
+      UPDATE "chunks" c
+      SET "search_vector" = to_tsvector(
+        'simple',
+        COALESCE(d."name", '') || ' ' ||
+        COALESCE(
+          (
+            SELECT string_agg(hint, ' ')
+            FROM jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(c."metadata" -> 'retrievalHints') = 'array'
+                THEN c."metadata" -> 'retrievalHints'
+                ELSE '[]'::jsonb
+              END
+              ||
+              CASE
+                WHEN jsonb_typeof(d."metadata" -> 'retrievalHints') = 'array'
+                THEN d."metadata" -> 'retrievalHints'
+                ELSE '[]'::jsonb
+              END
+            ) AS hints(hint)
+          ),
+          ''
+        ) || ' ' ||
+        COALESCE(c."title", '') || ' ' ||
+        c."content"
+      )
+      FROM "documents" d
+      WHERE c."document_id" = d."id"
+        AND c."document_id" = ${documentId}::uuid
     `;
   }
 
   async refreshChunkSearchVector(chunkId: string) {
     await this.prisma.$executeRaw`
-      UPDATE "chunks"
-      SET "search_vector" = to_tsvector('simple', COALESCE("title", '') || ' ' || "content")
-      WHERE "id" = ${chunkId}::uuid
+      UPDATE "chunks" c
+      SET "search_vector" = to_tsvector(
+        'simple',
+        COALESCE(d."name", '') || ' ' ||
+        COALESCE(
+          (
+            SELECT string_agg(hint, ' ')
+            FROM jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(c."metadata" -> 'retrievalHints') = 'array'
+                THEN c."metadata" -> 'retrievalHints'
+                ELSE '[]'::jsonb
+              END
+              ||
+              CASE
+                WHEN jsonb_typeof(d."metadata" -> 'retrievalHints') = 'array'
+                THEN d."metadata" -> 'retrievalHints'
+                ELSE '[]'::jsonb
+              END
+            ) AS hints(hint)
+          ),
+          ''
+        ) || ' ' ||
+        COALESCE(c."title", '') || ' ' ||
+        c."content"
+      )
+      FROM "documents" d
+      WHERE c."document_id" = d."id"
+        AND c."id" = ${chunkId}::uuid
     `;
   }
 
@@ -193,25 +268,47 @@ export class ChunkIndexingService {
     }
   }
 
-  private async createEmbeddings(
+  private async replaceEmbeddings(
+    where: Prisma.ChunkEmbeddingWhereInput,
     embeddingModelId: string,
     chunks: EmbeddableChunk[],
     embeddings: number[][],
   ) {
-    if (chunks.length !== embeddings.length) {
-      throw new BadRequestException('chunk and embedding counts do not match');
-    }
+    this.assertEmbeddingCount(chunks, embeddings);
+
+    await this.prisma.$transaction(async (db) => {
+      await db.chunkEmbedding.deleteMany({ where });
+      await this.createEmbeddings(db, embeddingModelId, chunks, embeddings);
+    });
+  }
+
+  private async createEmbeddings(
+    db: KnowledgeDocsDbClient,
+    embeddingModelId: string,
+    chunks: EmbeddableChunk[],
+    embeddings: number[][],
+  ) {
+    this.assertEmbeddingCount(chunks, embeddings);
 
     for (const [index, chunk] of chunks.entries()) {
       const embedding = embeddings[index];
 
-      await this.prisma.$executeRaw`
+      await db.$executeRaw`
         INSERT INTO "chunk_embeddings"
           ("id", "chunk_id", "embedding_model_id", "embedding", "dimension")
         VALUES
           (${randomUUID()}::uuid, ${chunk.id}::uuid, ${embeddingModelId}::uuid,
            ${this.toVectorLiteral(embedding)}::vector, ${embedding.length})
       `;
+    }
+  }
+
+  private assertEmbeddingCount(
+    chunks: EmbeddableChunk[],
+    embeddings: number[][],
+  ) {
+    if (chunks.length !== embeddings.length) {
+      throw new BadRequestException('chunk and embedding counts do not match');
     }
   }
 
@@ -262,7 +359,15 @@ export class ChunkIndexingService {
   }
 
   private toEmbeddingText(chunk: EmbeddableChunk) {
-    return chunk.title ? `${chunk.title}\n${chunk.content}` : chunk.content;
+    return buildRetrievalText({
+      documentName: chunk.document.name,
+      retrievalHints: [
+        ...this.getRetrievalHints(chunk.metadata),
+        ...this.getRetrievalHints(chunk.document.metadata),
+      ],
+      title: chunk.title,
+      content: chunk.content,
+    });
   }
 
   private getImageAssetFileIdForEmbedding(
@@ -296,6 +401,16 @@ export class ChunkIndexingService {
     }
 
     return {};
+  }
+
+  private getRetrievalHints(metadata: Prisma.JsonValue) {
+    const value = this.toMetadataObject(metadata).retrievalHints;
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string');
   }
 
   private toDataUrl(mimeType: string, buffer: Buffer) {

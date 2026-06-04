@@ -1,11 +1,41 @@
 {
   "name": "@zeta/common",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Shared API contracts for Zeta frontend and backend.",
+  "private": true,
+  "types": "./index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "default": "./index.ts"
+    },
+    "./agents": {
+      "types": "./agents/index.ts",
+      "default": "./agents/index.ts"
+    },
+    "./chat": {
+      "types": "./chat/index.ts",
+      "default": "./chat/index.ts"
+    },
+    "./knowledge-bases": {
+      "types": "./knowledge-bases/index.ts",
+      "default": "./knowledge-bases/index.ts"
+    },
+    "./knowledge-docs": {
+      "types": "./knowledge-docs/index.ts",
+      "default": "./knowledge-docs/index.ts"
+    },
+    "./models": {
+      "types": "./models/index.ts",
+      "default": "./models/index.ts"
+    },
+    "./user": {
+      "types": "./user/index.ts",
+      "default": "./user/index.ts"
+    },
+    "./package.json": "./package.json"
   },
+  "sideEffects": false,
   "keywords": [],
   "author": "",
   "license": "ISC",

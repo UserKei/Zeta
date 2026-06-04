@@ -148,6 +148,7 @@ export type RetrievalHit = {
   chunkId: string;
   documentId: string;
   documentName: string;
+  documentPath?: string | null;
   title: string | null;
   content: string;
   position: number;

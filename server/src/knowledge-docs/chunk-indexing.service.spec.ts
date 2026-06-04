@@ -31,7 +31,7 @@ describe('ChunkIndexingService', () => {
   };
 
   const createService = () => {
-    const prisma = {
+    const prismaBase = {
       chunk: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findMany: jest.fn(),
@@ -45,6 +45,12 @@ describe('ChunkIndexingService', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       $executeRaw: jest.fn().mockResolvedValue(undefined),
+    };
+    const prisma = {
+      ...prismaBase,
+      $transaction: jest.fn((callback: (db: typeof prismaBase) => unknown) =>
+        Promise.resolve(callback(prismaBase)),
+      ),
     };
     const embeddingService = {
       embedInputs: jest.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
@@ -104,13 +110,25 @@ describe('ChunkIndexingService', () => {
         id: 'chunk-1',
         title: '标题',
         content: '正文',
-        metadata: {},
+        metadata: {
+          retrievalHints: [
+            'content/handbook/about/maintenance.md',
+            'handbook about maintenance',
+          ],
+        },
+        document: { name: '制度文档', metadata: {} },
       },
       {
         id: 'chunk-2',
         title: null,
         content: '补充正文',
         metadata: {},
+        document: {
+          name: '制度文档',
+          metadata: {
+            retrievalHints: ['content/handbook/about/_index.md'],
+          },
+        },
       },
     ]);
     embeddingService.embedInputs.mockResolvedValue([
@@ -123,7 +141,13 @@ describe('ChunkIndexingService', () => {
     expect(prisma.chunk.findMany).toHaveBeenCalledWith({
       where: { documentId: 'doc-1', status: 'ACTIVE' },
       orderBy: { position: 'asc' },
-      select: { id: true, title: true, content: true, metadata: true },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        metadata: true,
+        document: { select: { name: true, metadata: true } },
+      },
     });
     expect(prisma.chunkEmbedding.deleteMany).toHaveBeenCalledWith({
       where: {
@@ -132,8 +156,10 @@ describe('ChunkIndexingService', () => {
       },
     });
     expect(embeddingService.embedInputs).toHaveBeenCalledWith(embeddingModel, [
-      { text: '标题\n正文' },
-      { text: '补充正文' },
+      {
+        text: '制度文档\ncontent/handbook/about/maintenance.md\nhandbook about maintenance\n标题\n正文',
+      },
+      { text: '制度文档\ncontent/handbook/about/_index.md\n补充正文' },
     ]);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
     expect(prisma.$executeRaw.mock.calls[0]).toEqual(
@@ -153,12 +179,14 @@ describe('ChunkIndexingService', () => {
         title: '标题',
         content: '正文',
         metadata: {},
+        document: { name: '制度文档', metadata: {} },
       },
       {
         id: 'chunk-2',
         title: null,
         content: '补充正文',
         metadata: {},
+        document: { name: '制度文档', metadata: {} },
       },
     ]);
     embeddingService.embedInputs.mockResolvedValue([[0.1, 0.2]]);
@@ -167,6 +195,53 @@ describe('ChunkIndexingService', () => {
       service.rebuildDocumentEmbeddings('doc-1', embeddingModel),
     ).rejects.toBeInstanceOf(BadRequestException);
 
+    expect(prisma.chunkEmbedding.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing document embeddings when provider embedding fails', async () => {
+    const { service, prisma, embeddingService } = createService();
+
+    prisma.chunk.findMany.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        title: '标题',
+        content: '正文',
+        metadata: {},
+        document: { name: '制度文档', metadata: {} },
+      },
+    ]);
+    embeddingService.embedInputs.mockRejectedValue(
+      new Error('embedding provider timeout'),
+    );
+
+    await expect(
+      service.rebuildDocumentEmbeddings('doc-1', embeddingModel),
+    ).rejects.toThrow('embedding provider timeout');
+
+    expect(prisma.chunkEmbedding.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing chunk embedding when provider embedding fails', async () => {
+    const { service, prisma, embeddingService } = createService();
+
+    prisma.chunk.findUniqueOrThrow.mockResolvedValue({
+      id: 'chunk-1',
+      title: '标题',
+      content: '正文',
+      metadata: {},
+      document: { name: '制度文档', metadata: {} },
+    });
+    embeddingService.embedInputs.mockRejectedValue(
+      new Error('embedding provider timeout'),
+    );
+
+    await expect(
+      service.rebuildChunkEmbedding('chunk-1', embeddingModel),
+    ).rejects.toThrow('embedding provider timeout');
+
+    expect(prisma.chunkEmbedding.deleteMany).not.toHaveBeenCalled();
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
@@ -183,6 +258,7 @@ describe('ChunkIndexingService', () => {
         id: 'chunk-1',
         title: '第 1 页',
         content: '页面图片',
+        document: { name: '扫描件', metadata: {} },
         metadata: {
           contentKind: 'PDF_PAGE_IMAGE',
           assetFileId: 'asset-file-1',
@@ -195,7 +271,7 @@ describe('ChunkIndexingService', () => {
     expect(fileStorageService.readBuffer).toHaveBeenCalledWith('asset-file-1');
     expect(embeddingService.embedInputs).toHaveBeenCalledWith(multimodalModel, [
       {
-        text: '第 1 页\n页面图片',
+        text: '扫描件\n第 1 页\n页面图片',
         image: {
           dataUrl: 'data:image/png;base64,aW1hZ2UtYnl0ZXM=',
         },

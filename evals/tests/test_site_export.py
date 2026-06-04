@@ -1,0 +1,98 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from evals.site_export import export_ragas_reports_for_docs
+
+
+class SiteExportTest(unittest.TestCase):
+    def test_exports_ragas_reports_and_generates_docs_index(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reports_dir = root / "evals" / "reports"
+            docs_site_dir = root / "docs-site"
+            reports_dir.mkdir(parents=True)
+
+            (reports_dir / "ragas-report-20260604-141149.md").write_text(
+                "\n".join(
+                    [
+                        "# Zeta RAG Evaluation Report",
+                        "",
+                        "## Ragas Scores",
+                        "",
+                        "| Metric | Average |",
+                        "| --- | ---: |",
+                        "| answer_relevancy | 0.9500 |",
+                        "| context_precision | 0.5400 |",
+                        "| context_recall | 0.7000 |",
+                        "| faithfulness | 0.9200 |",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (reports_dir / "ragas-report-20260604-141149.csv").write_text(
+                "case_id,answer_relevancy\ncase-1,0.95\n",
+                encoding="utf-8",
+            )
+
+            export_ragas_reports_for_docs(
+                reports_dir=reports_dir,
+                docs_site_dir=docs_site_dir,
+            )
+
+            public_report = (
+                docs_site_dir
+                / "public"
+                / "eval-reports"
+                / "ragas"
+                / "ragas-report-20260604-141149.md"
+            )
+            public_csv = public_report.with_suffix(".csv")
+            index_page = docs_site_dir / "eval-reports" / "index.md"
+            latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            deepeval_dir = (
+                docs_site_dir / "public" / "eval-reports" / "deepeval"
+            )
+
+            self.assertTrue(public_report.exists())
+            self.assertTrue(public_csv.exists())
+            self.assertTrue(deepeval_dir.exists())
+            self.assertIn(
+                "| 2026-06-04 14:11:49 | 0.9500 | 0.5400 | 0.7000 | 0.9200 |",
+                index_page.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "./ragas/ragas-report-20260604-141149.md",
+                index_page.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "# Zeta RAG Evaluation Report",
+                latest_page.read_text(encoding="utf-8"),
+            )
+
+    def test_writes_empty_index_when_no_reports_exist(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            docs_site_dir = root / "docs-site"
+
+            export_ragas_reports_for_docs(
+                reports_dir=root / "evals" / "reports",
+                docs_site_dir=docs_site_dir,
+            )
+
+            index_page = docs_site_dir / "eval-reports" / "index.md"
+            latest_page = docs_site_dir / "eval-reports" / "latest.md"
+
+            self.assertIn(
+                "暂时还没有可展示的 Ragas 报告。",
+                index_page.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "暂时还没有可展示的 Ragas 报告。",
+                latest_page.read_text(encoding="utf-8"),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

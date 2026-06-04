@@ -6,7 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ChatModelService, type ChatModelRequest } from '@libs/model-adapters';
-import { PrismaService, RetrievalService } from '@libs/shared';
+import { PrismaService } from '@libs/shared';
+import { buildAnswerContextText } from '@libs/shared/retrieval/retrieval-text';
 import {
   AgentStatus,
   AiModelType,
@@ -29,6 +30,7 @@ import type {
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { AiExtractedDocumentService } from '../knowledge-docs/ai-extracted-document.service';
 import { KnowledgeDocsService } from '../knowledge-docs/knowledge-docs.service';
+import { RetrievalService } from '../retrieval/retrieval.service';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
 
 type ChatSessionRecord = Prisma.ChatSessionGetPayload<{
@@ -619,7 +621,7 @@ export class ChatService {
     const context = hits
       .map(
         (hit, index) =>
-          `[${index + 1}] ${hit.documentName} / 分块 #${hit.position + 1}\n${hit.content}`,
+          `[${index + 1}] ${hit.documentName} / 分块 #${hit.position + 1}\n${buildAnswerContextText(hit)}`,
       )
       .join('\n\n');
 
