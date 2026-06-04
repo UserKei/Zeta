@@ -49,17 +49,13 @@
    项目只使用根目录 `.env`，评测脚本不会再读取 `evals/.env`。
 
    ```env
-   ZETA_API_BASE_URL=http://localhost:3000
    ZETA_USERNAME=admin
    ZETA_PASSWORD=123456
-   ZETA_EVAL_AGENT_NAME=GitLab Handbook Expert
    DASHSCOPE_API_KEY=<dashscope-api-key>
    DEEPSEEK_API_KEY=<deepseek-api-key>
-   ZETA_EVAL_JUDGE_MODEL=deepseek-v4-flash
-   ZETA_EVAL_JUDGE_THINKING=disabled
    ```
 
-   默认情况下，Ragas 的 LLM-as-a-Judge 使用 DeepSeek OpenAI-compatible 接口，Embedding 评测继续使用 DashScope `text-embedding-v4`。如果需要改成其他 OpenAI-compatible 判官，可以设置 `ZETA_EVAL_JUDGE_API_KEY`、`ZETA_EVAL_JUDGE_BASE_URL` 和 `ZETA_EVAL_JUDGE_MODEL`；`OPENAI_API_KEY` 仅作为兼容 fallback，不是默认推荐配置。
+   默认情况下，评测脚本连接 `http://localhost:3000`，按名称查找 `GitLab Handbook Expert`，Ragas 的 LLM-as-a-Judge 使用 DeepSeek `deepseek-v4-flash`，Embedding 评测使用 DashScope `text-embedding-v4`。如果需要自定义运行，可以设置 `ZETA_API_BASE_URL`、`ZETA_EVAL_AGENT_NAME`、`ZETA_EVAL_TOP_K`、`ZETA_EVAL_REPORT_DIR`、`ZETA_EVAL_JUDGE_*` 或 `ZETA_EVAL_EMBEDDING_*`；这些变量都有默认值，不放在 `.env.example`。
 
 ## 准备数据集
 
