@@ -63,4 +63,4 @@ pnpm docs:build
 pnpm docs:preview
 ```
 
-`docs:reports` 会把 `evals/reports/` 中的 Ragas 报告导出到文档站静态目录，并生成报告索引页。
+`docs:reports` 会把 `evals/reports/` 中的 Ragas 报告导出到文档站静态目录，并生成评测报告页。
