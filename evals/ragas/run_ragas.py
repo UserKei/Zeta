@@ -23,7 +23,6 @@ from evals.ragas.dashscope_embeddings import (
 )
 from evals.shared.zeta_client import ZetaClient
 
-DEFAULT_KNOWLEDGE_BASE_NAME = "GitLab Handbook"
 DEFAULT_AGENT_NAME = "GitLab Handbook Expert"
 DEFAULT_RAGAS_JUDGE_BASE_URL = "https://api.deepseek.com"
 DEFAULT_RAGAS_JUDGE_MODEL = "deepseek-v4-flash"
@@ -43,14 +42,12 @@ class EvaluationCase:
     question: str
     reference: str
     expected_documents: list[str]
-    knowledge_base_id: str | None = None
     agent_id: str | None = None
     top_k: int | None = None
 
 
 @dataclass(frozen=True)
 class EvaluationTargets:
-    knowledge_base_id: str
     agent_id: str
 
 
@@ -81,12 +78,7 @@ def main() -> None:
     )
     targets = resolve_evaluation_targets(
         client,
-        knowledge_base_id=args.knowledge_base_id,
         agent_id=args.agent_id,
-        knowledge_base_name=os.getenv(
-            "ZETA_EVAL_KNOWLEDGE_BASE_NAME",
-            DEFAULT_KNOWLEDGE_BASE_NAME,
-        ),
         agent_name=os.getenv("ZETA_EVAL_AGENT_NAME", DEFAULT_AGENT_NAME),
     )
 
@@ -94,7 +86,6 @@ def main() -> None:
         run_case(
             client=client,
             case=case,
-            default_knowledge_base_id=targets.knowledge_base_id,
             default_agent_id=targets.agent_id,
             default_top_k=args.top_k,
         )
@@ -128,6 +119,11 @@ def main() -> None:
     print(f"Markdown report: {markdown_path}")
     print(f"Case CSV: {csv_path}")
 
+    raise_if_blocking_ragas_error(
+        ragas_error,
+        allow_ragas_failure=args.allow_ragas_failure,
+    )
+
 
 def load_environment() -> None:
     load_dotenv(Path(".env"))
@@ -135,16 +131,9 @@ def load_environment() -> None:
 
 def resolve_evaluation_targets(
     client: ZetaClient,
-    knowledge_base_id: str | None,
     agent_id: str | None,
-    knowledge_base_name: str,
     agent_name: str,
 ) -> EvaluationTargets:
-    resolved_knowledge_base_id = knowledge_base_id or find_resource_id_by_name(
-        client.list_knowledge_bases(),
-        knowledge_base_name,
-        resource_label="knowledge base",
-    )
     resolved_agent_id = agent_id or find_resource_id_by_name(
         client.list_agents(),
         agent_name,
@@ -152,7 +141,6 @@ def resolve_evaluation_targets(
     )
 
     return EvaluationTargets(
-        knowledge_base_id=resolved_knowledge_base_id,
         agent_id=resolved_agent_id,
     )
 
@@ -187,7 +175,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--knowledge-base-id",
         default=None,
-        help="Default knowledge base id for retrieval-test",
+        help=(
+            "Deprecated. Ragas evaluation calls Agent chat; "
+            "the Agent binding decides which knowledge bases are used."
+        ),
     )
     parser.add_argument(
         "--agent-id",
@@ -200,8 +191,31 @@ def parse_args() -> argparse.Namespace:
         default=int(os.getenv("ZETA_EVAL_TOP_K", "5")),
         help="Default retrieval topK",
     )
+    parser.add_argument(
+        "--allow-ragas-failure",
+        action="store_true",
+        default=read_allow_ragas_failure(),
+        help=(
+            "Write a base report and exit 0 even if Ragas scoring fails. "
+            "By default scoring failure exits with status 1."
+        ),
+    )
 
     return parser.parse_args()
+
+
+def read_allow_ragas_failure() -> bool:
+    value = os.getenv("ZETA_EVAL_ALLOW_RAGAS_FAILURE", "false")
+
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def raise_if_blocking_ragas_error(
+    ragas_error: str | None,
+    allow_ragas_failure: bool,
+) -> None:
+    if ragas_error and not allow_ragas_failure:
+        raise SystemExit(1)
 
 
 def read_ragas_model_config() -> RagasModelConfig:
@@ -333,7 +347,6 @@ def parse_case(payload: dict[str, Any], line_number: int) -> EvaluationCase:
         question=question,
         reference=reference,
         expected_documents=expected_documents,
-        knowledge_base_id=read_optional_string(payload, "knowledge_base_id"),
         agent_id=read_optional_string(payload, "agent_id"),
         top_k=int(payload["top_k"]) if payload.get("top_k") else None,
     )
@@ -342,16 +355,11 @@ def parse_case(payload: dict[str, Any], line_number: int) -> EvaluationCase:
 def run_case(
     client: ZetaClient,
     case: EvaluationCase,
-    default_knowledge_base_id: str | None,
     default_agent_id: str | None,
     default_top_k: int,
 ) -> EvaluationCaseResult:
-    knowledge_base_id = case.knowledge_base_id or default_knowledge_base_id
     agent_id = case.agent_id or default_agent_id
     top_k = case.top_k or default_top_k
-
-    if not knowledge_base_id:
-        return failed_case(case, "knowledge_base_id is required")
 
     if not agent_id:
         return failed_case(case, "agent_id is required")

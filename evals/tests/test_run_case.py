@@ -44,7 +44,6 @@ class RunCaseTest(unittest.TestCase):
         result = run_ragas.run_case(
             client=client,
             case=case,
-            default_knowledge_base_id="kb-1",
             default_agent_id="agent-1",
             default_top_k=5,
         )
@@ -80,7 +79,6 @@ class RunCaseTest(unittest.TestCase):
         result = run_ragas.run_case(
             client=client,
             case=case,
-            default_knowledge_base_id="kb-1",
             default_agent_id="agent-1",
             default_top_k=5,
         )
@@ -97,6 +95,33 @@ class RunCaseTest(unittest.TestCase):
             result.retrieved_documents,
             ["content/handbook/acquisitions/_index.md"],
         )
+
+    def test_run_case_requires_agent_not_knowledge_base(self):
+        client = FakeZetaClient(
+            {
+                "assistantMessage": {
+                    "content": "The answer.",
+                    "citations": [],
+                },
+                "hits": [],
+            }
+        )
+        case = run_ragas.EvaluationCase(
+            case_id="case-3",
+            question="What is the handbook?",
+            reference="The handbook describes company practices.",
+            expected_documents=[],
+        )
+
+        result = run_ragas.run_case(
+            client=client,
+            case=case,
+            default_agent_id=None,
+            default_top_k=5,
+        )
+
+        self.assertEqual(result.error, "agent_id is required")
+        self.assertFalse(client.retrieval_test_called)
 
 
 if __name__ == "__main__":

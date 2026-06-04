@@ -90,6 +90,28 @@ class EnvLoadingTest(unittest.TestCase):
         ):
             run_ragas.read_ragas_model_config()
 
+    def test_ragas_failure_is_blocking_by_default(self):
+        with self.assertRaises(SystemExit) as error:
+            run_ragas.raise_if_blocking_ragas_error(
+                "judge request failed",
+                allow_ragas_failure=False,
+            )
+
+        self.assertEqual(error.exception.code, 1)
+
+    def test_ragas_failure_can_be_explicitly_allowed(self):
+        run_ragas.raise_if_blocking_ragas_error(
+            "judge request failed",
+            allow_ragas_failure=True,
+        )
+
+    def test_allow_ragas_failure_reads_boolean_environment(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(run_ragas.read_allow_ragas_failure())
+
+        with patch.dict("os.environ", {"ZETA_EVAL_ALLOW_RAGAS_FAILURE": "true"}):
+            self.assertTrue(run_ragas.read_allow_ragas_failure())
+
     def test_create_ragas_judge_llm_passes_thinking_extra_body(self):
         calls = []
 

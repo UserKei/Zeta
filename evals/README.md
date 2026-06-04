@@ -24,6 +24,8 @@
 - 空回答数量。
 - 空引用数量。
 
+评测脚本是 Agent-centric：它调用 Agent Chat 接口，检索范围来自 Agent 已绑定的知识库，不单独绕过 Agent 指定知识库。
+
 ## 准备环境
 
 1. 启动 Zeta 后端。
@@ -50,7 +52,6 @@
    ZETA_API_BASE_URL=http://localhost:3000
    ZETA_USERNAME=admin
    ZETA_PASSWORD=123456
-   ZETA_EVAL_KNOWLEDGE_BASE_NAME=GitLab Handbook
    ZETA_EVAL_AGENT_NAME=GitLab Handbook Expert
    DASHSCOPE_API_KEY=<dashscope-api-key>
    DEEPSEEK_API_KEY=<deepseek-api-key>
@@ -90,7 +91,7 @@ evals/datasets/gitlab-handbook.sample.jsonl
 CORPUS_LIMIT=20 pnpm import:markdown-corpus
 ```
 
-导入脚本会自动 clone / pull 到 `example/corpora/gitlab-handbook/`，并创建或复用默认评测资源：Chat 模型、Embedding 模型、Reranker 模型、知识库和 Agent。评测脚本默认会按名称查找 `GitLab Handbook` 和 `GitLab Handbook Expert`，不需要手动填写 UUID。
+导入脚本会自动 clone / pull 到 `example/corpora/gitlab-handbook/`，并创建或复用默认评测资源：Chat 模型、Embedding 模型、Reranker 模型、知识库和 Agent。评测脚本默认会按名称查找 `GitLab Handbook Expert` 这个 Agent，不需要手动填写 UUID。
 
 ```bash
 pnpm eval:ragas --dataset evals/datasets/gitlab-handbook.sample.jsonl
@@ -107,10 +108,11 @@ pnpm eval:ragas
 ```bash
 python3 -m evals.ragas.run_ragas \
   --dataset evals/datasets/zeta-demo.jsonl \
-  --knowledge-base-id <knowledge-base-id> \
   --agent-id <agent-id> \
   --top-k 5
 ```
+
+如果 Ragas 打分失败，脚本仍会写出基础报告，但默认以非 0 状态退出，避免 CI 或手工评测误判为成功。需要临时降级时，可以加 `--allow-ragas-failure` 或设置 `ZETA_EVAL_ALLOW_RAGAS_FAILURE=true`。
 
 输出：
 

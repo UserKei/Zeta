@@ -10,7 +10,6 @@
   "question": "VPN 权限多久生效？",
   "reference": "VPN 权限审批通过后通常 15 分钟内生效。",
   "expected_documents": ["IT 服务台 FAQ"],
-  "knowledge_base_id": "可选，缺省时使用默认评测知识库",
   "agent_id": "可选，缺省时使用默认评测 Agent",
   "top_k": 5
 }
@@ -21,7 +20,7 @@
 - `question`：评测问题。
 - `reference`：参考答案，用于 Ragas 的 context recall 等指标。
 - `expected_documents`：期望命中的文档标识，用于脚本自己的命中文档统计。可以写文档名称；如果语料里有大量 `index`、`README` 这类重名页面，建议写导入 metadata 里的 `relativePath`，例如 `content/handbook/about/contributing.md`。
-- `knowledge_base_id` / `agent_id`：可以逐条覆盖默认知识库和 Agent。
+- `agent_id`：可以逐条覆盖默认评测 Agent。评测脚本实际调用 Agent Chat，知识库范围由 Agent 绑定关系决定。
 - `top_k`：可以逐条覆盖默认召回数量。
 
 不要提交真实生产对话、密钥或包含敏感信息的语料。
