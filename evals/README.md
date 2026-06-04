@@ -124,6 +124,21 @@ pnpm eval:ragas --baseline ""
 pnpm eval:ragas --baseline evals/baselines/other.json
 ```
 
+## 发布到交付文档站
+
+文档站构建前可以运行：
+
+```bash
+pnpm docs:reports
+```
+
+这个命令会把 `evals/reports/` 中的 Ragas Markdown / CSV 复制到 `apps/docs-site/public/eval-reports/ragas/`，并生成：
+
+- `apps/docs-site/eval-reports/index.md`
+- `apps/docs-site/eval-reports/latest.md`
+
+DeepEval 如果后续接入，可以把它生成的 HTML 报告放到 `apps/docs-site/public/eval-reports/deepeval/`，由文档站索引页链接展示。当前只做离线静态报告发布，不接生产监控。
+
 ## 取舍
 
 - 第一版只做离线评测，不做线上 dashboard。

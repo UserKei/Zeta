@@ -289,6 +289,17 @@ pnpm --filter @zeta/web build
 pnpm --filter @zeta/server build
 ```
 
+### 交付文档站
+
+```bash
+pnpm docs:reports
+pnpm docs:dev
+pnpm docs:build
+pnpm docs:preview
+```
+
+文档站位于 `apps/docs-site/`，使用 VitePress 构建。`docs:reports` 会把 `evals/reports/` 中的 Ragas Markdown / CSV 报告导出到文档站静态目录，并生成报告索引页。
+
 ### 本地基础设施
 
 ```bash
@@ -340,6 +351,9 @@ Zeta/
 ├── .husky/                          # Git hooks
 ├── docs/                            # 项目文档和实现方案
 ├── apps/
+│   ├── docs-site/                   # VitePress 交付文档站
+│   │   ├── .vitepress/              # VitePress 配置和主题扩展
+│   │   └── public/eval-reports/     # RAG / DeepEval 静态报告挂载目录
 │   └── web/                         # Vue Web 应用
 │       ├── src/
 │       │   ├── apis/                # 前端 API 请求封装

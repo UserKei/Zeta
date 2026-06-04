@@ -71,3 +71,12 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # local example corpora and import scratch files
 /example/corpora/*
 !/example/corpora/.gitignore
+
+# generated documentation site artifacts
+/apps/docs-site/.vitepress/cache
+/apps/docs-site/eval-reports/index.md
+/apps/docs-site/eval-reports/latest.md
+/apps/docs-site/public/eval-reports/ragas/*
+!/apps/docs-site/public/eval-reports/ragas/.gitkeep
+/apps/docs-site/public/eval-reports/deepeval/*
+!/apps/docs-site/public/eval-reports/deepeval/.gitkeep
