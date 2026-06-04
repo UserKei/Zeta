@@ -140,4 +140,82 @@ describe('KnowledgeDocsService manual documents', () => {
     ).not.toHaveBeenCalled();
     expect(documentUpdate).not.toHaveBeenCalled();
   });
+
+  it('removes document database records in one transaction before file cleanup', async () => {
+    const document = {
+      id: 'doc-1',
+      sourceFileId: 'source-file-1',
+      metadata: {
+        assets: [{ fileId: 'asset-file-1' }],
+      },
+    };
+    const transactionDb = {
+      chatCitation: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      chunkEmbedding: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      chunk: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'chunk-1' }, { id: 'chunk-2' }]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+      document: {
+        delete: jest.fn().mockResolvedValue(document),
+      },
+    };
+    const prisma = {
+      document: {
+        findUnique: jest.fn().mockResolvedValue(document),
+      },
+      $transaction: jest.fn((callback: (db: typeof transactionDb) => unknown) =>
+        Promise.resolve(callback(transactionDb)),
+      ),
+    };
+    const fileStorageService = {
+      removeFilesIfUnreferenced: jest.fn().mockResolvedValue(undefined),
+    };
+    const documentAssetService = {
+      getDocumentAssetFileIds: jest.fn().mockReturnValue(['asset-file-1']),
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      fileStorageService as never,
+      {} as never,
+      {} as never,
+      documentAssetService as never,
+      {} as never,
+    );
+
+    await expect(service.remove('doc-1')).resolves.toEqual({ id: 'doc-1' });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(transactionDb.chunk.findMany).toHaveBeenCalledWith({
+      where: { documentId: 'doc-1' },
+      select: { id: true },
+    });
+    expect(transactionDb.chatCitation.deleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { documentId: 'doc-1' },
+          { chunkId: { in: ['chunk-1', 'chunk-2'] } },
+        ],
+      },
+    });
+    expect(transactionDb.chunkEmbedding.deleteMany).toHaveBeenCalledWith({
+      where: { chunkId: { in: ['chunk-1', 'chunk-2'] } },
+    });
+    expect(transactionDb.chunk.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ['chunk-1', 'chunk-2'] } },
+    });
+    expect(transactionDb.document.delete).toHaveBeenCalledWith({
+      where: { id: 'doc-1' },
+    });
+    expect(fileStorageService.removeFilesIfUnreferenced).toHaveBeenCalledWith([
+      'source-file-1',
+      'asset-file-1',
+    ]);
+  });
 });

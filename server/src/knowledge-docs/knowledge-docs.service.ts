@@ -439,25 +439,27 @@ export class KnowledgeDocsService {
       throw new NotFoundException('document does not exist');
     }
 
-    const chunks = await this.prisma.chunk.findMany({
-      where: { documentId },
-      select: { id: true },
+    await this.prisma.$transaction(async (db) => {
+      const chunks = await db.chunk.findMany({
+        where: { documentId },
+        select: { id: true },
+      });
+      const chunkIds = chunks.map((chunk) => chunk.id);
+
+      if (chunkIds.length > 0) {
+        await db.chatCitation.deleteMany({
+          where: {
+            OR: [{ documentId }, { chunkId: { in: chunkIds } }],
+          },
+        });
+        await db.chunkEmbedding.deleteMany({
+          where: { chunkId: { in: chunkIds } },
+        });
+        await db.chunk.deleteMany({ where: { id: { in: chunkIds } } });
+      }
+
+      await db.document.delete({ where: { id: documentId } });
     });
-    const chunkIds = chunks.map((chunk) => chunk.id);
-
-    if (chunkIds.length > 0) {
-      await this.prisma.chatCitation.deleteMany({
-        where: {
-          OR: [{ documentId }, { chunkId: { in: chunkIds } }],
-        },
-      });
-      await this.prisma.chunkEmbedding.deleteMany({
-        where: { chunkId: { in: chunkIds } },
-      });
-      await this.prisma.chunk.deleteMany({ where: { id: { in: chunkIds } } });
-    }
-
-    await this.prisma.document.delete({ where: { id: documentId } });
     await this.fileStorageService.removeFilesIfUnreferenced(
       [
         document.sourceFileId,
