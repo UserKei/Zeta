@@ -164,6 +164,50 @@ class SiteExportTest(unittest.TestCase):
                 index_page.read_text(encoding="utf-8"),
             )
 
+    def test_exports_deepeval_html_reports_and_links_them_from_index(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reports_dir = root / "evals" / "reports"
+            published_deepeval_dir = (
+                root / "evals" / "published-reports" / "deepeval"
+            )
+            docs_site_dir = root / "docs-site"
+            reports_dir.mkdir(parents=True)
+            published_deepeval_dir.mkdir(parents=True)
+
+            (published_deepeval_dir / "deepeval-report-20260604-142000.html").write_text(
+                "<html><body>DeepEval baseline</body></html>",
+                encoding="utf-8",
+            )
+            (published_deepeval_dir / "deepeval-report-20260604-142000.json").write_text(
+                '{"name":"DeepEval baseline"}',
+                encoding="utf-8",
+            )
+
+            export_ragas_reports_for_docs(
+                reports_dir=reports_dir,
+                docs_site_dir=docs_site_dir,
+                published_deepeval_dir=published_deepeval_dir,
+            )
+
+            public_html = (
+                docs_site_dir
+                / "public"
+                / "eval-reports"
+                / "deepeval"
+                / "deepeval-report-20260604-142000.html"
+            )
+            public_json = public_html.with_suffix(".json")
+            index_page = docs_site_dir / "eval-reports" / "index.md"
+
+            self.assertTrue(public_html.exists())
+            self.assertTrue(public_json.exists())
+            self.assertIn("## DeepEval 报告", index_page.read_text(encoding="utf-8"))
+            self.assertIn(
+                "./deepeval/deepeval-report-20260604-142000.html",
+                index_page.read_text(encoding="utf-8"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
