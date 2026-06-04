@@ -1,6 +1,6 @@
 # RAG 评测报告
 
-Zeta 的 RAG 评测是离线流程：Python 脚本通过 HTTP 调用已经启动的 Zeta 后端，拿到 Agent 回答、检索上下文和引用信息，再交给 Ragas 打分。
+Zeta 的 RAG 评测是离线流程：Python 脚本通过 HTTP 调用已经启动的 Zeta 后端，拿到 Agent 回答、检索上下文和引用信息，再交给 Ragas 或 DeepEval 打分。
 
 评测逻辑不放进 NestJS 请求链路，也不作为生产监控的一部分。
 
@@ -10,13 +10,21 @@ Zeta 的 RAG 评测是离线流程：Python 脚本通过 HTTP 调用已经启动
 - Agent 回答是否为空。
 - 回答是否带有引用。
 - Ragas 指标是否能形成可复跑的质量基线。
+- DeepEval 是否能生成适合交付文档站展示的本地 HTML 报告。
 
-当前指标：
+当前 Ragas 指标：
 
 - `answer_relevancy`
 - `context_precision`
 - `context_recall`
 - `faithfulness`
+
+当前 DeepEval 指标：
+
+- `AnswerRelevancyMetric`
+- `FaithfulnessMetric`
+- `ContextualPrecisionMetric`
+- `ContextualRecallMetric`
 
 脚本还会额外统计：
 
@@ -33,6 +41,12 @@ Zeta 的 RAG 评测是离线流程：Python 脚本通过 HTTP 调用已经启动
 pnpm eval:ragas
 ```
 
+DeepEval 复用同一份数据集和 Agent Chat 调用链路：
+
+```bash
+pnpm eval:deepeval
+```
+
 默认数据集：
 
 ```text
@@ -44,6 +58,8 @@ evals/datasets/gitlab-handbook.sample.jsonl
 ```text
 evals/reports/ragas-report-<timestamp>.md
 evals/reports/ragas-report-<timestamp>.csv
+evals/reports/deepeval-report-<timestamp>.html
+evals/reports/deepeval-report-<timestamp>.json
 ```
 
 ## 当前 Ragas 结果
@@ -78,14 +94,14 @@ pnpm docs:reports
 3. 把原始报告复制到 `apps/docs-site/public/eval-reports/ragas/`。
 4. 生成 [评测报告索引](/eval-reports/)。
 5. 生成 [最新 Ragas 报告](/eval-reports/latest)。
-6. 预留 `apps/docs-site/public/eval-reports/deepeval/`，后续可直接挂载 DeepEval HTML 报告。
+6. 读取 DeepEval HTML / JSON 报告并复制到 `apps/docs-site/public/eval-reports/deepeval/`。
 
-## DeepEval 预留方式
+## DeepEval 报告方式
 
-DeepEval 当前还没有接入，所以文档站里不会展示 DeepEval 分数。后续如果接入，可以把 HTML 报告复制到：
+DeepEval 走本地 HTML/JSON 报告，不接 Confident AI 云 dashboard。确认要随文档站发布的报告可以放到：
 
 ```text
-apps/docs-site/public/eval-reports/deepeval/
+evals/published-reports/deepeval/
 ```
 
-然后在报告索引页补充链接即可。当前不接 Confident AI 云平台，也不做线上 dashboard。
+然后运行 `pnpm docs:reports`。脚本会把报告复制到文档站 public 目录，并在评测报告索引页生成链接。

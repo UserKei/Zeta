@@ -1,6 +1,6 @@
 # Zeta RAG Evaluation
 
-这里是 Zeta 的离线 RAG 测评小工程。第一版只接入 Ragas，通过 HTTP 调用已经启动的 Zeta 后端，不把评测逻辑放进 NestJS 请求链路。
+这里是 Zeta 的离线 RAG 测评小工程。脚本通过 HTTP 调用已经启动的 Zeta 后端，不把评测逻辑放进 NestJS 请求链路。
 
 ## 评测目标
 
@@ -8,13 +8,21 @@
 - Agent 回答是否为空。
 - 回答是否带有引用。
 - Ragas 指标是否能给出可复跑的质量基线。
+- DeepEval 是否能生成更适合文档站展示的本地 HTML 报告。
 
-第一版指标：
+Ragas 指标：
 
 - `faithfulness`
 - `answer_relevancy`
 - `context_precision`
 - `context_recall`
+
+DeepEval 第一版同样关注 RAG 相关指标：
+
+- `AnswerRelevancyMetric`
+- `FaithfulnessMetric`
+- `ContextualPrecisionMetric`
+- `ContextualRecallMetric`
 
 脚本还会额外统计：
 
@@ -99,6 +107,12 @@ pnpm eval:ragas --dataset evals/datasets/gitlab-handbook.sample.jsonl
 pnpm eval:ragas
 ```
 
+运行 DeepEval：
+
+```bash
+pnpm eval:deepeval
+```
+
 也可以手动指定参数：
 
 ```bash
@@ -114,8 +128,12 @@ python3 -m evals.ragas.run_ragas \
 
 - `evals/reports/ragas-report-<timestamp>.md`
 - `evals/reports/ragas-report-<timestamp>.csv`
+- `evals/reports/deepeval-report-<timestamp>.html`
+- `evals/reports/deepeval-report-<timestamp>.json`
 
 Markdown 报告会包含本次运行的元信息，例如 Agent、绑定知识库、数据集路径、topK、Judge 模型、Embedding 评测模型、rerank 是否启用、当前代码 commit 和语料来源 ref。这样后续比较报告时，可以先确认两次评测是不是在相同条件下运行。
+
+DeepEval 默认也使用 `DEEPSEEK_API_KEY` 和 `deepseek-v4-flash` 作为 judge。它复用同一份数据集和同一个 Agent Chat 调用结果，但输出重点是本地 HTML/JSON 报告，方便挂到文档站或 GitHub Pages。
 
 默认会读取 `evals/baselines/gitlab-handbook.json`，在报告中展示当前指标和 baseline 的差值。这个 baseline 只用于人工对比，不作为 CI 门禁。需要跳过或替换时可以设置：
 
@@ -132,16 +150,17 @@ pnpm eval:ragas --baseline evals/baselines/other.json
 pnpm docs:reports
 ```
 
-这个命令会把 `evals/reports/` 中的 Ragas Markdown / CSV 复制到 `apps/docs-site/public/eval-reports/ragas/`，并生成：
+这个命令会把 `evals/reports/` 中的 Ragas Markdown / CSV 复制到 `apps/docs-site/public/eval-reports/ragas/`，也会把 DeepEval HTML / JSON 复制到 `apps/docs-site/public/eval-reports/deepeval/`，并生成：
 
 - `apps/docs-site/eval-reports/index.md`
 - `apps/docs-site/eval-reports/latest.md`
 
-DeepEval 如果后续接入，可以把它生成的 HTML 报告放到 `apps/docs-site/public/eval-reports/deepeval/`，由文档站索引页链接展示。当前只做离线静态报告发布，不接生产监控。
+如果要随仓库发布一份 DeepEval 基准报告，把确认过的 HTML / JSON 放到 `evals/published-reports/deepeval/`，再运行 `pnpm docs:reports` 即可。
 
 ## 取舍
 
 - 第一版只做离线评测，不做线上 dashboard。
-- 第一版只接 Ragas，不同时引入 DeepEval。
+- Ragas 用于稳定的 Markdown / CSV 指标基线。
+- DeepEval 用于生成本地 HTML / JSON 报告，方便文档站展示。
 - 评测脚本黑盒调用 Zeta API，不修改业务接口。
 - 评测数据由人工维护，避免用 mock 数据冒充真实效果。

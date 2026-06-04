@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 RAGAS_REPORT_PATTERN = re.compile(r"ragas-report-(\d{8})-(\d{6})\.md$")
+DEEPEVAL_REPORT_PATTERN = re.compile(r"deepeval-report-(\d{8})-(\d{6})\.html$")
 RAGAS_SCORE_NAMES = (
     "answer_relevancy",
     "context_precision",
@@ -24,12 +25,20 @@ class RagasReportEntry:
     scores: dict[str, str]
 
 
+@dataclass(frozen=True)
+class DeepEvalReportEntry:
+    html_path: Path
+    json_path: Path | None
+    display_time: str
+
+
 def main() -> None:
     args = parse_args()
     export_ragas_reports_for_docs(
         reports_dir=Path(args.reports_dir),
         docs_site_dir=Path(args.docs_site_dir),
         published_ragas_dir=Path(args.published_ragas_dir),
+        published_deepeval_dir=Path(args.published_deepeval_dir),
     )
 
 
@@ -52,6 +61,14 @@ def parse_args() -> argparse.Namespace:
         default="evals/published-reports/ragas",
         help="Tracked Ragas reports that should always be published to the docs site.",
     )
+    parser.add_argument(
+        "--published-deepeval-dir",
+        default="evals/published-reports/deepeval",
+        help=(
+            "Tracked DeepEval HTML reports that should always be published "
+            "to the docs site."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -60,6 +77,7 @@ def export_ragas_reports_for_docs(
     reports_dir: Path,
     docs_site_dir: Path,
     published_ragas_dir: Path | None = None,
+    published_deepeval_dir: Path | None = None,
 ) -> None:
     ragas_public_dir = docs_site_dir / "public" / "eval-reports" / "ragas"
     deepeval_public_dir = docs_site_dir / "public" / "eval-reports" / "deepeval"
@@ -71,8 +89,16 @@ def export_ragas_reports_for_docs(
     (ragas_public_dir / ".gitkeep").touch()
     (deepeval_public_dir / ".gitkeep").touch()
 
-    report_dirs = [published_ragas_dir, reports_dir] if published_ragas_dir else [reports_dir]
-    entries = read_ragas_report_entries(*report_dirs)
+    ragas_report_dirs = (
+        [published_ragas_dir, reports_dir] if published_ragas_dir else [reports_dir]
+    )
+    deepeval_report_dirs = (
+        [published_deepeval_dir, reports_dir]
+        if published_deepeval_dir
+        else [reports_dir]
+    )
+    entries = read_ragas_report_entries(*ragas_report_dirs)
+    deepeval_entries = read_deepeval_report_entries(*deepeval_report_dirs)
 
     for entry in entries:
         shutil.copy2(entry.markdown_path, ragas_public_dir / entry.markdown_path.name)
@@ -80,7 +106,13 @@ def export_ragas_reports_for_docs(
         if entry.csv_path:
             shutil.copy2(entry.csv_path, ragas_public_dir / entry.csv_path.name)
 
-    write_ragas_index_page(report_pages_dir / "index.md", entries)
+    for entry in deepeval_entries:
+        shutil.copy2(entry.html_path, deepeval_public_dir / entry.html_path.name)
+
+        if entry.json_path:
+            shutil.copy2(entry.json_path, deepeval_public_dir / entry.json_path.name)
+
+    write_ragas_index_page(report_pages_dir / "index.md", entries, deepeval_entries)
     write_latest_ragas_page(report_pages_dir / "latest.md", entries)
 
 
@@ -96,6 +128,24 @@ def read_ragas_report_entries(*reports_dirs: Path | None) -> list[RagasReportEnt
                 markdown_paths[markdown_path.name] = markdown_path
 
     entries = [parse_ragas_report(path) for path in markdown_paths.values()]
+
+    return sorted(entries, key=lambda entry: entry.display_time, reverse=True)
+
+
+def read_deepeval_report_entries(
+    *reports_dirs: Path | None,
+) -> list[DeepEvalReportEntry]:
+    html_paths: dict[str, Path] = {}
+
+    for reports_dir in reports_dirs:
+        if not reports_dir or not reports_dir.exists():
+            continue
+
+        for html_path in sorted(reports_dir.glob("deepeval-report-*.html")):
+            if DEEPEVAL_REPORT_PATTERN.match(html_path.name):
+                html_paths[html_path.name] = html_path
+
+    entries = [parse_deepeval_report(path) for path in html_paths.values()]
 
     return sorted(entries, key=lambda entry: entry.display_time, reverse=True)
 
@@ -121,6 +171,26 @@ def parse_ragas_report(markdown_path: Path) -> RagasReportEntry:
     )
 
 
+def parse_deepeval_report(html_path: Path) -> DeepEvalReportEntry:
+    match = DEEPEVAL_REPORT_PATTERN.match(html_path.name)
+
+    if not match:
+        raise ValueError(f"Invalid DeepEval report filename: {html_path.name}")
+
+    date_part, time_part = match.groups()
+    display_time = (
+        f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:]} "
+        f"{time_part[:2]}:{time_part[2:4]}:{time_part[4:]}"
+    )
+    json_path = html_path.with_suffix(".json")
+
+    return DeepEvalReportEntry(
+        html_path=html_path,
+        json_path=json_path if json_path.exists() else None,
+        display_time=display_time,
+    )
+
+
 def parse_ragas_scores(markdown: str) -> dict[str, str]:
     scores = {name: "-" for name in RAGAS_SCORE_NAMES}
 
@@ -138,20 +208,24 @@ def parse_ragas_scores(markdown: str) -> dict[str, str]:
     return scores
 
 
-def write_ragas_index_page(path: Path, entries: list[RagasReportEntry]) -> None:
+def write_ragas_index_page(
+    path: Path,
+    entries: list[RagasReportEntry],
+    deepeval_entries: list[DeepEvalReportEntry],
+) -> None:
     lines = [
         "# RAG 评测报告索引",
         "",
-        "本页由 `pnpm docs:reports` 从 `evals/reports/` 和 `evals/published-reports/ragas/` 生成，用于在交付文档站中展示离线 Ragas 评测结果。",
+        "本页由 `pnpm docs:reports` 从 `evals/reports/` 和 `evals/published-reports/` 生成，用于在交付文档站中展示离线 RAG 评测结果。",
         "",
         "> [!NOTE]",
-        "> 本地评测报告仍保留在 `evals/reports/`，可发布的基准报告保留在 `evals/published-reports/ragas/`。文档站只发布静态副本和索引，不把评测逻辑放进 NestJS 或前端后台。",
+        "> 本地评测报告仍保留在 `evals/reports/`，可发布的基准报告保留在 `evals/published-reports/`。文档站只发布静态副本和索引，不把评测逻辑放进 NestJS 或前端后台。",
         "",
     ]
 
     if not entries:
         lines.extend(["暂时还没有可展示的 Ragas 报告。", ""])
-        append_deepeval_status(lines)
+        append_deepeval_status(lines, deepeval_entries)
         path.write_text("\n".join(lines), encoding="utf-8")
         return
 
@@ -183,19 +257,42 @@ def write_ragas_index_page(path: Path, entries: list[RagasReportEntry]) -> None:
         )
 
     lines.append("")
-    append_deepeval_status(lines)
+    append_deepeval_status(lines, deepeval_entries)
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def append_deepeval_status(lines: list[str]) -> None:
+def append_deepeval_status(
+    lines: list[str],
+    entries: list[DeepEvalReportEntry],
+) -> None:
+    lines.extend(["## DeepEval 报告", ""])
+
+    if not entries:
+        lines.extend(
+            [
+                "暂时还没有可展示的 DeepEval 报告。",
+                "",
+            ]
+        )
+        return
+
     lines.extend(
         [
-            "## DeepEval 报告",
-            "",
-            "暂时还没有可展示的 DeepEval 报告。当前只接入离线 Ragas；后续接入 DeepEval 后，可以把 HTML 报告放到 `apps/docs-site/public/eval-reports/deepeval/`。",
-            "",
+            "| 运行时间 | HTML | JSON |",
+            "| --- | --- | --- |",
         ]
     )
+
+    for entry in entries:
+        html_link = f'<a href="./deepeval/{entry.html_path.name}">html</a>'
+        json_link = (
+            f'<a href="./deepeval/{entry.json_path.name}">json</a>'
+            if entry.json_path
+            else "-"
+        )
+        lines.append(f"| {entry.display_time} | {html_link} | {json_link} |")
+
+    lines.append("")
 
 
 def write_latest_ragas_page(path: Path, entries: list[RagasReportEntry]) -> None:

@@ -8,6 +8,7 @@
     "lint-staged": "lint-staged",
     "import:markdown-corpus": "pnpm --filter @zeta/server import:markdown-corpus",
     "eval:ragas": "python3 -m evals.ragas.run_ragas",
+    "eval:deepeval": "python3 -m evals.deepeval.run_deepeval",
     "docs:reports": "python3 -m evals.site_export",
     "docs:dev": "pnpm docs:reports && pnpm --filter @zeta/docs-site dev",
     "docs:build": "pnpm docs:reports && pnpm --filter @zeta/docs-site build",
