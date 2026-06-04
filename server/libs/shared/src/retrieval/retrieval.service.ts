@@ -12,12 +12,14 @@ import type {
   RetrievalMatchReason,
   RetrievalResult,
 } from '@zeta/common/knowledge-docs';
+import { buildRetrievalText } from './retrieval-text';
 
 type VectorRetrievalRow = {
   chunk_id: string;
   document_id: string;
   document_name: string;
   document_path: string | null;
+  retrieval_hints: Prisma.JsonValue | null;
   title: string | null;
   content: string;
   position: number;
@@ -30,6 +32,7 @@ type KeywordRetrievalRow = {
   document_id: string;
   document_name: string;
   document_path: string | null;
+  retrieval_hints: Prisma.JsonValue | null;
   title: string | null;
   content: string;
   position: number;
@@ -42,12 +45,17 @@ type RetrievalCandidate = {
   documentId: string;
   documentName: string;
   documentPath: string | null;
+  retrievalHints: string[];
   title: string | null;
   content: string;
   position: number;
   charCount: number;
   vectorScore: number | null;
   keywordScore: number | null;
+};
+
+type InternalRetrievalHit = RetrievalHit & {
+  retrievalHints: string[];
 };
 
 const DEFAULT_RETRIEVAL_TOP_K = 5;
@@ -182,14 +190,12 @@ export class RetrievalService {
     const hits = this.mergeRetrievalRows(vectorRows, keywordRows);
 
     if (!rerankerModel || hits.length === 0) {
-      return hits.slice(0, topK);
+      return hits.slice(0, topK).map((hit) => this.toPublicHit(hit));
     }
 
     const results = await this.rerankService.rerankDocuments(rerankerModel, {
       query: question,
-      documents: hits.map((hit) =>
-        hit.title ? `${hit.title}\n${hit.content}` : hit.content,
-      ),
+      documents: hits.map((hit) => buildRetrievalText(hit)),
       topN: Math.min(topK, hits.length),
     });
 
@@ -197,12 +203,12 @@ export class RetrievalService {
       const hit = hits[result.index];
       const rerankScore = this.normalizeScore(result.score);
 
-      return {
+      return this.toPublicHit({
         ...hit,
         score: rerankScore,
         finalScore: rerankScore,
         rerankScore,
-      };
+      });
     });
   }
 
@@ -220,6 +226,19 @@ export class RetrievalService {
         d."id" AS document_id,
         d."name" AS document_name,
         d."metadata" ->> 'relativePath' AS document_path,
+        (
+          CASE
+            WHEN jsonb_typeof(c."metadata" -> 'retrievalHints') = 'array'
+            THEN c."metadata" -> 'retrievalHints'
+            ELSE '[]'::jsonb
+          END
+          ||
+          CASE
+            WHEN jsonb_typeof(d."metadata" -> 'retrievalHints') = 'array'
+            THEN d."metadata" -> 'retrievalHints'
+            ELSE '[]'::jsonb
+          END
+        ) AS retrieval_hints,
         c."title",
         c."content",
         c."position",
@@ -251,6 +270,19 @@ export class RetrievalService {
         d."id" AS document_id,
         d."name" AS document_name,
         d."metadata" ->> 'relativePath' AS document_path,
+        (
+          CASE
+            WHEN jsonb_typeof(c."metadata" -> 'retrievalHints') = 'array'
+            THEN c."metadata" -> 'retrievalHints'
+            ELSE '[]'::jsonb
+          END
+          ||
+          CASE
+            WHEN jsonb_typeof(d."metadata" -> 'retrievalHints') = 'array'
+            THEN d."metadata" -> 'retrievalHints'
+            ELSE '[]'::jsonb
+          END
+        ) AS retrieval_hints,
         c."title",
         c."content",
         c."position",
@@ -282,6 +314,7 @@ export class RetrievalService {
         documentId: row.document_id,
         documentName: row.document_name,
         documentPath: row.document_path,
+        retrievalHints: this.toRetrievalHints(row.retrieval_hints),
         title: row.title,
         content: row.content,
         position: row.position,
@@ -305,6 +338,7 @@ export class RetrievalService {
         documentId: row.document_id,
         documentName: row.document_name,
         documentPath: row.document_path,
+        retrievalHints: this.toRetrievalHints(row.retrieval_hints),
         title: row.title,
         content: row.content,
         position: row.position,
@@ -319,7 +353,7 @@ export class RetrievalService {
       .sort((left, right) => right.score - left.score);
   }
 
-  private toHit(candidate: RetrievalCandidate): RetrievalHit {
+  private toHit(candidate: RetrievalCandidate): InternalRetrievalHit {
     const finalScore = this.calculateFinalScore(
       candidate.vectorScore,
       candidate.keywordScore,
@@ -330,6 +364,7 @@ export class RetrievalService {
       documentId: candidate.documentId,
       documentName: candidate.documentName,
       documentPath: candidate.documentPath,
+      retrievalHints: candidate.retrievalHints,
       title: candidate.title,
       content: candidate.content,
       position: candidate.position,
@@ -343,6 +378,25 @@ export class RetrievalService {
         candidate.vectorScore,
         candidate.keywordScore,
       ),
+    };
+  }
+
+  private toPublicHit(hit: InternalRetrievalHit): RetrievalHit {
+    return {
+      chunkId: hit.chunkId,
+      documentId: hit.documentId,
+      documentName: hit.documentName,
+      documentPath: hit.documentPath,
+      title: hit.title,
+      content: hit.content,
+      position: hit.position,
+      charCount: hit.charCount,
+      score: hit.score,
+      vectorScore: hit.vectorScore,
+      keywordScore: hit.keywordScore,
+      rerankScore: hit.rerankScore,
+      finalScore: hit.finalScore,
+      matchReason: hit.matchReason,
     };
   }
 
@@ -375,6 +429,14 @@ export class RetrievalService {
     }
 
     return Math.min(Math.max(score, 0), 1);
+  }
+
+  private toRetrievalHints(value: Prisma.JsonValue | null) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string');
   }
 
   private normalizeQuestion(question: string | undefined) {

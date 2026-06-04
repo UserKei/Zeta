@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ChatModelService, type ChatModelRequest } from '@libs/model-adapters';
 import { PrismaService, RetrievalService } from '@libs/shared';
+import { buildAnswerContextText } from '@libs/shared/retrieval/retrieval-text';
 import {
   AgentStatus,
   AiModelType,
@@ -619,7 +620,7 @@ export class ChatService {
     const context = hits
       .map(
         (hit, index) =>
-          `[${index + 1}] ${hit.documentName} / 分块 #${hit.position + 1}\n${hit.content}`,
+          `[${index + 1}] ${hit.documentName} / 分块 #${hit.position + 1}\n${buildAnswerContextText(hit)}`,
       )
       .join('\n\n');
 
