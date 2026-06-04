@@ -81,20 +81,23 @@ export class ChunkIndexingService {
 
     const chunkIds = activeChunks.map((chunk) => chunk.id);
 
-    await this.prisma.chunkEmbedding.deleteMany({
-      where: {
+    const embeddingInputs = await this.toEmbeddingInputs(
+      activeChunks,
+      embeddingModel,
+    );
+    const embeddings = await this.embeddingService.embedInputs(
+      embeddingModel,
+      embeddingInputs,
+    );
+
+    await this.replaceEmbeddings(
+      {
         embeddingModelId: embeddingModel.id,
         chunkId: { in: chunkIds },
       },
-    });
-
-    await this.createEmbeddings(
       embeddingModel.id,
       activeChunks,
-      await this.embeddingService.embedInputs(
-        embeddingModel,
-        await this.toEmbeddingInputs(activeChunks, embeddingModel),
-      ),
+      embeddings,
     );
   }
 
@@ -113,17 +116,20 @@ export class ChunkIndexingService {
       },
     });
 
-    await this.prisma.chunkEmbedding.deleteMany({
-      where: { chunkId, embeddingModelId: embeddingModel.id },
-    });
+    const embeddingInputs = await this.toEmbeddingInputs(
+      [chunk],
+      embeddingModel,
+    );
+    const embeddings = await this.embeddingService.embedInputs(
+      embeddingModel,
+      embeddingInputs,
+    );
 
-    await this.createEmbeddings(
+    await this.replaceEmbeddings(
+      { chunkId, embeddingModelId: embeddingModel.id },
       embeddingModel.id,
       [chunk],
-      await this.embeddingService.embedInputs(
-        embeddingModel,
-        await this.toEmbeddingInputs([chunk], embeddingModel),
-      ),
+      embeddings,
     );
   }
 
@@ -262,25 +268,47 @@ export class ChunkIndexingService {
     }
   }
 
-  private async createEmbeddings(
+  private async replaceEmbeddings(
+    where: Prisma.ChunkEmbeddingWhereInput,
     embeddingModelId: string,
     chunks: EmbeddableChunk[],
     embeddings: number[][],
   ) {
-    if (chunks.length !== embeddings.length) {
-      throw new BadRequestException('chunk and embedding counts do not match');
-    }
+    this.assertEmbeddingCount(chunks, embeddings);
+
+    await this.prisma.$transaction(async (db) => {
+      await db.chunkEmbedding.deleteMany({ where });
+      await this.createEmbeddings(db, embeddingModelId, chunks, embeddings);
+    });
+  }
+
+  private async createEmbeddings(
+    db: KnowledgeDocsDbClient,
+    embeddingModelId: string,
+    chunks: EmbeddableChunk[],
+    embeddings: number[][],
+  ) {
+    this.assertEmbeddingCount(chunks, embeddings);
 
     for (const [index, chunk] of chunks.entries()) {
       const embedding = embeddings[index];
 
-      await this.prisma.$executeRaw`
+      await db.$executeRaw`
         INSERT INTO "chunk_embeddings"
           ("id", "chunk_id", "embedding_model_id", "embedding", "dimension")
         VALUES
           (${randomUUID()}::uuid, ${chunk.id}::uuid, ${embeddingModelId}::uuid,
            ${this.toVectorLiteral(embedding)}::vector, ${embedding.length})
       `;
+    }
+  }
+
+  private assertEmbeddingCount(
+    chunks: EmbeddableChunk[],
+    embeddings: number[][],
+  ) {
+    if (chunks.length !== embeddings.length) {
+      throw new BadRequestException('chunk and embedding counts do not match');
     }
   }
 

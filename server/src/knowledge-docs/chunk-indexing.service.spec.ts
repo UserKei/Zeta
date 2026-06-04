@@ -31,7 +31,7 @@ describe('ChunkIndexingService', () => {
   };
 
   const createService = () => {
-    const prisma = {
+    const prismaBase = {
       chunk: {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         findMany: jest.fn(),
@@ -45,6 +45,12 @@ describe('ChunkIndexingService', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       $executeRaw: jest.fn().mockResolvedValue(undefined),
+    };
+    const prisma = {
+      ...prismaBase,
+      $transaction: jest.fn((callback: (db: typeof prismaBase) => unknown) =>
+        Promise.resolve(callback(prismaBase)),
+      ),
     };
     const embeddingService = {
       embedInputs: jest.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
@@ -189,6 +195,53 @@ describe('ChunkIndexingService', () => {
       service.rebuildDocumentEmbeddings('doc-1', embeddingModel),
     ).rejects.toBeInstanceOf(BadRequestException);
 
+    expect(prisma.chunkEmbedding.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing document embeddings when provider embedding fails', async () => {
+    const { service, prisma, embeddingService } = createService();
+
+    prisma.chunk.findMany.mockResolvedValue([
+      {
+        id: 'chunk-1',
+        title: '标题',
+        content: '正文',
+        metadata: {},
+        document: { name: '制度文档', metadata: {} },
+      },
+    ]);
+    embeddingService.embedInputs.mockRejectedValue(
+      new Error('embedding provider timeout'),
+    );
+
+    await expect(
+      service.rebuildDocumentEmbeddings('doc-1', embeddingModel),
+    ).rejects.toThrow('embedding provider timeout');
+
+    expect(prisma.chunkEmbedding.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing chunk embedding when provider embedding fails', async () => {
+    const { service, prisma, embeddingService } = createService();
+
+    prisma.chunk.findUniqueOrThrow.mockResolvedValue({
+      id: 'chunk-1',
+      title: '标题',
+      content: '正文',
+      metadata: {},
+      document: { name: '制度文档', metadata: {} },
+    });
+    embeddingService.embedInputs.mockRejectedValue(
+      new Error('embedding provider timeout'),
+    );
+
+    await expect(
+      service.rebuildChunkEmbedding('chunk-1', embeddingModel),
+    ).rejects.toThrow('embedding provider timeout');
+
+    expect(prisma.chunkEmbedding.deleteMany).not.toHaveBeenCalled();
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
