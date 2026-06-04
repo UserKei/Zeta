@@ -54,8 +54,11 @@
    ZETA_EVAL_AGENT_NAME=GitLab Handbook Expert
    DASHSCOPE_API_KEY=<dashscope-api-key>
    DEEPSEEK_API_KEY=<deepseek-api-key>
-   OPENAI_API_KEY=<judge-model-api-key>
+   ZETA_EVAL_JUDGE_MODEL=deepseek-v4-flash
+   ZETA_EVAL_JUDGE_THINKING=disabled
    ```
+
+   默认情况下，Ragas 的 LLM-as-a-Judge 使用 DeepSeek OpenAI-compatible 接口，Embedding 评测继续使用 DashScope `text-embedding-v4`。如果需要改成其他 OpenAI-compatible 判官，可以设置 `ZETA_EVAL_JUDGE_API_KEY`、`ZETA_EVAL_JUDGE_BASE_URL` 和 `ZETA_EVAL_JUDGE_MODEL`；`OPENAI_API_KEY` 仅作为兼容 fallback，不是默认推荐配置。
 
 ## 准备数据集
 
@@ -87,7 +90,7 @@ evals/datasets/gitlab-handbook.sample.jsonl
 CORPUS_LIMIT=20 pnpm import:markdown-corpus
 ```
 
-导入脚本会自动 clone / pull 到 `example/corpora/gitlab-handbook/`，并创建或复用默认评测资源：Chat 模型、Embedding 模型、知识库和 Agent。评测脚本默认会按名称查找 `GitLab Handbook` 和 `GitLab Handbook Expert`，不需要手动填写 UUID。
+导入脚本会自动 clone / pull 到 `example/corpora/gitlab-handbook/`，并创建或复用默认评测资源：Chat 模型、Embedding 模型、Reranker 模型、知识库和 Agent。评测脚本默认会按名称查找 `GitLab Handbook` 和 `GitLab Handbook Expert`，不需要手动填写 UUID。
 
 ```bash
 pnpm eval:ragas --dataset evals/datasets/gitlab-handbook.sample.jsonl

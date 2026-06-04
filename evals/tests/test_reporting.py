@@ -3,6 +3,7 @@ import unittest
 from evals.ragas.reporting import (
     EvaluationCaseResult,
     build_summary,
+    has_expected_document_hit,
     render_markdown_report,
 )
 
@@ -82,11 +83,19 @@ class ReportingTest(unittest.TestCase):
 
         report = render_markdown_report(
             summary,
-            ragas_error="OPENAI_API_KEY is required",
+            ragas_error="DEEPSEEK_API_KEY is required",
         )
 
         self.assertIn("## Ragas Status", report)
-        self.assertIn("OPENAI_API_KEY is required", report)
+        self.assertIn("DEEPSEEK_API_KEY is required", report)
+
+    def test_expected_document_hit_accepts_import_relative_paths(self):
+        self.assertTrue(
+            has_expected_document_hit(
+                ["content/handbook/about/contributing.md"],
+                ["Content/Handbook/About/Contributing.md"],
+            )
+        )
 
 
 if __name__ == "__main__":

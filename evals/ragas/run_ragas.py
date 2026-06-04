@@ -24,8 +24,9 @@ from evals.shared.zeta_client import ZetaClient
 
 DEFAULT_KNOWLEDGE_BASE_NAME = "GitLab Handbook"
 DEFAULT_AGENT_NAME = "GitLab Handbook Expert"
-DEFAULT_DASHSCOPE_OPENAI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DEFAULT_RAGAS_JUDGE_MODEL = "qwen-plus"
+DEFAULT_RAGAS_JUDGE_BASE_URL = "https://api.deepseek.com"
+DEFAULT_RAGAS_JUDGE_MODEL = "deepseek-v4-flash"
+DEFAULT_RAGAS_JUDGE_THINKING = "disabled"
 DEFAULT_RAGAS_EMBEDDING_MODEL = "text-embedding-v4"
 
 try:
@@ -57,6 +58,7 @@ class RagasModelConfig:
     api_key: str
     base_url: str
     model: str
+    judge_thinking: str
     embedding_api_key: str
     embedding_base_url: str
     embedding_model: str
@@ -204,18 +206,28 @@ def parse_args() -> argparse.Namespace:
 def read_ragas_model_config() -> RagasModelConfig:
     api_key = (
         os.getenv("ZETA_EVAL_JUDGE_API_KEY")
-        or os.getenv("DASHSCOPE_API_KEY")
+        or os.getenv("DEEPSEEK_API_KEY")
         or os.getenv("OPENAI_API_KEY")
     )
 
     if not api_key:
         raise RuntimeError(
-            "DASHSCOPE_API_KEY or ZETA_EVAL_JUDGE_API_KEY is required "
+            "DEEPSEEK_API_KEY or ZETA_EVAL_JUDGE_API_KEY is required "
             "for Ragas scoring."
         )
 
-    base_url = os.getenv("ZETA_EVAL_JUDGE_BASE_URL") or DEFAULT_DASHSCOPE_OPENAI_BASE_URL
-    embedding_api_key = os.getenv("ZETA_EVAL_EMBEDDING_API_KEY") or api_key
+    base_url = os.getenv("ZETA_EVAL_JUDGE_BASE_URL") or DEFAULT_RAGAS_JUDGE_BASE_URL
+    embedding_api_key = (
+        os.getenv("ZETA_EVAL_EMBEDDING_API_KEY")
+        or os.getenv("DASHSCOPE_API_KEY")
+    )
+
+    if not embedding_api_key:
+        raise RuntimeError(
+            "DASHSCOPE_API_KEY or ZETA_EVAL_EMBEDDING_API_KEY is required "
+            "for Ragas embedding."
+        )
+
     embedding_base_url = (
         os.getenv("ZETA_EVAL_EMBEDDING_BASE_URL")
         or DEFAULT_DASHSCOPE_API_BASE_URL
@@ -225,6 +237,7 @@ def read_ragas_model_config() -> RagasModelConfig:
         api_key=api_key,
         base_url=base_url,
         model=os.getenv("ZETA_EVAL_JUDGE_MODEL", DEFAULT_RAGAS_JUDGE_MODEL),
+        judge_thinking=read_judge_thinking(),
         embedding_api_key=embedding_api_key,
         embedding_base_url=embedding_base_url,
         embedding_model=os.getenv(
@@ -232,6 +245,42 @@ def read_ragas_model_config() -> RagasModelConfig:
             DEFAULT_RAGAS_EMBEDDING_MODEL,
         ),
     )
+
+
+def create_ragas_judge_llm(
+    model_config: RagasModelConfig,
+    chat_openai_cls: type[Any] | None = None,
+) -> Any:
+    if chat_openai_cls is None:
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as cause:
+            raise RuntimeError(
+                "Ragas dependencies are not installed or incompatible. "
+                "Run `pip install -r evals/requirements.txt` first."
+            ) from cause
+
+        chat_openai_cls = ChatOpenAI
+
+    return chat_openai_cls(
+        api_key=model_config.api_key,
+        base_url=model_config.base_url,
+        model=model_config.model,
+        temperature=0,
+        extra_body={"thinking": {"type": model_config.judge_thinking}},
+    )
+
+
+def read_judge_thinking() -> str:
+    value = os.getenv("ZETA_EVAL_JUDGE_THINKING", DEFAULT_RAGAS_JUDGE_THINKING)
+    normalized = value.strip().lower()
+
+    if normalized not in {"enabled", "disabled"}:
+        raise RuntimeError(
+            "ZETA_EVAL_JUDGE_THINKING must be either `enabled` or `disabled`."
+        )
+
+    return normalized
 
 
 def load_cases(path: Path) -> list[EvaluationCase]:
@@ -309,7 +358,9 @@ def run_case(
             contexts=[hit["content"] for hit in hits if hit.get("content")],
             expected_documents=case.expected_documents,
             retrieved_documents=[
-                hit["documentName"] for hit in hits if hit.get("documentName")
+                hit.get("documentPath") or hit["documentName"]
+                for hit in hits
+                if hit.get("documentPath") or hit.get("documentName")
             ],
             citations_count=len(citations),
             scores={},
@@ -337,7 +388,6 @@ def apply_ragas_scores(
             context_recall,
             faithfulness,
         )
-        from langchain_openai import ChatOpenAI
     except ImportError as cause:
         raise RuntimeError(
             "Ragas dependencies are not installed or incompatible. "
@@ -356,12 +406,7 @@ def apply_ragas_scores(
     ragas_result = evaluate(
         dataset,
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-        llm=ChatOpenAI(
-            api_key=model_config.api_key,
-            base_url=model_config.base_url,
-            model=model_config.model,
-            temperature=0,
-        ),
+        llm=create_ragas_judge_llm(model_config),
         embeddings=DashScopeTextEmbeddings(
             api_key=model_config.embedding_api_key,
             base_url=model_config.embedding_base_url,

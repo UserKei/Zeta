@@ -90,6 +90,14 @@ export const uuidFromKey = (key: string) => {
   ].join('-');
 };
 
+export const buildCorpusResourceIds = (importKey: string) => ({
+  agentId: uuidFromKey(`zeta:corpus:${importKey}:agent`),
+  chatModelId: uuidFromKey(`zeta:corpus:${importKey}:chat-model`),
+  embeddingModelId: uuidFromKey(`zeta:corpus:${importKey}:embedding-model`),
+  knowledgeBaseId: uuidFromKey(`zeta:corpus:${importKey}:knowledge-base`),
+  rerankerModelId: uuidFromKey(`zeta:corpus:${importKey}:reranker-model`),
+});
+
 const walkCorpusDirectory = async (
   root: string,
   currentDirectory: string,

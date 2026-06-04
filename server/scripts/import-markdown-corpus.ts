@@ -18,9 +18,9 @@ import type { Prisma } from '@libs/shared/generated/prisma/client';
 import { getCorpusPreset } from './corpus-presets';
 import {
   buildCorpusDocumentMetadata,
+  buildCorpusResourceIds,
   findMarkdownCorpusFiles,
   loadMarkdownCorpusFile,
-  uuidFromKey,
   type PreparedCorpusFile,
 } from '../src/corpus-import/markdown-corpus.helpers';
 
@@ -39,8 +39,11 @@ type ExistingImportDocument = {
 const WORKSPACE_ROOT = resolve(__dirname, '../..');
 const DEFAULT_CHAT_MODEL_NAME = 'qwen-plus';
 const DEFAULT_EMBEDDING_MODEL_NAME = 'text-embedding-v4';
+const DEFAULT_RERANKER_MODEL_NAME = 'qwen3-rerank';
 const ALIYUN_COMPATIBLE_BASE_URL =
   'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const ALIYUN_RERANK_BASE_URL =
+  'https://dashscope.aliyuncs.com/compatible-api/v1';
 
 config({ path: resolve(WORKSPACE_ROOT, '.env') });
 config();
@@ -75,7 +78,7 @@ async function main() {
       strict: false,
     });
     const sourceRef = await getGitRef(corpusRoot);
-    const ids = getStableIds(preset.key);
+    const ids = buildCorpusResourceIds(preset.key);
     // Optional ids let advanced runs reuse existing resources; default runs
     // create stable evaluation resources for the preset.
     const resources = await upsertImportResources(prisma, {
@@ -89,6 +92,8 @@ async function main() {
       knowledgeBaseId: process.env.CORPUS_KB_ID?.trim() || ids.knowledgeBaseId,
       knowledgeBaseName:
         process.env.CORPUS_KB_NAME?.trim() || preset.knowledgeBaseName,
+      rerankerModelId:
+        process.env.CORPUS_RERANKER_MODEL_ID?.trim() || ids.rerankerModelId,
     });
 
     if (shouldReplace) {
@@ -116,9 +121,12 @@ async function main() {
       failed: 0,
     };
 
-    for (const file of selectedFiles) {
+    for (const [index, file] of selectedFiles.entries()) {
+      const progress = `[${index + 1}/${selectedFiles.length}]`;
+
       if (existingDocuments.has(file.relativePath)) {
         stats.skipped += 1;
+        console.log(`${progress} skipped existing ${file.relativePath}`);
         continue;
       }
 
@@ -126,10 +134,12 @@ async function main() {
 
       if (!preparedFile) {
         stats.skipped += 1;
+        console.log(`${progress} skipped empty ${file.relativePath}`);
         continue;
       }
 
       try {
+        console.log(`${progress} importing ${file.relativePath}`);
         await importPreparedFile(
           documentImportService,
           prisma,
@@ -143,10 +153,11 @@ async function main() {
           }),
         );
         stats.imported += 1;
+        console.log(`${progress} imported ${file.relativePath}`);
       } catch (cause) {
         stats.failed += 1;
         console.warn(
-          `[import-markdown-corpus] failed ${file.relativePath}: ${
+          `[import-markdown-corpus] ${progress} failed ${file.relativePath}: ${
             cause instanceof Error ? cause.message : String(cause)
           }`,
         );
@@ -177,6 +188,7 @@ async function upsertImportResources(
     importKey: string;
     knowledgeBaseId: string;
     knowledgeBaseName: string;
+    rerankerModelId: string;
   },
 ) {
   await prisma.aiModel.upsert({
@@ -218,6 +230,26 @@ async function upsertImportResources(
     },
   });
 
+  await prisma.aiModel.upsert({
+    where: { id: input.rerankerModelId },
+    create: {
+      id: input.rerankerModelId,
+      name: `${input.knowledgeBaseName} Reranker`,
+      provider: 'aliyun-bailian',
+      type: AiModelType.RERANKER,
+      modelName:
+        process.env.CORPUS_RERANKER_MODEL_NAME || DEFAULT_RERANKER_MODEL_NAME,
+      baseUrl: ALIYUN_RERANK_BASE_URL,
+      apiKey: input.apiKey,
+      isEnabled: true,
+      configJson: {},
+    },
+    update: {
+      apiKey: input.apiKey,
+      isEnabled: true,
+    },
+  });
+
   await prisma.knowledgeBase.upsert({
     where: { id: input.knowledgeBaseId },
     create: {
@@ -226,6 +258,7 @@ async function upsertImportResources(
       description: 'Imported Markdown corpus for RAG evaluation.',
       status: KnowledgeBaseStatus.ACTIVE,
       embeddingModelId: input.embeddingModelId,
+      rerankerModelId: input.rerankerModelId,
       chunkSize: 800,
       chunkOverlap: 100,
       metadata: {
@@ -237,6 +270,7 @@ async function upsertImportResources(
       name: input.knowledgeBaseName,
       status: KnowledgeBaseStatus.ACTIVE,
       embeddingModelId: input.embeddingModelId,
+      rerankerModelId: input.rerankerModelId,
       metadata: {
         importKey: input.importKey,
         source: 'MARKDOWN_CORPUS',
@@ -478,15 +512,6 @@ async function runCommand(command: string, args: string[]) {
       );
     });
   });
-}
-
-function getStableIds(importKey: string) {
-  return {
-    agentId: uuidFromKey(`zeta:corpus:${importKey}:agent`),
-    chatModelId: uuidFromKey(`zeta:corpus:${importKey}:chat-model`),
-    embeddingModelId: uuidFromKey(`zeta:corpus:${importKey}:embedding-model`),
-    knowledgeBaseId: uuidFromKey(`zeta:corpus:${importKey}:knowledge-base`),
-  };
 }
 
 function readRequiredEnv(name: string) {

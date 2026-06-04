@@ -123,10 +123,22 @@ def has_expected_document_hit(
     expected_documents: list[str],
     retrieved_documents: list[str],
 ) -> bool:
-    expected = {document.strip() for document in expected_documents if document.strip()}
-    retrieved = {document.strip() for document in retrieved_documents if document.strip()}
+    expected = {
+        normalize_document_key(document)
+        for document in expected_documents
+        if document.strip()
+    }
+    retrieved = {
+        normalize_document_key(document)
+        for document in retrieved_documents
+        if document.strip()
+    }
 
     return bool(expected & retrieved)
+
+
+def normalize_document_key(document: str) -> str:
+    return document.strip().casefold()
 
 
 def format_optional_score(score: float | None) -> str:

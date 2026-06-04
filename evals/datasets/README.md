@@ -20,7 +20,7 @@
 
 - `question`：评测问题。
 - `reference`：参考答案，用于 Ragas 的 context recall 等指标。
-- `expected_documents`：期望命中的文档名称，用于脚本自己的命中文档统计。
+- `expected_documents`：期望命中的文档标识，用于脚本自己的命中文档统计。可以写文档名称；如果语料里有大量 `index`、`README` 这类重名页面，建议写导入 metadata 里的 `relativePath`，例如 `content/handbook/about/contributing.md`。
 - `knowledge_base_id` / `agent_id`：可以逐条覆盖默认知识库和 Agent。
 - `top_k`：可以逐条覆盖默认召回数量。
 

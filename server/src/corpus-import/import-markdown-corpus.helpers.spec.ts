@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { gitlabHandbookPreset } from '../../scripts/corpus-presets';
 import {
   buildCorpusDocumentMetadata,
+  buildCorpusResourceIds,
   findMarkdownCorpusFiles,
   prepareMarkdownCorpusFile,
   uuidFromKey,
@@ -95,5 +96,23 @@ Be transparent.
     expect(first).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+  });
+
+  it('builds stable resource ids including reranker model id', () => {
+    const ids = buildCorpusResourceIds('gitlab-handbook');
+
+    expect(ids).toEqual({
+      agentId: uuidFromKey('zeta:corpus:gitlab-handbook:agent'),
+      chatModelId: uuidFromKey('zeta:corpus:gitlab-handbook:chat-model'),
+      embeddingModelId: uuidFromKey(
+        'zeta:corpus:gitlab-handbook:embedding-model',
+      ),
+      knowledgeBaseId: uuidFromKey(
+        'zeta:corpus:gitlab-handbook:knowledge-base',
+      ),
+      rerankerModelId: uuidFromKey(
+        'zeta:corpus:gitlab-handbook:reranker-model',
+      ),
+    });
   });
 });

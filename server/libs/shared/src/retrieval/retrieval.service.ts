@@ -17,6 +17,7 @@ type VectorRetrievalRow = {
   chunk_id: string;
   document_id: string;
   document_name: string;
+  document_path: string | null;
   title: string | null;
   content: string;
   position: number;
@@ -28,6 +29,7 @@ type KeywordRetrievalRow = {
   chunk_id: string;
   document_id: string;
   document_name: string;
+  document_path: string | null;
   title: string | null;
   content: string;
   position: number;
@@ -39,6 +41,7 @@ type RetrievalCandidate = {
   chunkId: string;
   documentId: string;
   documentName: string;
+  documentPath: string | null;
   title: string | null;
   content: string;
   position: number;
@@ -216,6 +219,7 @@ export class RetrievalService {
         c."id" AS chunk_id,
         d."id" AS document_id,
         d."name" AS document_name,
+        d."metadata" ->> 'relativePath' AS document_path,
         c."title",
         c."content",
         c."position",
@@ -246,6 +250,7 @@ export class RetrievalService {
         c."id" AS chunk_id,
         d."id" AS document_id,
         d."name" AS document_name,
+        d."metadata" ->> 'relativePath' AS document_path,
         c."title",
         c."content",
         c."position",
@@ -276,6 +281,7 @@ export class RetrievalService {
         chunkId: row.chunk_id,
         documentId: row.document_id,
         documentName: row.document_name,
+        documentPath: row.document_path,
         title: row.title,
         content: row.content,
         position: row.position,
@@ -298,6 +304,7 @@ export class RetrievalService {
         chunkId: row.chunk_id,
         documentId: row.document_id,
         documentName: row.document_name,
+        documentPath: row.document_path,
         title: row.title,
         content: row.content,
         position: row.position,
@@ -322,6 +329,7 @@ export class RetrievalService {
       chunkId: candidate.chunkId,
       documentId: candidate.documentId,
       documentName: candidate.documentName,
+      documentPath: candidate.documentPath,
       title: candidate.title,
       content: candidate.content,
       position: candidate.position,

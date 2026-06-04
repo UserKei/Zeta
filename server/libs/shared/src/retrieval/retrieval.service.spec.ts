@@ -252,6 +252,54 @@ describe('RetrievalService', () => {
     ]);
   });
 
+  it('returns the imported document relative path when metadata provides it', async () => {
+    const rerankDocuments = jest.fn();
+    const service = createService(
+      {
+        knowledgeBase: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            status: 'ACTIVE',
+            embeddingModel: createModel({
+              id: 'embedding-1',
+              type: 'EMBEDDING',
+            }),
+            rerankerModel: null,
+          }),
+        },
+        $queryRaw: jest
+          .fn()
+          .mockResolvedValueOnce([
+            createVectorRow({
+              chunk_id: 'chunk-a',
+              document_path: 'content/handbook/about/contributing.md',
+              vector_score: 0.8,
+            }),
+          ])
+          .mockResolvedValueOnce([]),
+      },
+      {
+        embedTexts: jest.fn().mockResolvedValue([[0.1, 0.2]]),
+      },
+      {
+        rerankDocuments,
+      },
+    );
+
+    const result = await service.retrieveFromKnowledgeBase(
+      'kb-1',
+      'handbook',
+      1,
+    );
+
+    expect(result.hits[0]).toEqual(
+      expect.objectContaining({
+        documentName: 'IT 文档',
+        documentPath: 'content/handbook/about/contributing.md',
+      }),
+    );
+  });
+
   it('rejects disabled reranker models', async () => {
     const service = createService(
       {
@@ -301,12 +349,14 @@ function createModel(input: {
 function createVectorRow(input: {
   chunk_id: string;
   content?: string;
+  document_path?: string | null;
   vector_score: number;
 }) {
   return {
     chunk_id: input.chunk_id,
     document_id: 'doc-1',
     document_name: 'IT 文档',
+    document_path: input.document_path ?? null,
     title: null,
     content: input.content ?? '测试分段',
     position: 0,
@@ -318,12 +368,14 @@ function createVectorRow(input: {
 function createKeywordRow(input: {
   chunk_id: string;
   content?: string;
+  document_path?: string | null;
   keyword_score: number;
 }) {
   return {
     chunk_id: input.chunk_id,
     document_id: 'doc-1',
     document_name: 'IT 文档',
+    document_path: input.document_path ?? null,
     title: null,
     content: input.content ?? '测试分段',
     position: 0,
