@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ class RagasReportEntry:
     csv_path: Path | None
     display_time: str
     scores: dict[str, str]
+    summary: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,10 @@ class DeepEvalReportEntry:
     html_path: Path
     json_path: Path | None
     display_time: str
+    scores: dict[str, str]
+    total_cases: str
+    passed_cases: str
+    failed_cases: str
 
 
 def main() -> None:
@@ -167,7 +173,7 @@ def parse_ragas_report(markdown_path: Path) -> RagasReportEntry:
         markdown_path=markdown_path,
         csv_path=csv_path if csv_path.exists() else None,
         display_time=display_time,
-        scores=parse_ragas_scores(markdown_path.read_text(encoding="utf-8")),
+        **parse_ragas_markdown(markdown_path.read_text(encoding="utf-8")),
     )
 
 
@@ -188,11 +194,21 @@ def parse_deepeval_report(html_path: Path) -> DeepEvalReportEntry:
         html_path=html_path,
         json_path=json_path if json_path.exists() else None,
         display_time=display_time,
+        **parse_deepeval_json(json_path if json_path.exists() else None),
     )
 
 
-def parse_ragas_scores(markdown: str) -> dict[str, str]:
-    scores = {name: "-" for name in RAGAS_SCORE_NAMES}
+def parse_ragas_markdown(markdown: str) -> dict[str, dict[str, str]]:
+    table_values = parse_two_column_markdown_tables(markdown)
+
+    return {
+        "scores": {name: table_values.get(name, "-") for name in RAGAS_SCORE_NAMES},
+        "summary": table_values,
+    }
+
+
+def parse_two_column_markdown_tables(markdown: str) -> dict[str, str]:
+    values: dict[str, str] = {}
 
     for line in markdown.splitlines():
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -202,10 +218,56 @@ def parse_ragas_scores(markdown: str) -> dict[str, str]:
 
         name, value = cells
 
-        if name in scores:
-            scores[name] = value
+        if not name or name == "---" or name.lower() == "metric":
+            continue
 
-    return scores
+        values[name] = value
+
+    return values
+
+
+def parse_deepeval_json(json_path: Path | None) -> dict[str, object]:
+    scores = {name: "-" for name in RAGAS_SCORE_NAMES}
+
+    if not json_path:
+        return {
+            "scores": scores,
+            "total_cases": "-",
+            "passed_cases": "-",
+            "failed_cases": "-",
+        }
+
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    metric_map = {
+        "Answer Relevancy": "answer_relevancy",
+        "Contextual Precision": "context_precision",
+        "Contextual Recall": "context_recall",
+        "Faithfulness": "faithfulness",
+    }
+
+    for metric in data.get("metricsScores", []):
+        metric_name = metric_map.get(str(metric.get("metric")))
+
+        if not metric_name:
+            continue
+
+        metric_scores = [
+            score for score in metric.get("scores", []) if isinstance(score, int | float)
+        ]
+        scores[metric_name] = (
+            f"{sum(metric_scores) / len(metric_scores):.4f}" if metric_scores else "-"
+        )
+
+    passed_cases = data.get("testPassed", "-")
+    failed_cases = data.get("testFailed", "-")
+    total_cases = len(data.get("testCases", []))
+
+    return {
+        "scores": scores,
+        "total_cases": str(total_cases) if total_cases else "-",
+        "passed_cases": str(passed_cases),
+        "failed_cases": str(failed_cases),
+    }
 
 
 def write_ragas_index_page(
@@ -214,14 +276,21 @@ def write_ragas_index_page(
     deepeval_entries: list[DeepEvalReportEntry],
 ) -> None:
     lines = [
-        "# RAG 评测报告索引",
+        "# 评测报告",
         "",
         "本页由 `pnpm docs:reports` 从 `evals/reports/` 和 `evals/published-reports/` 生成，用于在交付文档站中展示离线 RAG 评测结果。",
         "",
-        "> [!NOTE]",
-        "> 本地评测报告仍保留在 `evals/reports/`，可发布的基准报告保留在 `evals/published-reports/`。文档站只发布静态副本和索引，不把评测逻辑放进 NestJS 或前端后台。",
-        "",
     ]
+
+    append_report_overview(lines, entries, deepeval_entries)
+    lines.extend(
+        [
+            "",
+            "> [!NOTE]",
+            "> 本地评测报告仍保留在 `evals/reports/`，可发布的基准报告保留在 `evals/published-reports/`。文档站只发布静态副本，不把评测逻辑放进 NestJS 或前端后台。",
+            "",
+        ]
+    )
 
     if not entries:
         lines.extend(["暂时还没有可展示的 Ragas 报告。", ""])
@@ -231,7 +300,9 @@ def write_ragas_index_page(
 
     lines.extend(
         [
-            "[查看最新报告](./latest)",
+            "## Ragas",
+            "",
+            "[查看最新 Ragas 报告](./latest)",
             "",
             "| 运行时间 | answer_relevancy | context_precision | context_recall | faithfulness | Markdown | CSV |",
             "| --- | ---: | ---: | ---: | ---: | --- | --- |",
@@ -265,7 +336,7 @@ def append_deepeval_status(
     lines: list[str],
     entries: list[DeepEvalReportEntry],
 ) -> None:
-    lines.extend(["## DeepEval 报告", ""])
+    lines.extend(["## DeepEval", ""])
 
     if not entries:
         lines.extend(
@@ -278,8 +349,8 @@ def append_deepeval_status(
 
     lines.extend(
         [
-            "| 运行时间 | HTML | JSON |",
-            "| --- | --- | --- |",
+            "| 运行时间 | 通过 | answer_relevancy | context_precision | context_recall | faithfulness | HTML | JSON |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
         ]
     )
 
@@ -290,9 +361,67 @@ def append_deepeval_status(
             if entry.json_path
             else "-"
         )
-        lines.append(f"| {entry.display_time} | {html_link} | {json_link} |")
+        lines.append(
+            "| "
+            f"{entry.display_time} | "
+            f"{entry.passed_cases}/{entry.total_cases} | "
+            f"{entry.scores['answer_relevancy']} | "
+            f"{entry.scores['context_precision']} | "
+            f"{entry.scores['context_recall']} | "
+            f"{entry.scores['faithfulness']} | "
+            f"{html_link} | "
+            f"{json_link} |"
+        )
 
     lines.append("")
+
+
+def append_report_overview(
+    lines: list[str],
+    ragas_entries: list[RagasReportEntry],
+    deepeval_entries: list[DeepEvalReportEntry],
+) -> None:
+    latest_ragas = ragas_entries[0] if ragas_entries else None
+    latest_deepeval = deepeval_entries[0] if deepeval_entries else None
+
+    if not latest_ragas and not latest_deepeval:
+        lines.extend(["暂时还没有可展示的评测报告。", ""])
+        return
+
+    lines.extend(
+        [
+            "| 报告 | 运行时间 | 用例 / 通过 | answer_relevancy | context_precision | context_recall | faithfulness | 详情 |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
+
+    if latest_ragas:
+        total = latest_ragas.summary.get("Total cases", "-")
+        succeeded = latest_ragas.summary.get("Succeeded cases", "-")
+        lines.append(
+            "| "
+            f"[Ragas](#ragas) | "
+            f"{latest_ragas.display_time} | "
+            f"{succeeded}/{total} | "
+            f"{latest_ragas.scores['answer_relevancy']} | "
+            f"{latest_ragas.scores['context_precision']} | "
+            f"{latest_ragas.scores['context_recall']} | "
+            f"{latest_ragas.scores['faithfulness']} | "
+            "[最新报告](./latest) |"
+        )
+
+    if latest_deepeval:
+        lines.append(
+            "| "
+            f"[DeepEval](#deepeval) | "
+            f"{latest_deepeval.display_time} | "
+            f"{latest_deepeval.passed_cases}/{latest_deepeval.total_cases} | "
+            f"{latest_deepeval.scores['answer_relevancy']} | "
+            f"{latest_deepeval.scores['context_precision']} | "
+            f"{latest_deepeval.scores['context_recall']} | "
+            f"{latest_deepeval.scores['faithfulness']} | "
+            f'<a href="./deepeval/{latest_deepeval.html_path.name}">HTML</a> |'
+        )
 
 
 def write_latest_ragas_page(path: Path, entries: list[RagasReportEntry]) -> None:

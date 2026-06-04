@@ -77,11 +77,11 @@ evals/reports/deepeval-report-<timestamp>.json
 | Empty answers              |      0 |
 | Empty citations            |      0 |
 
-这份报告会随文档站一起发布，报告索引页中也会保留 Markdown 和 CSV 原始报告链接。
+这份报告会随文档站一起发布，评测报告页中也会保留 Markdown 和 CSV 原始报告链接。
 
 ## 文档站报告
 
-构建文档站前先导出报告索引：
+构建文档站前先导出评测报告：
 
 ```bash
 pnpm docs:reports
@@ -92,7 +92,7 @@ pnpm docs:reports
 1. 读取 `evals/reports/` 中的 Ragas Markdown / CSV。
 2. 同时读取 `evals/published-reports/ragas/` 中随仓库提交的发布版 Ragas 报告。
 3. 把原始报告复制到 `apps/docs-site/public/eval-reports/ragas/`。
-4. 生成 [评测报告索引](/eval-reports/)。
+4. 生成 [评测报告](/eval-reports/)。
 5. 生成 [最新 Ragas 报告](/eval-reports/latest)。
 6. 读取 DeepEval HTML / JSON 报告并复制到 `apps/docs-site/public/eval-reports/deepeval/`。
 
@@ -104,4 +104,4 @@ DeepEval 走本地 HTML/JSON 报告，不接 Confident AI 云 dashboard。确认
 evals/published-reports/deepeval/
 ```
 
-然后运行 `pnpm docs:reports`。脚本会把报告复制到文档站 public 目录，并在评测报告索引页生成链接。
+然后运行 `pnpm docs:reports`。脚本会把报告复制到文档站 public 目录，并在评测报告页生成链接。
