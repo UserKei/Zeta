@@ -89,6 +89,55 @@ class ReportingTest(unittest.TestCase):
         self.assertIn("## Ragas Status", report)
         self.assertIn("DEEPSEEK_API_KEY is required", report)
 
+    def test_render_markdown_report_includes_retrieval_diagnostics(self):
+        summary = build_summary(
+            [
+                EvaluationCaseResult(
+                    case_id="case-low",
+                    question="What does the page cover?",
+                    answer="It covers handbook maintenance.",
+                    contexts=["context 1", "context 2", "context 3"],
+                    expected_documents=["content/handbook/about/maintenance.md"],
+                    retrieved_documents=[
+                        "content/handbook/about/maintenance.md",
+                        "content/handbook/about/maintenance.md",
+                        "content/handbook/about/handbook-usage.md",
+                    ],
+                    citations_count=2,
+                    scores={"context_precision": 0.0, "context_recall": 0.5},
+                ),
+                EvaluationCaseResult(
+                    case_id="case-all-same",
+                    question="What is the board page for?",
+                    answer="It describes board meetings.",
+                    contexts=["context 1", "context 2"],
+                    expected_documents=["content/handbook/board-meetings/_index.md"],
+                    retrieved_documents=[
+                        "content/handbook/board-meetings/_index.md",
+                        "content/handbook/board-meetings/_index.md",
+                    ],
+                    citations_count=1,
+                    scores={"context_precision": 0.25, "context_recall": 1.0},
+                ),
+            ]
+        )
+
+        report = render_markdown_report(summary)
+
+        self.assertIn("## Retrieval Diagnostics", report)
+        self.assertIn("| Average unique retrieved documents | 1.50 |", report)
+        self.assertIn("| Average duplicate document slots | 1.00 |", report)
+        self.assertIn("| Single-document topK cases | 1 |", report)
+        self.assertIn("`case-all-same`", report)
+        self.assertIn("## Lowest Context Precision Cases", report)
+        self.assertIn(
+            "| `case-low` | 0.0000 | 0.5000 | "
+            "`content/handbook/about/maintenance.md` | "
+            "`content/handbook/about/maintenance.md`; "
+            "`content/handbook/about/handbook-usage.md` |",
+            report,
+        )
+
     def test_expected_document_hit_accepts_import_relative_paths(self):
         self.assertTrue(
             has_expected_document_hit(

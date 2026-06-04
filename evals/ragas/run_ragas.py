@@ -366,7 +366,7 @@ def run_case(
             case_id=case.case_id,
             question=case.question,
             answer=answer,
-            contexts=[hit["content"] for hit in hits if hit.get("content")],
+            contexts=[format_hit_context(hit) for hit in hits if hit.get("content")],
             expected_documents=case.expected_documents,
             retrieved_documents=[
                 hit.get("documentPath") or hit["documentName"]
@@ -378,6 +378,26 @@ def run_case(
         )
     except Exception as cause:  # noqa: BLE001 - report every failed case
         return failed_case(case, str(cause))
+
+
+def format_hit_context(hit: dict[str, Any]) -> str:
+    parts = [
+        read_optional_string(hit, "documentName"),
+        read_optional_string(hit, "title"),
+        read_optional_string(hit, "content"),
+    ]
+    normalized_parts = []
+
+    for part in parts:
+        if not part:
+            continue
+
+        normalized = " ".join(part.split())
+
+        if normalized and normalized not in normalized_parts:
+            normalized_parts.append(normalized)
+
+    return "\n".join(normalized_parts)
 
 
 def apply_ragas_scores(

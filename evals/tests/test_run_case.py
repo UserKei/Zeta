@@ -53,6 +53,51 @@ class RunCaseTest(unittest.TestCase):
         self.assertEqual(result.contexts, [])
         self.assertEqual(result.retrieved_documents, [])
 
+    def test_run_case_includes_document_and_chunk_titles_in_contexts(self):
+        client = FakeZetaClient(
+            {
+                "assistantMessage": {
+                    "content": "The acquisitions handbook explains acquisition goals.",
+                    "citations": [{"id": "citation-1"}],
+                },
+                "hits": [
+                    {
+                        "documentName": "Acquisitions Handbook",
+                        "documentPath": "content/handbook/acquisitions/_index.md",
+                        "title": "Overview",
+                        "content": "GitLab pursues acquisitions to accelerate its roadmap.",
+                    }
+                ],
+            }
+        )
+        case = run_ragas.EvaluationCase(
+            case_id="case-2",
+            question="What is GitLab's key goal when pursuing acquisitions?",
+            reference="GitLab pursues acquisitions to accelerate its roadmap.",
+            expected_documents=["content/handbook/acquisitions/_index.md"],
+        )
+
+        result = run_ragas.run_case(
+            client=client,
+            case=case,
+            default_knowledge_base_id="kb-1",
+            default_agent_id="agent-1",
+            default_top_k=5,
+        )
+
+        self.assertEqual(
+            result.contexts,
+            [
+                "Acquisitions Handbook\n"
+                "Overview\n"
+                "GitLab pursues acquisitions to accelerate its roadmap."
+            ],
+        )
+        self.assertEqual(
+            result.retrieved_documents,
+            ["content/handbook/acquisitions/_index.md"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

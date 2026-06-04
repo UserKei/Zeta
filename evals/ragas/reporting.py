@@ -24,10 +24,16 @@ class EvaluationSummary:
     failed_cases: int
     expected_document_hit_rate: float | None
     average_context_count: float
+    average_unique_retrieved_documents: float
+    average_duplicate_document_slots: float
     empty_answer_count: int
     empty_citation_count: int
     average_scores: dict[str, float] = field(default_factory=dict)
     failures: list[EvaluationCaseResult] = field(default_factory=list)
+    single_document_cases: list[EvaluationCaseResult] = field(default_factory=list)
+    lowest_context_precision_cases: list[EvaluationCaseResult] = field(
+        default_factory=list
+    )
 
 
 def build_summary(results: list[EvaluationCaseResult]) -> EvaluationSummary:
@@ -45,6 +51,12 @@ def build_summary(results: list[EvaluationCaseResult]) -> EvaluationSummary:
         name: mean(result.scores[name] for result in results if name in result.scores)
         for name in score_names
     }
+    retrieved_results = [result for result in results if result.retrieved_documents]
+    context_precision_results = [
+        result
+        for result in results
+        if isinstance(result.scores.get("context_precision"), float)
+    ]
 
     return EvaluationSummary(
         total_cases=total_cases,
@@ -54,10 +66,32 @@ def build_summary(results: list[EvaluationCaseResult]) -> EvaluationSummary:
         average_context_count=mean(len(result.contexts) for result in results)
         if results
         else 0.0,
+        average_unique_retrieved_documents=mean(
+            count_unique_retrieved_documents(result.retrieved_documents)
+            for result in retrieved_results
+        )
+        if retrieved_results
+        else 0.0,
+        average_duplicate_document_slots=mean(
+            count_duplicate_document_slots(result.retrieved_documents)
+            for result in retrieved_results
+        )
+        if retrieved_results
+        else 0.0,
         empty_answer_count=sum(1 for result in results if not result.answer.strip()),
         empty_citation_count=sum(1 for result in results if result.citations_count == 0),
         average_scores=average_scores,
         failures=[result for result in results if result.error is not None],
+        single_document_cases=[
+            result
+            for result in results
+            if len(result.retrieved_documents) > 1
+            and count_unique_retrieved_documents(result.retrieved_documents) == 1
+        ],
+        lowest_context_precision_cases=sorted(
+            context_precision_results,
+            key=lambda result: result.scores["context_precision"],
+        )[:10],
     )
 
 
@@ -91,6 +125,54 @@ def render_markdown_report(
             lines.append(f"| {name} | {score:.4f} |")
     else:
         lines.append("| No Ragas score | - |")
+
+    lines.extend(
+        [
+            "",
+            "## Retrieval Diagnostics",
+            "",
+            "| Metric | Value |",
+            "| --- | ---: |",
+            f"| Average unique retrieved documents | {summary.average_unique_retrieved_documents:.2f} |",
+            f"| Average duplicate document slots | {summary.average_duplicate_document_slots:.2f} |",
+            f"| Single-document topK cases | {len(summary.single_document_cases)} |",
+        ]
+    )
+
+    if summary.single_document_cases:
+        lines.extend(
+            [
+                "",
+                "Single-document cases:",
+                "",
+                *[
+                    f"- `{result.case_id}`"
+                    for result in summary.single_document_cases[:10]
+                ],
+            ]
+        )
+
+    lines.extend(["", "## Lowest Context Precision Cases", ""])
+
+    if summary.lowest_context_precision_cases:
+        lines.extend(
+            [
+                "| Case | context_precision | context_recall | Expected documents | Retrieved documents |",
+                "| --- | ---: | ---: | --- | --- |",
+            ]
+        )
+
+        for result in summary.lowest_context_precision_cases:
+            lines.append(
+                "| "
+                f"`{result.case_id}` | "
+                f"{result.scores['context_precision']:.4f} | "
+                f"{format_optional_score(result.scores.get('context_recall'))} | "
+                f"{format_document_list(result.expected_documents)} | "
+                f"{format_document_list(unique_documents_in_order(result.retrieved_documents))} |"
+            )
+    else:
+        lines.append("No context precision scores.")
 
     if ragas_error:
         lines.extend(
@@ -137,9 +219,47 @@ def has_expected_document_hit(
     return bool(expected & retrieved)
 
 
+def count_unique_retrieved_documents(retrieved_documents: list[str]) -> int:
+    return len(
+        {
+            normalize_document_key(document)
+            for document in retrieved_documents
+            if document.strip()
+        }
+    )
+
+
+def count_duplicate_document_slots(retrieved_documents: list[str]) -> int:
+    document_count = sum(1 for document in retrieved_documents if document.strip())
+    return document_count - count_unique_retrieved_documents(retrieved_documents)
+
+
+def unique_documents_in_order(documents: list[str]) -> list[str]:
+    seen = set()
+    unique_documents = []
+
+    for document in documents:
+        normalized = normalize_document_key(document)
+
+        if not normalized or normalized in seen:
+            continue
+
+        seen.add(normalized)
+        unique_documents.append(document)
+
+    return unique_documents
+
+
 def normalize_document_key(document: str) -> str:
     return document.strip().casefold()
 
 
 def format_optional_score(score: float | None) -> str:
     return "-" if score is None else f"{score:.4f}"
+
+
+def format_document_list(documents: list[str]) -> str:
+    if not documents:
+        return "-"
+
+    return "; ".join(f"`{document}`" for document in documents)
