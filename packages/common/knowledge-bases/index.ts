@@ -20,6 +20,32 @@ export type KnowledgeBasePayload = {
 
 export type KnowledgeBaseUpdatePayload = Partial<KnowledgeBasePayload>;
 
+export type KnowledgeBaseModelSummary = {
+  id: string;
+  name: string;
+  provider: string;
+  modelName: string;
+  isEnabled: boolean;
+};
+
+export type KnowledgeBase = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: KnowledgeBaseStatus;
+  embeddingModelId: string | null;
+  visionModelId: string | null;
+  rerankerModelId: string | null;
+  chunkSize: number;
+  chunkOverlap: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  embeddingModel: KnowledgeBaseModelSummary | null;
+  visionModel: KnowledgeBaseModelSummary | null;
+  rerankerModel: KnowledgeBaseModelSummary | null;
+};
+
 export type KnowledgeUsageRange = "7d" | "30d" | "all";
 
 export type KnowledgeUsageDocumentItem = {

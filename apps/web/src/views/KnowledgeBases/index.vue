@@ -58,6 +58,12 @@ defineOptions({
   name: 'KnowledgeBasesView',
 })
 
+type KnowledgeBaseForm = KnowledgeBasePayload & {
+  status: KnowledgeBaseStatus
+  chunkSize: number
+  chunkOverlap: number
+}
+
 const router = useRouter()
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const models = ref<AiModel[]>([])
@@ -71,7 +77,7 @@ const deletingKnowledgeBase = ref<KnowledgeBase | null>(null)
 const keyword = ref('')
 const statusFilter = ref<KnowledgeBaseStatus | ''>('')
 
-const form = reactive<KnowledgeBasePayload>({
+const form = reactive<KnowledgeBaseForm>({
   name: '',
   description: '',
   status: 'ACTIVE',

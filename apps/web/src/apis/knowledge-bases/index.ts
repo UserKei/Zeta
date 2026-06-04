@@ -1,57 +1,20 @@
 import { responseData, serverApi, type Response } from '..'
-import type { KnowledgeUsageRange, KnowledgeUsageSummary } from '@zeta/common/knowledge-bases'
+import type {
+  KnowledgeBase,
+  KnowledgeBasePayload,
+  KnowledgeBaseUpdatePayload,
+  KnowledgeUsageRange,
+  KnowledgeUsageSummary,
+} from '@zeta/common/knowledge-bases'
 
-export type { KnowledgeUsageRange, KnowledgeUsageSummary } from '@zeta/common/knowledge-bases'
-
-export type KnowledgeBaseStatus = 'ACTIVE' | 'DISABLED'
-
-export type KnowledgeBase = {
-  id: string
-  name: string
-  description: string | null
-  status: KnowledgeBaseStatus
-  embeddingModelId: string | null
-  visionModelId: string | null
-  rerankerModelId: string | null
-  chunkSize: number
-  chunkOverlap: number
-  metadata: Record<string, unknown>
-  createdAt: string
-  updatedAt: string
-  embeddingModel: {
-    id: string
-    name: string
-    provider: string
-    modelName: string
-    isEnabled: boolean
-  } | null
-  visionModel: {
-    id: string
-    name: string
-    provider: string
-    modelName: string
-    isEnabled: boolean
-  } | null
-  rerankerModel: {
-    id: string
-    name: string
-    provider: string
-    modelName: string
-    isEnabled: boolean
-  } | null
-}
-
-export type KnowledgeBasePayload = {
-  name: string
-  description?: string | null
-  status: KnowledgeBaseStatus
-  embeddingModelId: string
-  visionModelId?: string | null
-  rerankerModelId?: string | null
-  imageUnderstandingPrompt?: string | null
-  chunkSize: number
-  chunkOverlap: number
-}
+export type {
+  KnowledgeBase,
+  KnowledgeBasePayload,
+  KnowledgeBaseStatus,
+  KnowledgeBaseUpdatePayload,
+  KnowledgeUsageRange,
+  KnowledgeUsageSummary,
+} from '@zeta/common/knowledge-bases'
 
 export const listKnowledgeBases = () =>
   responseData(serverApi.get('/knowledge-bases') as Promise<Response<KnowledgeBase[]>>)
@@ -62,7 +25,7 @@ export const getKnowledgeBase = (id: string) =>
 export const createKnowledgeBase = (payload: KnowledgeBasePayload) =>
   responseData(serverApi.post('/knowledge-bases', payload) as Promise<Response<KnowledgeBase>>)
 
-export const updateKnowledgeBase = (id: string, payload: Partial<KnowledgeBasePayload>) =>
+export const updateKnowledgeBase = (id: string, payload: KnowledgeBaseUpdatePayload) =>
   responseData(
     serverApi.patch(`/knowledge-bases/${id}`, payload) as Promise<Response<KnowledgeBase>>,
   )
