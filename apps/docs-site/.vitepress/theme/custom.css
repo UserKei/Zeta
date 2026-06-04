@@ -24,12 +24,21 @@
 
 .zeta-mermaid__canvas svg {
   display: block;
-  max-width: 100%;
+  max-width: none !important;
   height: auto;
   margin: 0 auto;
 }
 
+.zeta-mermaid__status,
+.zeta-mermaid__error {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.zeta-mermaid__status {
+  color: var(--vp-c-text-2);
+}
+
 .zeta-mermaid__error {
   color: var(--vp-c-danger-1);
-  font-size: 14px;
 }

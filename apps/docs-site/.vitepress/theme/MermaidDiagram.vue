@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useData } from 'vitepress'
+
+let mermaidRenderId = 0
 
 const props = defineProps<{
   code: string
 }>()
 
+const { isDark } = useData()
 const container = ref<HTMLElement | null>(null)
 const errorMessage = ref('')
-let renderCounter = 0
+const isRendering = ref(false)
+let renderSequence = 0
+
+function createMermaidRenderId() {
+  mermaidRenderId += 1
+
+  return `zeta-mermaid-${mermaidRenderId}`
+}
 
 function decodeDiagram(encoded: string) {
   const binary = window.atob(encoded)
@@ -17,40 +28,72 @@ function decodeDiagram(encoded: string) {
 }
 
 async function renderDiagram() {
-  if (!container.value) {
+  const target = container.value
+
+  if (!target) {
     return
   }
 
+  const currentSequence = ++renderSequence
+  target.innerHTML = ''
+  errorMessage.value = ''
+  isRendering.value = true
+
   try {
-    errorMessage.value = ''
     const { default: mermaid } = await import('mermaid')
-    const isDark = document.documentElement.classList.contains('dark')
 
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: isDark ? 'dark' : 'default',
+      theme: isDark.value ? 'dark' : 'default',
     })
 
-    renderCounter += 1
     const diagramCode = decodeDiagram(props.code)
-    const { svg } = await mermaid.render(`zeta-mermaid-${renderCounter}`, diagramCode)
-    container.value.innerHTML = svg
+    const { svg, bindFunctions } = await mermaid.render(
+      createMermaidRenderId(),
+      diagramCode,
+    )
+
+    if (currentSequence !== renderSequence || target !== container.value) {
+      return
+    }
+
+    target.innerHTML = svg
+    bindFunctions?.(target)
   } catch (error) {
+    if (currentSequence !== renderSequence) {
+      return
+    }
+
     const message = error instanceof Error ? error.message : String(error)
     errorMessage.value = `Mermaid 渲染失败：${message}`
-    container.value.innerHTML = ''
+    target.innerHTML = ''
+  } finally {
+    if (currentSequence === renderSequence) {
+      isRendering.value = false
+    }
   }
 }
 
 onMounted(renderDiagram)
-watch(() => props.code, renderDiagram)
+watch([() => props.code, isDark], renderDiagram, { flush: 'post' })
+onBeforeUnmount(() => {
+  renderSequence += 1
+  isRendering.value = false
+
+  if (container.value) {
+    container.value.innerHTML = ''
+  }
+})
 </script>
 
 <template>
   <figure class="zeta-mermaid">
     <div ref="container" class="zeta-mermaid__canvas" />
-    <figcaption v-if="errorMessage" class="zeta-mermaid__error">
+    <figcaption v-if="isRendering" class="zeta-mermaid__status">
+      正在渲染图表...
+    </figcaption>
+    <figcaption v-else-if="errorMessage" class="zeta-mermaid__error">
       {{ errorMessage }}
     </figcaption>
   </figure>
