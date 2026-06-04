@@ -15,26 +15,27 @@ import {
 import type { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
   ChunkReorderPayload,
-  ChunkDraftPayload,
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
+import { MAX_CHUNK_CONTENT_LENGTH } from './knowledge-docs.constants';
 import {
-  MAX_CHUNK_CONTENT_LENGTH,
-  MAX_CHUNK_COUNT,
-  MAX_DOCUMENT_CONTENT_LENGTH,
-} from './knowledge-docs.constants';
+  assertDocumentChunks,
+  countChunkChars,
+  normalizeChunkStatus,
+  normalizeText,
+  normalizeTitle,
+  toChunkDrafts,
+  toSingleChunkDraft,
+} from './chunk-draft-normalizer';
 import {
   AiExtractedDocumentService,
   type AiExtractedChunkInput,
 } from './ai-extracted-document.service';
-import {
-  DocumentAssetService,
-  type DocumentChunkDraft,
-} from './document-asset.service';
+import { DocumentAssetService } from './document-asset.service';
 import {
   ChunkIndexingService,
   type EmbeddingModelConfig,
@@ -45,8 +46,6 @@ import { RetrievalService } from '../retrieval/retrieval.service';
 type DocumentRecord = Prisma.DocumentGetPayload<{
   select: typeof documentSelect;
 }>;
-
-type ChunkDraft = DocumentChunkDraft;
 
 type KnowledgeDocsDbClient = PrismaService | Prisma.TransactionClient;
 
@@ -132,14 +131,14 @@ export class KnowledgeDocsService {
     const knowledgeBase =
       await this.requireIndexableKnowledgeBase(knowledgeBaseId);
     const name = input.name?.trim();
-    const chunks = this.toChunkDrafts(input.chunks);
+    const chunks = toChunkDrafts(input.chunks);
 
     if (!name) {
       throw new BadRequestException('name is required');
     }
 
     if (chunks.length > 0) {
-      this.assertDocumentChunks(chunks);
+      assertDocumentChunks(chunks);
     }
 
     const document = await this.prisma.document.create({
@@ -149,7 +148,7 @@ export class KnowledgeDocsService {
         sourceType: DocumentSourceType.MANUAL,
         status:
           chunks.length === 0 ? DocumentStatus.DRAFT : DocumentStatus.CHUNKING,
-        charCount: this.countChars(chunks),
+        charCount: countChunkChars(chunks),
         chunkCount: chunks.length,
         metadata: {
           description: input.description?.trim() || null,
@@ -220,7 +219,7 @@ export class KnowledgeDocsService {
 
   async createChunk(documentId: string, input: ChunkPayload) {
     const document = await this.requireIndexableDocument(documentId);
-    const chunk = this.toSingleChunkDraft(input, 0);
+    const chunk = toSingleChunkDraft(input, 0);
     const activeChunkCount = await this.countActiveChunks(document.id);
 
     if (chunk.status === ChunkStatus.DISABLED && activeChunkCount === 0) {
@@ -291,8 +290,8 @@ export class KnowledgeDocsService {
     const nextContent =
       input.content === undefined
         ? chunk.content
-        : this.normalizeText(input.content);
-    const nextStatus = this.normalizeChunkStatus(input.status, chunk.status);
+        : normalizeText(input.content);
+    const nextStatus = normalizeChunkStatus(input.status, chunk.status);
 
     if (!nextContent) {
       throw new BadRequestException('chunk content is required');
@@ -312,9 +311,7 @@ export class KnowledgeDocsService {
       where: { id },
       data: {
         title:
-          input.title === undefined
-            ? chunk.title
-            : this.normalizeTitle(input.title),
+          input.title === undefined ? chunk.title : normalizeTitle(input.title),
         content: nextContent,
         charCount: nextContent.length,
         status: nextStatus,
@@ -475,64 +472,6 @@ export class KnowledgeDocsService {
     );
   }
 
-  private toChunkDrafts(chunks: ChunkDraftPayload[] | undefined) {
-    if (!Array.isArray(chunks)) {
-      throw new BadRequestException('chunks are required');
-    }
-
-    return chunks.map((chunk, index) => this.toSingleChunkDraft(chunk, index));
-  }
-
-  private toSingleChunkDraft(input: ChunkDraftPayload, position: number) {
-    const content = this.normalizeText(input.content);
-
-    if (!content) {
-      throw new BadRequestException('chunk content is required');
-    }
-
-    if (content.length > MAX_CHUNK_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `chunk content cannot exceed ${MAX_CHUNK_CONTENT_LENGTH} characters`,
-      );
-    }
-
-    return {
-      id: randomUUID(),
-      title: this.normalizeTitle(input.title),
-      content,
-      status: this.normalizeChunkStatus(input.status, ChunkStatus.ACTIVE),
-      position,
-      charCount: content.length,
-      metadata: this.normalizeChunkMetadata(input.metadata),
-    };
-  }
-
-  private assertDocumentChunks(chunks: ChunkDraft[]) {
-    if (chunks.length === 0) {
-      throw new BadRequestException('at least one chunk is required');
-    }
-
-    if (chunks.length > MAX_CHUNK_COUNT) {
-      throw new BadRequestException(
-        `chunk count cannot exceed ${MAX_CHUNK_COUNT}`,
-      );
-    }
-
-    if (!chunks.some((chunk) => chunk.status === ChunkStatus.ACTIVE)) {
-      throw new BadRequestException('document must have active chunks');
-    }
-
-    if (this.countChars(chunks) > MAX_DOCUMENT_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `document content cannot exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`,
-      );
-    }
-  }
-
-  private countChars(chunks: Array<{ charCount: number }>) {
-    return chunks.reduce((total, chunk) => total + chunk.charCount, 0);
-  }
-
   private toDocumentResponse(document: DocumentRecord) {
     const { metadata, ...documentData } = document;
     const metadataObject = this.toMetadataObject(metadata);
@@ -552,41 +491,6 @@ export class KnowledgeDocsService {
     }
 
     return {};
-  }
-
-  private normalizeText(content: string | undefined) {
-    return content?.replace(/\r\n/g, '\n').trim() ?? '';
-  }
-
-  private normalizeTitle(title: string | null | undefined) {
-    const normalizedTitle = title?.trim();
-
-    return normalizedTitle ? normalizedTitle.slice(0, 512) : null;
-  }
-
-  private normalizeChunkMetadata(
-    metadata: ChunkDraftPayload['metadata'],
-  ): Prisma.InputJsonValue {
-    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-      return metadata as Prisma.InputJsonObject;
-    }
-
-    return {};
-  }
-
-  private normalizeChunkStatus(
-    status: ChunkStatus | undefined,
-    fallback: ChunkStatus,
-  ) {
-    if (status === undefined) {
-      return fallback;
-    }
-
-    if (status !== ChunkStatus.ACTIVE && status !== ChunkStatus.DISABLED) {
-      throw new BadRequestException('chunk status is invalid');
-    }
-
-    return status;
   }
 
   private async assertCanDeactivateChunk(chunkId: string, documentId: string) {

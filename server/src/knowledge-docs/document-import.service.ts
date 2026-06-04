@@ -4,7 +4,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { basename } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import {
   FileParserService,
   FileStorageService,
@@ -13,7 +12,6 @@ import {
 } from '@libs/shared';
 import {
   AiModelType,
-  ChunkStatus,
   DocumentSourceType,
   DocumentStatus,
   KnowledgeBaseStatus,
@@ -33,8 +31,13 @@ import {
   MAX_DOCUMENT_CONTENT_LENGTH,
 } from './knowledge-docs.constants';
 import {
+  assertDocumentChunks,
+  countChunkChars,
+  toChunkDrafts,
+  type ChunkDraft,
+} from './chunk-draft-normalizer';
+import {
   DocumentAssetService,
-  type DocumentChunkDraft,
   type ImageUnderstandingWarning,
 } from './document-asset.service';
 import {
@@ -46,8 +49,6 @@ import { documentSelect } from './knowledge-docs.select';
 type DocumentRecord = Prisma.DocumentGetPayload<{
   select: typeof documentSelect;
 }>;
-
-type ChunkDraft = DocumentChunkDraft;
 
 type KnowledgeBaseChunkConfig = {
   chunkSize: number;
@@ -166,14 +167,14 @@ export class DocumentImportService {
     for (const importDocument of importDocuments) {
       const file = uploadedFiles[importDocument.fileIndex];
       const parsedFile = await this.parseUploadedFile(file, knowledgeBase);
-      const chunks = this.toChunkDrafts(importDocument.chunks);
+      const chunks = toChunkDrafts(importDocument.chunks);
       const name = importDocument.name?.trim() || parsedFile.documentName;
 
       if (!name) {
         throw new BadRequestException('name is required');
       }
 
-      this.assertDocumentChunks(chunks);
+      assertDocumentChunks(chunks);
 
       const document = await this.createUploadedFileDocument(
         knowledgeBase,
@@ -202,7 +203,7 @@ export class DocumentImportService {
       chunks: ChunkDraft[];
     },
   ) {
-    const originalCharCount = this.countChars(input.chunks);
+    const originalCharCount = countChunkChars(input.chunks);
     const sourceFile = await this.fileStorageService.saveBuffer({
       fileName: parsedFile.fileName,
       mimeType: file.mimetype || null,
@@ -231,7 +232,7 @@ export class DocumentImportService {
           name: input.name,
           sourceType: DocumentSourceType.FILE_UPLOAD,
           status: DocumentStatus.CHUNKING,
-          charCount: this.countChars(chunks),
+          charCount: countChunkChars(chunks),
           chunkCount: chunks.length,
           metadata: documentMetadata,
         },
@@ -265,12 +266,12 @@ export class DocumentImportService {
       }
 
       if (assets.length > 0 || imageUnderstandingWarnings.length > 0) {
-        this.assertDocumentChunks(chunks);
+        assertDocumentChunks(chunks);
 
         await this.prisma.document.update({
           where: { id: document.id },
           data: {
-            charCount: this.countChars(chunks),
+            charCount: countChunkChars(chunks),
             chunkCount: chunks.length,
             metadata: {
               ...documentMetadata,
@@ -509,99 +510,6 @@ export class DocumentImportService {
     }
 
     return decodedFileName;
-  }
-
-  private toChunkDrafts(chunks: ChunkDraftPayload[] | undefined) {
-    if (!Array.isArray(chunks)) {
-      throw new BadRequestException('chunks are required');
-    }
-
-    return chunks.map((chunk, index) => this.toSingleChunkDraft(chunk, index));
-  }
-
-  private toSingleChunkDraft(input: ChunkDraftPayload, position: number) {
-    const content = this.normalizeText(input.content);
-
-    if (!content) {
-      throw new BadRequestException('chunk content is required');
-    }
-
-    if (content.length > MAX_CHUNK_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `chunk content cannot exceed ${MAX_CHUNK_CONTENT_LENGTH} characters`,
-      );
-    }
-
-    return {
-      id: randomUUID(),
-      title: this.normalizeTitle(input.title),
-      content,
-      status: this.normalizeChunkStatus(input.status, ChunkStatus.ACTIVE),
-      position,
-      charCount: content.length,
-      metadata: this.normalizeChunkMetadata(input.metadata),
-    };
-  }
-
-  private assertDocumentChunks(chunks: ChunkDraft[]) {
-    if (chunks.length === 0) {
-      throw new BadRequestException('at least one chunk is required');
-    }
-
-    if (chunks.length > MAX_CHUNK_COUNT) {
-      throw new BadRequestException(
-        `chunk count cannot exceed ${MAX_CHUNK_COUNT}`,
-      );
-    }
-
-    if (!chunks.some((chunk) => chunk.status === ChunkStatus.ACTIVE)) {
-      throw new BadRequestException('document must have active chunks');
-    }
-
-    if (this.countChars(chunks) > MAX_DOCUMENT_CONTENT_LENGTH) {
-      throw new BadRequestException(
-        `document content cannot exceed ${MAX_DOCUMENT_CONTENT_LENGTH} characters`,
-      );
-    }
-  }
-
-  private countChars(chunks: Array<{ charCount: number }>) {
-    return chunks.reduce((total, chunk) => total + chunk.charCount, 0);
-  }
-
-  private normalizeText(content: string | undefined) {
-    return content?.replace(/\r\n/g, '\n').trim() ?? '';
-  }
-
-  private normalizeTitle(title: string | null | undefined) {
-    const normalizedTitle = title?.trim();
-
-    return normalizedTitle ? normalizedTitle.slice(0, 512) : null;
-  }
-
-  private normalizeChunkMetadata(
-    metadata: ChunkDraftPayload['metadata'],
-  ): Prisma.InputJsonValue {
-    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-      return metadata as Prisma.InputJsonObject;
-    }
-
-    return {};
-  }
-
-  private normalizeChunkStatus(
-    status: ChunkStatus | undefined,
-    fallback: ChunkStatus,
-  ) {
-    if (status === undefined) {
-      return fallback;
-    }
-
-    if (status !== ChunkStatus.ACTIVE && status !== ChunkStatus.DISABLED) {
-      throw new BadRequestException('chunk status is invalid');
-    }
-
-    return status;
   }
 
   private async requireKnowledgeBase(id: string) {
