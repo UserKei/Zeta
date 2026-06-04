@@ -29,6 +29,7 @@ def main() -> None:
     export_ragas_reports_for_docs(
         reports_dir=Path(args.reports_dir),
         docs_site_dir=Path(args.docs_site_dir),
+        published_ragas_dir=Path(args.published_ragas_dir),
     )
 
 
@@ -46,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         default="apps/docs-site",
         help="VitePress documentation site directory.",
     )
+    parser.add_argument(
+        "--published-ragas-dir",
+        default="evals/published-reports/ragas",
+        help="Tracked Ragas reports that should always be published to the docs site.",
+    )
 
     return parser.parse_args()
 
@@ -53,6 +59,7 @@ def parse_args() -> argparse.Namespace:
 def export_ragas_reports_for_docs(
     reports_dir: Path,
     docs_site_dir: Path,
+    published_ragas_dir: Path | None = None,
 ) -> None:
     ragas_public_dir = docs_site_dir / "public" / "eval-reports" / "ragas"
     deepeval_public_dir = docs_site_dir / "public" / "eval-reports" / "deepeval"
@@ -64,7 +71,8 @@ def export_ragas_reports_for_docs(
     (ragas_public_dir / ".gitkeep").touch()
     (deepeval_public_dir / ".gitkeep").touch()
 
-    entries = read_ragas_report_entries(reports_dir)
+    report_dirs = [published_ragas_dir, reports_dir] if published_ragas_dir else [reports_dir]
+    entries = read_ragas_report_entries(*report_dirs)
 
     for entry in entries:
         shutil.copy2(entry.markdown_path, ragas_public_dir / entry.markdown_path.name)
@@ -76,15 +84,18 @@ def export_ragas_reports_for_docs(
     write_latest_ragas_page(report_pages_dir / "latest.md", entries)
 
 
-def read_ragas_report_entries(reports_dir: Path) -> list[RagasReportEntry]:
-    if not reports_dir.exists():
-        return []
+def read_ragas_report_entries(*reports_dirs: Path | None) -> list[RagasReportEntry]:
+    markdown_paths: dict[str, Path] = {}
 
-    entries = [
-        parse_ragas_report(markdown_path)
-        for markdown_path in sorted(reports_dir.glob("ragas-report-*.md"))
-        if RAGAS_REPORT_PATTERN.match(markdown_path.name)
-    ]
+    for reports_dir in reports_dirs:
+        if not reports_dir or not reports_dir.exists():
+            continue
+
+        for markdown_path in sorted(reports_dir.glob("ragas-report-*.md")):
+            if RAGAS_REPORT_PATTERN.match(markdown_path.name):
+                markdown_paths[markdown_path.name] = markdown_path
+
+    entries = [parse_ragas_report(path) for path in markdown_paths.values()]
 
     return sorted(entries, key=lambda entry: entry.display_time, reverse=True)
 
@@ -131,15 +142,16 @@ def write_ragas_index_page(path: Path, entries: list[RagasReportEntry]) -> None:
     lines = [
         "# RAG 评测报告索引",
         "",
-        "本页由 `pnpm docs:reports` 从 `evals/reports/` 生成，用于在交付文档站中展示离线 Ragas 评测结果。",
+        "本页由 `pnpm docs:reports` 从 `evals/reports/` 和 `evals/published-reports/ragas/` 生成，用于在交付文档站中展示离线 Ragas 评测结果。",
         "",
         "> [!NOTE]",
-        "> 原始评测报告仍保留在 `evals/reports/`，文档站只发布静态副本和索引，不把评测逻辑放进 NestJS 或前端后台。",
+        "> 本地评测报告仍保留在 `evals/reports/`，可发布的基准报告保留在 `evals/published-reports/ragas/`。文档站只发布静态副本和索引，不把评测逻辑放进 NestJS 或前端后台。",
         "",
     ]
 
     if not entries:
         lines.extend(["暂时还没有可展示的 Ragas 报告。", ""])
+        append_deepeval_status(lines)
         path.write_text("\n".join(lines), encoding="utf-8")
         return
 
@@ -171,7 +183,19 @@ def write_ragas_index_page(path: Path, entries: list[RagasReportEntry]) -> None:
         )
 
     lines.append("")
+    append_deepeval_status(lines)
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def append_deepeval_status(lines: list[str]) -> None:
+    lines.extend(
+        [
+            "## DeepEval 报告",
+            "",
+            "暂时还没有可展示的 DeepEval 报告。当前只接入离线 Ragas；后续接入 DeepEval 后，可以把 HTML 报告放到 `apps/docs-site/public/eval-reports/deepeval/`。",
+            "",
+        ]
+    )
 
 
 def write_latest_ragas_page(path: Path, entries: list[RagasReportEntry]) -> None:

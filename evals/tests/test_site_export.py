@@ -93,6 +93,77 @@ class SiteExportTest(unittest.TestCase):
                 latest_page.read_text(encoding="utf-8"),
             )
 
+    def test_uses_published_ragas_reports_when_runtime_reports_are_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            published_ragas_dir = root / "evals" / "published-reports" / "ragas"
+            docs_site_dir = root / "docs-site"
+            published_ragas_dir.mkdir(parents=True)
+
+            (published_ragas_dir / "ragas-report-20260604-141149.md").write_text(
+                "\n".join(
+                    [
+                        "# Published Ragas Report",
+                        "",
+                        "## Ragas Scores",
+                        "",
+                        "| Metric | Average |",
+                        "| --- | ---: |",
+                        "| answer_relevancy | 0.9178 |",
+                        "| context_precision | 0.7311 |",
+                        "| context_recall | 0.8667 |",
+                        "| faithfulness | 0.9274 |",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (published_ragas_dir / "ragas-report-20260604-141149.csv").write_text(
+                "case_id,answer_relevancy\ncase-1,0.9178\n",
+                encoding="utf-8",
+            )
+
+            export_ragas_reports_for_docs(
+                reports_dir=root / "evals" / "reports",
+                docs_site_dir=docs_site_dir,
+                published_ragas_dir=published_ragas_dir,
+            )
+
+            index_page = docs_site_dir / "eval-reports" / "index.md"
+            latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            public_report = (
+                docs_site_dir
+                / "public"
+                / "eval-reports"
+                / "ragas"
+                / "ragas-report-20260604-141149.md"
+            )
+
+            self.assertTrue(public_report.exists())
+            self.assertIn("0.7311", index_page.read_text(encoding="utf-8"))
+            self.assertIn(
+                "# Published Ragas Report",
+                latest_page.read_text(encoding="utf-8"),
+            )
+
+    def test_index_mentions_deepeval_status(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            docs_site_dir = root / "docs-site"
+
+            export_ragas_reports_for_docs(
+                reports_dir=root / "evals" / "reports",
+                docs_site_dir=docs_site_dir,
+            )
+
+            index_page = docs_site_dir / "eval-reports" / "index.md"
+
+            self.assertIn("## DeepEval 报告", index_page.read_text(encoding="utf-8"))
+            self.assertIn(
+                "暂时还没有可展示的 DeepEval 报告。",
+                index_page.read_text(encoding="utf-8"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

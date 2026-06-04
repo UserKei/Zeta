@@ -3,7 +3,6 @@
 ## 在线入口
 
 - GitHub 仓库：https://github.com/UserKei/Zeta
-- 在线演示：http://1.12.46.167/
 
 默认本地 seed 账号：
 
