@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, extname, join, relative, sep } from 'node:path';
-import type { CorpusPreset } from '../../scripts/corpus-presets';
+import type { CorpusPreset } from './corpus-presets';
 import { resolveGitLabDocumentMetadata } from './gitlab-adapters';
 
 export type CorpusFileRef = {

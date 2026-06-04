@@ -15,7 +15,6 @@ import {
   KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import type { Prisma } from '@libs/shared/generated/prisma/client';
-import { getCorpusPreset } from './corpus-presets';
 import {
   buildCorpusDocumentMetadata,
   buildCorpusResourceIds,
@@ -23,6 +22,7 @@ import {
   loadMarkdownCorpusFile,
   type PreparedCorpusFile,
 } from '../src/corpus-import/markdown-corpus.helpers';
+import { getCorpusPreset } from '../src/corpus-import/corpus-presets';
 
 type ImportStats = {
   discovered: number;

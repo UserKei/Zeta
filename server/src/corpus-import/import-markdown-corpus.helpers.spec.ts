@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { gitlabHandbookPreset } from '../../scripts/corpus-presets';
+import { gitlabHandbookPreset } from './corpus-presets';
 import {
   buildCorpusDocumentMetadata,
   buildCorpusResourceIds,
