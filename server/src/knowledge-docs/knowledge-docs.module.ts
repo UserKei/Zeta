@@ -3,7 +3,8 @@ import {
   EmbeddingModule,
   ImageUnderstandingModule,
 } from '@libs/model-adapters';
-import { FileStorageModule, ParserModule, RetrievalModule } from '@libs/shared';
+import { FileStorageModule, ParserModule } from '@libs/shared';
+import { RetrievalModule } from '../retrieval/retrieval.module';
 import { AiExtractedDocumentService } from './ai-extracted-document.service';
 import { ChunkIndexingService } from './chunk-indexing.service';
 import { DocumentAssetService } from './document-asset.service';

@@ -2,6 +2,9 @@ jest.mock('@libs/shared', () => ({
   FileParserService: class FileParserService {},
   FileStorageService: class FileStorageService {},
   PrismaService: class PrismaService {},
+}));
+
+jest.mock('../retrieval/retrieval.service', () => ({
   RetrievalService: class RetrievalService {},
 }));
 

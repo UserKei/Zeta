@@ -2,6 +2,9 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 jest.mock('@libs/shared', () => ({
   PrismaService: class PrismaService {},
+}));
+
+jest.mock('../retrieval/retrieval.service', () => ({
   RetrievalService: class RetrievalService {},
 }));
 

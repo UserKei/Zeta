@@ -4,11 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import {
-  FileStorageService,
-  PrismaService,
-  RetrievalService,
-} from '@libs/shared';
+import { FileStorageService, PrismaService } from '@libs/shared';
 import {
   AiModelType,
   ChunkStatus,
@@ -44,6 +40,7 @@ import {
   type EmbeddingModelConfig,
 } from './chunk-indexing.service';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
+import { RetrievalService } from '../retrieval/retrieval.service';
 
 type DocumentRecord = Prisma.DocumentGetPayload<{
   select: typeof documentSelect;

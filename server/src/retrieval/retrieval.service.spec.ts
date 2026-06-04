@@ -1,14 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 
-jest.mock('../prisma/prisma.service', () => ({
+jest.mock('@libs/shared', () => ({
   PrismaService: class PrismaService {},
 }));
 
-jest.mock('../generated/prisma/client', () => ({
+jest.mock('@libs/shared/generated/prisma/client', () => ({
   Prisma: {},
 }));
 
-jest.mock('../generated/prisma/enums', () => ({
+jest.mock('@libs/shared/generated/prisma/enums', () => ({
   AiModelType: {
     EMBEDDING: 'EMBEDDING',
     RERANKER: 'RERANKER',

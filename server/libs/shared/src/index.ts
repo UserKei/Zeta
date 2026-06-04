@@ -5,8 +5,6 @@ export * from './prisma/prisma.service';
 export * from './response/response.module';
 export * from './response/response.service';
 export * from './auth/auth.guard';
-export * from './retrieval/retrieval.module';
-export * from './retrieval/retrieval.service';
 export * from './parser/parser.module';
 export * from './parser/core/file-parser.service';
 export * from './parser/core/parser.types';

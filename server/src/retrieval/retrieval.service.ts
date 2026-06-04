@@ -4,15 +4,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmbeddingService, RerankService } from '@libs/model-adapters';
-import { PrismaService } from '../prisma/prisma.service';
-import { AiModelType, KnowledgeBaseStatus } from '../generated/prisma/enums';
-import { Prisma } from '../generated/prisma/client';
+import { PrismaService } from '@libs/shared';
+import {
+  AiModelType,
+  KnowledgeBaseStatus,
+} from '@libs/shared/generated/prisma/enums';
+import { Prisma } from '@libs/shared/generated/prisma/client';
+import { buildRetrievalText } from '@libs/shared/retrieval/retrieval-text';
 import type {
   RetrievalHit,
   RetrievalMatchReason,
   RetrievalResult,
 } from '@zeta/common/knowledge-docs';
-import { buildRetrievalText } from './retrieval-text';
 
 type VectorRetrievalRow = {
   chunk_id: string;
