@@ -8,6 +8,7 @@ export default defineConfig({
   title: 'Zeta',
   description: 'AI 知识库管理平台交付文档',
   base,
+  cleanUrls: true,
   lastUpdated: true,
   srcExclude: ['public/eval-reports/**/*.md'],
   markdown: {

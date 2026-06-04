@@ -23,7 +23,7 @@
 - PDF：评估 OCR fallback 或独立文档解析服务。
 - 多模态：在图片理解 Chunk 稳定后，再评估图片向量化和图文混合召回。
 - 评测：继续扩展 GitLab Handbook 或中文企业制度语料，并维护 baseline。
-- 文档站：把 DeepEval HTML 报告作为静态文件挂载，不接 Confident AI 云 dashboard。
+- 文档站：把 DeepEval JSON 转成 Markdown 页面发布，不接 Confident AI 云 dashboard。
 - 检索：继续观察 document-level diversity、Rerank 和 topK 对 context precision / recall 的影响。
 
 ## 本轮明确不做

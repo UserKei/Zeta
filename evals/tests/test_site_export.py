@@ -158,13 +158,13 @@ class SiteExportTest(unittest.TestCase):
 
             index_page = docs_site_dir / "eval-reports" / "index.md"
 
-            self.assertIn("## DeepEval 报告", index_page.read_text(encoding="utf-8"))
+            self.assertIn("## DeepEval", index_page.read_text(encoding="utf-8"))
             self.assertIn(
                 "暂时还没有可展示的 DeepEval 报告。",
                 index_page.read_text(encoding="utf-8"),
             )
 
-    def test_exports_deepeval_html_reports_and_links_them_from_index(self):
+    def test_generates_deepeval_markdown_report_from_json(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             reports_dir = root / "evals" / "reports"
@@ -175,12 +175,51 @@ class SiteExportTest(unittest.TestCase):
             reports_dir.mkdir(parents=True)
             published_deepeval_dir.mkdir(parents=True)
 
-            (published_deepeval_dir / "deepeval-report-20260604-142000.html").write_text(
+            source_html = published_deepeval_dir / "deepeval-report-20260604-142000.html"
+            source_html.write_text(
                 "<html><body>DeepEval baseline</body></html>",
                 encoding="utf-8",
             )
             (published_deepeval_dir / "deepeval-report-20260604-142000.json").write_text(
-                '{"name":"DeepEval baseline"}',
+                "\n".join(
+                    [
+                        "{",
+                        '  "testCases": [',
+                        "    {",
+                        '      "name": "test_case_0",',
+                        '      "input": "What is Zeta?",',
+                        '      "actualOutput": "Zeta is an AI knowledge base.",',
+                        '      "expectedOutput": "Zeta manages knowledge bases and agents.",',
+                        '      "retrievalContext": ["context one", "context two"],',
+                        '      "success": false,',
+                        '      "metricsData": [',
+                        "        {",
+                        '          "name": "Answer Relevancy",',
+                        '          "score": 0.8,',
+                        '          "success": true,',
+                        '          "reason": "The answer is mostly relevant."',
+                        "        },",
+                        "        {",
+                        '          "name": "Faithfulness",',
+                        '          "score": 0.4,',
+                        '          "success": false,',
+                        '          "reason": "The answer missed one key fact."',
+                        "        }",
+                        "      ]",
+                        "    }",
+                        "  ],",
+                        '  "metricsScores": [',
+                        '    {"metric": "Answer Relevancy", "scores": [0.8], "passes": 1, "fails": 0, "errors": 0},',
+                        '    {"metric": "Faithfulness", "scores": [0.4], "passes": 0, "fails": 1, "errors": 0},',
+                        '    {"metric": "Contextual Precision", "scores": [0.6], "passes": 1, "fails": 0, "errors": 0},',
+                        '    {"metric": "Contextual Recall", "scores": [0.7], "passes": 1, "fails": 0, "errors": 0}',
+                        "  ],",
+                        '  "testPassed": 0,',
+                        '  "testFailed": 1,',
+                        '  "runDuration": 12.5',
+                        "}",
+                    ]
+                ),
                 encoding="utf-8",
             )
 
@@ -198,15 +237,26 @@ class SiteExportTest(unittest.TestCase):
                 / "deepeval-report-20260604-142000.html"
             )
             public_json = public_html.with_suffix(".json")
+            markdown_page = (
+                docs_site_dir
+                / "eval-reports"
+                / "deepeval"
+                / "deepeval-report-20260604-142000.md"
+            )
             index_page = docs_site_dir / "eval-reports" / "index.md"
 
-            self.assertTrue(public_html.exists())
+            self.assertFalse(public_html.exists())
             self.assertTrue(public_json.exists())
-            self.assertIn("## DeepEval 报告", index_page.read_text(encoding="utf-8"))
+            self.assertTrue(markdown_page.exists())
+            self.assertIn("## DeepEval", index_page.read_text(encoding="utf-8"))
             self.assertIn(
-                "./deepeval/deepeval-report-20260604-142000.html",
+                "./deepeval/deepeval-report-20260604-142000",
                 index_page.read_text(encoding="utf-8"),
             )
+            self.assertIn("# DeepEval 报告", markdown_page.read_text(encoding="utf-8"))
+            self.assertIn("What is Zeta?", markdown_page.read_text(encoding="utf-8"))
+            self.assertIn("0.8000", markdown_page.read_text(encoding="utf-8"))
+            self.assertIn("The answer missed one key fact.", markdown_page.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

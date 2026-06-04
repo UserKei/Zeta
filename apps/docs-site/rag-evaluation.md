@@ -10,7 +10,7 @@ Zeta 的 RAG 评测是离线流程：Python 脚本通过 HTTP 调用已经启动
 - Agent 回答是否为空。
 - 回答是否带有引用。
 - Ragas 指标是否能形成可复跑的质量基线。
-- DeepEval 是否能生成适合交付文档站展示的本地 HTML 报告。
+- DeepEval 是否能生成适合交付文档站展示的本地 Markdown 报告。
 
 当前 Ragas 指标：
 
@@ -58,7 +58,6 @@ evals/datasets/gitlab-handbook.sample.jsonl
 ```text
 evals/reports/ragas-report-<timestamp>.md
 evals/reports/ragas-report-<timestamp>.csv
-evals/reports/deepeval-report-<timestamp>.html
 evals/reports/deepeval-report-<timestamp>.json
 ```
 
@@ -94,14 +93,14 @@ pnpm docs:reports
 3. 把原始报告复制到 `apps/docs-site/public/eval-reports/ragas/`。
 4. 生成 [评测报告](/eval-reports/)。
 5. 生成 [最新 Ragas 报告](/eval-reports/latest)。
-6. 读取 DeepEval HTML / JSON 报告并复制到 `apps/docs-site/public/eval-reports/deepeval/`。
+6. 读取 DeepEval JSON 报告，生成 VitePress Markdown 页面，并复制原始 JSON 到 `apps/docs-site/public/eval-reports/deepeval/`。
 
 ## DeepEval 报告方式
 
-DeepEval 走本地 HTML/JSON 报告，不接 Confident AI 云 dashboard。确认要随文档站发布的报告可以放到：
+DeepEval 走本地 JSON + Markdown 报告，不接 Confident AI 云 dashboard。确认要随文档站发布的报告可以放到：
 
 ```text
 evals/published-reports/deepeval/
 ```
 
-然后运行 `pnpm docs:reports`。脚本会把报告复制到文档站 public 目录，并在评测报告页生成链接。
+然后运行 `pnpm docs:reports`。脚本会把原始 JSON 复制到文档站 public 目录，并生成可直接浏览的 Markdown 报告页。

@@ -49,10 +49,10 @@ Zeta 当前不是一个通用工作流平台，而是优先把“企业知识进
 
 ## 评测报告
 
-当前文档站已发布离线 RAG 评测结果，包含 Ragas 指标和 DeepEval 本地 HTML 报告。
+当前文档站已发布离线 RAG 评测结果，包含 Ragas 指标和 DeepEval 本地 Markdown 报告。
 
 - [最新 Ragas 报告](/eval-reports/latest)：展示当前基准数据集的召回、相关性、忠实度和诊断结果。
-- [评测报告](/eval-reports/)：汇总最新 Ragas / DeepEval 指标，并保留历史报告、CSV 明细和 DeepEval HTML / JSON 报告。
+- [评测报告](/eval-reports/)：汇总最新 Ragas / DeepEval 指标，并保留历史报告、CSV 明细和 DeepEval JSON 原始数据。
 - [RAG 评测说明](/rag-evaluation)：说明评测脚本、数据集、指标和报告发布方式。
 
 ## 交付入口
