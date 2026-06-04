@@ -69,12 +69,76 @@ Be transparent.
     expect(prepared.contentSha256).toHaveLength(64);
   });
 
+  it('uses GitLab frontmatter title as document name', () => {
+    const prepared = prepareMarkdownCorpusFile(
+      'content/handbook/acquisitions/_index.md',
+      `---
+title: Acquisitions Handbook
+description: "GitLab's acquisitions page."
+extra_css:
+  - direction.css
+---
+
+GitLab acquisition content.
+      `,
+      gitlabHandbookPreset,
+    );
+
+    expect(prepared.documentName).toBe('Acquisitions Handbook');
+    expect(prepared.retrievalHints).toEqual(
+      expect.arrayContaining([
+        'content/handbook/acquisitions/_index.md',
+        'handbook acquisitions',
+        "GitLab's acquisitions page.",
+      ]),
+    );
+    expect(prepared.content).toContain('GitLab acquisition content.');
+    expect(prepared.content).not.toContain('title: Acquisitions Handbook');
+  });
+
+  it('does not use markdown headings for GitLab document names', () => {
+    const prepared = prepareMarkdownCorpusFile(
+      'content/job-description-library/board-of-directors/board_member.md',
+      `---
+title: Board Member
+---
+
+# Ignored Heading
+
+Board member content.
+      `,
+      gitlabHandbookPreset,
+    );
+
+    expect(prepared.documentName).toBe('Board Member');
+  });
+
+  it('falls back to filename when GitLab frontmatter has no title', () => {
+    const prepared = prepareMarkdownCorpusFile(
+      'content/handbook/about/maintenance.md',
+      `---
+description: Maintenance page.
+---
+
+Maintenance content.
+      `,
+      gitlabHandbookPreset,
+    );
+
+    expect(prepared.documentName).toBe('maintenance');
+  });
+
   it('builds stable import metadata for idempotency', () => {
     const metadata = buildCorpusDocumentMetadata(gitlabHandbookPreset, {
       relativePath: 'content/handbook/values.md',
       sourcePath: '/repo/content/handbook/values.md',
       contentSha256: 'a'.repeat(64),
       sourceRef: 'main',
+      retrievalHints: [
+        'content/handbook/values.md',
+        'handbook values',
+        'Company values page.',
+      ],
     });
 
     expect(metadata).toEqual({
@@ -85,6 +149,11 @@ Be transparent.
       sourcePath: '/repo/content/handbook/values.md',
       sourceRef: 'main',
       contentSha256: 'a'.repeat(64),
+      retrievalHints: [
+        'content/handbook/values.md',
+        'handbook values',
+        'Company values page.',
+      ],
     });
   });
 

@@ -130,7 +130,7 @@ async function main() {
         continue;
       }
 
-      const preparedFile = await loadMarkdownCorpusFile(file);
+      const preparedFile = await loadMarkdownCorpusFile(file, preset);
 
       if (!preparedFile) {
         stats.skipped += 1;
@@ -150,6 +150,7 @@ async function main() {
             sourcePath: preparedFile.absolutePath,
             contentSha256: preparedFile.contentSha256,
             sourceRef,
+            retrievalHints: preparedFile.retrievalHints,
           }),
         );
         stats.imported += 1;
@@ -400,6 +401,7 @@ async function importPreparedFile(
     metadata: {
       ...(chunk.metadata ?? {}),
       relativePath: file.relativePath,
+      retrievalHints: file.retrievalHints,
     },
   }));
   const result = await documentImportService.createFileDocuments(

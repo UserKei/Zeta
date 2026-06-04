@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, extname, join, relative, sep } from 'node:path';
 import type { CorpusPreset } from '../../scripts/corpus-presets';
+import { resolveGitLabDocumentMetadata } from './gitlab-adapters';
 
 export type CorpusFileRef = {
   absolutePath: string;
@@ -12,6 +13,7 @@ export type PreparedCorpusFile = CorpusFileRef & {
   documentName: string;
   content: string;
   contentSha256: string;
+  retrievalHints: string[];
   size: number;
 };
 
@@ -20,6 +22,7 @@ type CorpusDocumentMetadataInput = {
   sourcePath: string;
   contentSha256: string;
   sourceRef: string | null;
+  retrievalHints?: string[];
 };
 
 export const findMarkdownCorpusFiles = async (
@@ -37,9 +40,14 @@ export const findMarkdownCorpusFiles = async (
 
 export const loadMarkdownCorpusFile = async (
   file: CorpusFileRef,
+  preset?: CorpusPreset,
 ): Promise<PreparedCorpusFile | null> => {
   const rawContent = await readFile(file.absolutePath, 'utf8');
-  const prepared = prepareMarkdownCorpusFile(file.relativePath, rawContent);
+  const prepared = prepareMarkdownCorpusFile(
+    file.relativePath,
+    rawContent,
+    preset,
+  );
 
   if (!prepared.content) {
     return null;
@@ -55,13 +63,22 @@ export const loadMarkdownCorpusFile = async (
 export const prepareMarkdownCorpusFile = (
   relativePath: string,
   rawContent: string,
+  preset?: CorpusPreset,
 ) => {
   const content = normalizeMarkdownCorpusContent(rawContent);
+  const metadata =
+    preset?.key === 'gitlab-handbook'
+      ? resolveGitLabDocumentMetadata(relativePath, rawContent)
+      : {
+          documentName: getDocumentName(relativePath, content),
+          retrievalHints: [],
+        };
 
   return {
-    documentName: getDocumentName(relativePath, content),
+    documentName: metadata.documentName,
     content,
     contentSha256: sha256(content),
+    retrievalHints: metadata.retrievalHints,
   };
 };
 
@@ -76,6 +93,7 @@ export const buildCorpusDocumentMetadata = (
   sourcePath: input.sourcePath,
   sourceRef: input.sourceRef,
   contentSha256: input.contentSha256,
+  retrievalHints: input.retrievalHints ?? [],
 });
 
 export const uuidFromKey = (key: string) => {
