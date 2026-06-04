@@ -123,6 +123,38 @@ class EnvLoadingTest(unittest.TestCase):
             ],
         )
 
+    def test_create_ragas_judge_llm_omits_thinking_for_non_deepseek_provider(self):
+        calls = []
+
+        class FakeChatOpenAI:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+
+        config = run_ragas.RagasModelConfig(
+            api_key="openai-key",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o-mini",
+            judge_thinking="disabled",
+            embedding_api_key="dashscope-key",
+            embedding_base_url="https://dashscope.aliyuncs.com/api/v1",
+            embedding_model="text-embedding-v4",
+        )
+
+        llm = run_ragas.create_ragas_judge_llm(config, chat_openai_cls=FakeChatOpenAI)
+
+        self.assertIsInstance(llm, FakeChatOpenAI)
+        self.assertEqual(
+            calls,
+            [
+                {
+                    "api_key": "openai-key",
+                    "base_url": "https://api.openai.com/v1",
+                    "model": "gpt-4o-mini",
+                    "temperature": 0,
+                }
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

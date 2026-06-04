@@ -10,6 +10,7 @@ from datetime import datetime
 from numbers import Real
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from evals.ragas.reporting import (
     EvaluationCaseResult,
@@ -262,13 +263,24 @@ def create_ragas_judge_llm(
 
         chat_openai_cls = ChatOpenAI
 
-    return chat_openai_cls(
-        api_key=model_config.api_key,
-        base_url=model_config.base_url,
-        model=model_config.model,
-        temperature=0,
-        extra_body={"thinking": {"type": model_config.judge_thinking}},
-    )
+    kwargs: dict[str, Any] = {
+        "api_key": model_config.api_key,
+        "base_url": model_config.base_url,
+        "model": model_config.model,
+        "temperature": 0,
+    }
+
+    if is_deepseek_judge(model_config):
+        kwargs["extra_body"] = {"thinking": {"type": model_config.judge_thinking}}
+
+    return chat_openai_cls(**kwargs)
+
+
+def is_deepseek_judge(model_config: RagasModelConfig) -> bool:
+    host = urlparse(model_config.base_url).netloc.casefold()
+    model = model_config.model.casefold()
+
+    return host.endswith("deepseek.com") or model.startswith("deepseek-")
 
 
 def read_judge_thinking() -> str:
@@ -345,9 +357,8 @@ def run_case(
         return failed_case(case, "agent_id is required")
 
     try:
-        retrieval = client.retrieval_test(knowledge_base_id, case.question, top_k)
         chat = client.chat(agent_id, case.question, top_k)
-        hits = chat.get("hits") or retrieval.get("hits") or []
+        hits = chat.get("hits") or []
         answer = chat["assistantMessage"]["content"]
         citations = chat["assistantMessage"].get("citations") or []
 
