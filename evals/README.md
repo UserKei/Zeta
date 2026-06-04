@@ -119,6 +119,15 @@ python3 -m evals.ragas.run_ragas \
 - `evals/reports/ragas-report-<timestamp>.md`
 - `evals/reports/ragas-report-<timestamp>.csv`
 
+Markdown 报告会包含本次运行的元信息，例如 Agent、绑定知识库、数据集路径、topK、Judge 模型、Embedding 评测模型、rerank 是否启用、当前代码 commit 和语料来源 ref。这样后续比较报告时，可以先确认两次评测是不是在相同条件下运行。
+
+默认会读取 `evals/baselines/gitlab-handbook.json`，在报告中展示当前指标和 baseline 的差值。这个 baseline 只用于人工对比，不作为 CI 门禁。需要跳过或替换时可以设置：
+
+```bash
+pnpm eval:ragas --baseline ""
+pnpm eval:ragas --baseline evals/baselines/other.json
+```
+
 ## 取舍
 
 - 第一版只做离线评测，不做线上 dashboard。

@@ -1,7 +1,9 @@
 import unittest
 
 from evals.ragas.reporting import (
+    EvaluationBaseline,
     EvaluationCaseResult,
+    EvaluationRunMetadata,
     build_summary,
     has_expected_document_hit,
     render_markdown_report,
@@ -64,6 +66,82 @@ class ReportingTest(unittest.TestCase):
         self.assertIn("# Zeta RAG Evaluation Report", report)
         self.assertIn("| Total cases | 1 |", report)
         self.assertIn("| faithfulness | 0.9000 |", report)
+
+    def test_render_markdown_report_includes_run_metadata(self):
+        summary = build_summary(
+            [
+                EvaluationCaseResult(
+                    case_id="case-1",
+                    question="什么是 MFA?",
+                    answer="MFA 是多因素认证。",
+                    contexts=["MFA 需要短信或认证器。"],
+                    expected_documents=["it-faq"],
+                    retrieved_documents=["it-faq"],
+                    citations_count=1,
+                    scores={"faithfulness": 0.9},
+                )
+            ]
+        )
+        metadata = EvaluationRunMetadata(
+            run_timestamp="2026-06-04T14:30:00+08:00",
+            dataset_path="evals/datasets/gitlab-handbook.sample.jsonl",
+            agent_id="agent-1",
+            agent_name="GitLab Handbook Expert",
+            knowledge_base_names=["GitLab Handbook"],
+            top_k=5,
+            judge_model="deepseek-v4-flash",
+            judge_base_url="https://api.deepseek.com",
+            embedding_model="text-embedding-v4",
+            embedding_base_url="https://dashscope.aliyuncs.com/api/v1",
+            rerank_enabled=True,
+            git_commit="abc1234",
+            corpus_preset="gitlab-handbook",
+            corpus_limit="30",
+            corpus_source_ref="def5678",
+        )
+
+        report = render_markdown_report(summary, metadata=metadata)
+
+        self.assertIn("## Run Metadata", report)
+        self.assertIn("| Agent | GitLab Handbook Expert (`agent-1`) |", report)
+        self.assertIn("| Knowledge bases | GitLab Handbook |", report)
+        self.assertIn("| Dataset | evals/datasets/gitlab-handbook.sample.jsonl |", report)
+        self.assertIn("| TopK | 5 |", report)
+        self.assertIn("| Judge model | deepseek-v4-flash |", report)
+        self.assertIn("| Rerank enabled | yes |", report)
+        self.assertIn("| Git commit | abc1234 |", report)
+
+    def test_render_markdown_report_includes_baseline_delta(self):
+        summary = build_summary(
+            [
+                EvaluationCaseResult(
+                    case_id="case-1",
+                    question="什么是 MFA?",
+                    answer="MFA 是多因素认证。",
+                    contexts=["MFA 需要短信或认证器。"],
+                    expected_documents=["it-faq"],
+                    retrieved_documents=["it-faq"],
+                    citations_count=1,
+                    scores={"faithfulness": 0.92},
+                )
+            ]
+        )
+        baseline = EvaluationBaseline(
+            name="gitlab-handbook-30-case",
+            metrics={
+                "expected_document_hit_rate": 0.8,
+                "faithfulness": 0.9,
+            },
+        )
+
+        report = render_markdown_report(summary, baseline=baseline)
+
+        self.assertIn("## Baseline Comparison", report)
+        self.assertIn("| faithfulness | 0.9200 | 0.9000 | +0.0200 |", report)
+        self.assertIn(
+            "| expected_document_hit_rate | 1.0000 | 0.8000 | +0.2000 |",
+            report,
+        )
 
     def test_render_markdown_report_includes_ragas_error_note(self):
         summary = build_summary(

@@ -5,6 +5,7 @@ import csv
 import json
 import math
 import os
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from numbers import Real
@@ -13,7 +14,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 from evals.ragas.reporting import (
+    EvaluationBaseline,
     EvaluationCaseResult,
+    EvaluationRunMetadata,
     build_summary,
     render_markdown_report,
 )
@@ -28,6 +31,8 @@ DEFAULT_RAGAS_JUDGE_BASE_URL = "https://api.deepseek.com"
 DEFAULT_RAGAS_JUDGE_MODEL = "deepseek-v4-flash"
 DEFAULT_RAGAS_JUDGE_THINKING = "disabled"
 DEFAULT_RAGAS_EMBEDDING_MODEL = "text-embedding-v4"
+DEFAULT_BASELINE_PATH = "evals/baselines/gitlab-handbook.json"
+DEFAULT_CORPUS_PRESET = "gitlab-handbook"
 
 try:
     from dotenv import load_dotenv
@@ -49,6 +54,9 @@ class EvaluationCase:
 @dataclass(frozen=True)
 class EvaluationTargets:
     agent_id: str
+    agent_name: str
+    knowledge_base_names: list[str]
+    rerank_enabled: bool
 
 
 @dataclass(frozen=True)
@@ -81,6 +89,7 @@ def main() -> None:
         agent_id=args.agent_id,
         agent_name=os.getenv("ZETA_EVAL_AGENT_NAME", DEFAULT_AGENT_NAME),
     )
+    run_timestamp = datetime.now().astimezone()
 
     results = [
         run_case(
@@ -93,25 +102,40 @@ def main() -> None:
     ]
 
     ragas_error = None
+    model_config = None
 
     try:
+        model_config = read_ragas_model_config()
         scored_results = apply_ragas_scores(
             results,
             cases,
-            read_ragas_model_config(),
+            model_config,
         )
     except Exception as cause:  # noqa: BLE001 - still write the base report
         ragas_error = str(cause)
         scored_results = results
 
     summary = build_summary(scored_results)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    metadata = build_run_metadata(
+        dataset_path=dataset_path,
+        top_k=args.top_k,
+        targets=targets,
+        model_config=model_config,
+        run_timestamp=run_timestamp,
+    )
+    baseline = read_evaluation_baseline(Path(args.baseline)) if args.baseline else None
+    timestamp = run_timestamp.strftime("%Y%m%d-%H%M%S")
 
     markdown_path = report_dir / f"ragas-report-{timestamp}.md"
     csv_path = report_dir / f"ragas-report-{timestamp}.csv"
 
     markdown_path.write_text(
-        render_markdown_report(summary, ragas_error=ragas_error),
+        render_markdown_report(
+            summary,
+            metadata=metadata,
+            baseline=baseline,
+            ragas_error=ragas_error,
+        ),
         encoding="utf-8",
     )
     write_case_csv(csv_path, scored_results)
@@ -134,25 +158,61 @@ def resolve_evaluation_targets(
     agent_id: str | None,
     agent_name: str,
 ) -> EvaluationTargets:
-    resolved_agent_id = agent_id or find_resource_id_by_name(
-        client.list_agents(),
-        agent_name,
-        resource_label="agent",
+    agents = client.list_agents()
+    agent = (
+        find_resource_by_id(agents, agent_id, "agent")
+        if agent_id
+        else find_resource_by_name(agents, agent_name, "agent")
     )
+    knowledge_bases = [
+        item
+        for item in agent.get("knowledgeBases", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    knowledge_base_ids = {item["id"] for item in knowledge_bases}
+    knowledge_base_details = [
+        item
+        for item in client.list_knowledge_bases()
+        if item.get("id") in knowledge_base_ids
+    ]
 
     return EvaluationTargets(
-        agent_id=resolved_agent_id,
+        agent_id=agent["id"],
+        agent_name=agent["name"],
+        knowledge_base_names=[
+            item["name"]
+            for item in knowledge_bases
+            if isinstance(item.get("name"), str)
+        ],
+        rerank_enabled=any(
+            bool(item.get("rerankerModelId")) for item in knowledge_base_details
+        ),
     )
 
 
-def find_resource_id_by_name(
+def find_resource_by_id(
+    resources: list[dict[str, Any]],
+    resource_id: str,
+    resource_label: str,
+) -> dict[str, Any]:
+    for resource in resources:
+        if resource.get("id") == resource_id and isinstance(resource.get("name"), str):
+            return resource
+
+    raise RuntimeError(
+        f"Cannot find {resource_label} id `{resource_id}`. "
+        "Run `pnpm import:markdown-corpus` first."
+    )
+
+
+def find_resource_by_name(
     resources: list[dict[str, Any]],
     name: str,
     resource_label: str,
-) -> str:
+) -> dict[str, Any]:
     for resource in resources:
         if resource.get("name") == name and isinstance(resource.get("id"), str):
-            return resource["id"]
+            return resource
 
     raise RuntimeError(
         f"Cannot find {resource_label} named `{name}`. "
@@ -200,8 +260,42 @@ def parse_args() -> argparse.Namespace:
             "By default scoring failure exits with status 1."
         ),
     )
+    parser.add_argument(
+        "--baseline",
+        default=os.getenv("ZETA_EVAL_BASELINE", DEFAULT_BASELINE_PATH),
+        help="Optional JSON baseline path for report comparison",
+    )
 
     return parser.parse_args()
+
+
+def read_evaluation_baseline(path: Path) -> EvaluationBaseline | None:
+    if not path.exists():
+        return None
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    if not isinstance(payload, dict):
+        raise ValueError("Evaluation baseline must be a JSON object")
+
+    name = payload.get("name")
+    metrics = payload.get("metrics")
+
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Evaluation baseline `name` is required")
+
+    if not isinstance(metrics, dict):
+        raise ValueError("Evaluation baseline `metrics` is required")
+
+    normalized_metrics: dict[str, float] = {}
+
+    for key, value in metrics.items():
+        if not isinstance(key, str) or not key.strip() or not isinstance(value, Real):
+            raise ValueError("Evaluation baseline `metrics` must contain numbers")
+
+        normalized_metrics[key] = float(value)
+
+    return EvaluationBaseline(name=name, metrics=normalized_metrics)
 
 
 def read_allow_ragas_failure() -> bool:
@@ -216,6 +310,92 @@ def raise_if_blocking_ragas_error(
 ) -> None:
     if ragas_error and not allow_ragas_failure:
         raise SystemExit(1)
+
+
+def build_run_metadata(
+    dataset_path: Path,
+    top_k: int,
+    targets: EvaluationTargets,
+    model_config: RagasModelConfig | None,
+    run_timestamp: datetime,
+) -> EvaluationRunMetadata:
+    corpus_preset = os.getenv("ZETA_EVAL_CORPUS_PRESET", DEFAULT_CORPUS_PRESET)
+
+    return EvaluationRunMetadata(
+        run_timestamp=run_timestamp.isoformat(timespec="seconds"),
+        dataset_path=str(dataset_path),
+        agent_id=targets.agent_id,
+        agent_name=targets.agent_name,
+        knowledge_base_names=targets.knowledge_base_names,
+        top_k=top_k,
+        judge_model=read_judge_model_for_metadata(model_config),
+        judge_base_url=read_judge_base_url_for_metadata(model_config),
+        embedding_model=read_embedding_model_for_metadata(model_config),
+        embedding_base_url=read_embedding_base_url_for_metadata(model_config),
+        rerank_enabled=targets.rerank_enabled,
+        git_commit=read_git_ref(Path(".")),
+        corpus_preset=corpus_preset,
+        corpus_limit=read_corpus_limit_for_metadata(),
+        corpus_source_ref=read_corpus_source_ref(corpus_preset),
+    )
+
+
+def read_judge_model_for_metadata(model_config: RagasModelConfig | None) -> str:
+    if model_config:
+        return model_config.model
+
+    return os.getenv("ZETA_EVAL_JUDGE_MODEL", DEFAULT_RAGAS_JUDGE_MODEL)
+
+
+def read_judge_base_url_for_metadata(model_config: RagasModelConfig | None) -> str:
+    if model_config:
+        return model_config.base_url
+
+    return os.getenv("ZETA_EVAL_JUDGE_BASE_URL", DEFAULT_RAGAS_JUDGE_BASE_URL)
+
+
+def read_embedding_model_for_metadata(model_config: RagasModelConfig | None) -> str:
+    if model_config:
+        return model_config.embedding_model
+
+    return os.getenv("ZETA_EVAL_EMBEDDING_MODEL", DEFAULT_RAGAS_EMBEDDING_MODEL)
+
+
+def read_embedding_base_url_for_metadata(
+    model_config: RagasModelConfig | None,
+) -> str:
+    if model_config:
+        return model_config.embedding_base_url
+
+    return os.getenv("ZETA_EVAL_EMBEDDING_BASE_URL", DEFAULT_DASHSCOPE_API_BASE_URL)
+
+
+def read_corpus_limit_for_metadata() -> str:
+    return os.getenv("ZETA_EVAL_CORPUS_LIMIT") or os.getenv("CORPUS_LIMIT") or "-"
+
+
+def read_corpus_source_ref(corpus_preset: str) -> str:
+    if corpus_preset != DEFAULT_CORPUS_PRESET:
+        return "-"
+
+    return read_git_ref(Path("example/corpora/gitlab-handbook"))
+
+
+def read_git_ref(path: Path) -> str:
+    if not path.exists():
+        return "-"
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--short", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "-"
+
+    return result.stdout.strip() or "-"
 
 
 def read_ragas_model_config() -> RagasModelConfig:

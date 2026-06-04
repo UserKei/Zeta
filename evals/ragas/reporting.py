@@ -5,6 +5,31 @@ from statistics import mean
 
 
 @dataclass(frozen=True)
+class EvaluationRunMetadata:
+    run_timestamp: str
+    dataset_path: str
+    agent_id: str
+    agent_name: str
+    knowledge_base_names: list[str]
+    top_k: int
+    judge_model: str
+    judge_base_url: str
+    embedding_model: str
+    embedding_base_url: str
+    rerank_enabled: bool
+    git_commit: str
+    corpus_preset: str
+    corpus_limit: str
+    corpus_source_ref: str
+
+
+@dataclass(frozen=True)
+class EvaluationBaseline:
+    name: str
+    metrics: dict[str, float]
+
+
+@dataclass(frozen=True)
 class EvaluationCaseResult:
     case_id: str
     question: str
@@ -97,6 +122,8 @@ def build_summary(results: list[EvaluationCaseResult]) -> EvaluationSummary:
 
 def render_markdown_report(
     summary: EvaluationSummary,
+    metadata: EvaluationRunMetadata | None = None,
+    baseline: EvaluationBaseline | None = None,
     ragas_error: str | None = None,
 ) -> str:
     lines = [
@@ -113,18 +140,29 @@ def render_markdown_report(
         f"| Average context count | {summary.average_context_count:.2f} |",
         f"| Empty answers | {summary.empty_answer_count} |",
         f"| Empty citations | {summary.empty_citation_count} |",
-        "",
-        "## Ragas Scores",
-        "",
-        "| Metric | Average |",
-        "| --- | ---: |",
     ]
+
+    if metadata:
+        lines.extend(render_metadata_section(metadata))
+
+    lines.extend(
+        [
+            "",
+            "## Ragas Scores",
+            "",
+            "| Metric | Average |",
+            "| --- | ---: |",
+        ]
+    )
 
     if summary.average_scores:
         for name, score in summary.average_scores.items():
             lines.append(f"| {name} | {score:.4f} |")
     else:
         lines.append("| No Ragas score | - |")
+
+    if baseline:
+        lines.extend(render_baseline_section(summary, baseline))
 
     lines.extend(
         [
@@ -201,6 +239,83 @@ def render_markdown_report(
     return "\n".join(lines)
 
 
+def render_metadata_section(metadata: EvaluationRunMetadata) -> list[str]:
+    return [
+        "",
+        "## Run Metadata",
+        "",
+        "| Field | Value |",
+        "| --- | --- |",
+        f"| Run timestamp | {metadata.run_timestamp} |",
+        f"| Dataset | {metadata.dataset_path} |",
+        f"| Agent | {metadata.agent_name} (`{metadata.agent_id}`) |",
+        f"| Knowledge bases | {format_plain_list(metadata.knowledge_base_names)} |",
+        f"| TopK | {metadata.top_k} |",
+        f"| Judge model | {metadata.judge_model} |",
+        f"| Judge base URL | {metadata.judge_base_url} |",
+        f"| Embedding evaluator model | {metadata.embedding_model} |",
+        f"| Embedding evaluator base URL | {metadata.embedding_base_url} |",
+        f"| Rerank enabled | {format_bool(metadata.rerank_enabled)} |",
+        f"| Git commit | {metadata.git_commit} |",
+        f"| Corpus preset | {metadata.corpus_preset} |",
+        f"| Corpus limit | {metadata.corpus_limit} |",
+        f"| Corpus source ref | {metadata.corpus_source_ref} |",
+    ]
+
+
+def render_baseline_section(
+    summary: EvaluationSummary,
+    baseline: EvaluationBaseline,
+) -> list[str]:
+    current_metrics = summary_metric_values(summary)
+    lines = [
+        "",
+        "## Baseline Comparison",
+        "",
+        f"Baseline: `{baseline.name}`",
+        "",
+        "| Metric | Current | Baseline | Delta |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+
+    for metric_name in sorted(baseline.metrics):
+        current_value = current_metrics.get(metric_name)
+
+        if current_value is None:
+            continue
+
+        baseline_value = baseline.metrics[metric_name]
+        lines.append(
+            "| "
+            f"{metric_name} | "
+            f"{current_value:.4f} | "
+            f"{baseline_value:.4f} | "
+            f"{format_delta(current_value - baseline_value)} |"
+        )
+
+    if len(lines) == 7:
+        lines.append("| No comparable metric | - | - | - |")
+
+    return lines
+
+
+def summary_metric_values(summary: EvaluationSummary) -> dict[str, float]:
+    values = {
+        "average_context_count": summary.average_context_count,
+        "average_unique_retrieved_documents": (
+            summary.average_unique_retrieved_documents
+        ),
+        "average_duplicate_document_slots": summary.average_duplicate_document_slots,
+    }
+
+    if summary.expected_document_hit_rate is not None:
+        values["expected_document_hit_rate"] = summary.expected_document_hit_rate
+
+    values.update(summary.average_scores)
+
+    return values
+
+
 def has_expected_document_hit(
     expected_documents: list[str],
     retrieved_documents: list[str],
@@ -256,6 +371,20 @@ def normalize_document_key(document: str) -> str:
 
 def format_optional_score(score: float | None) -> str:
     return "-" if score is None else f"{score:.4f}"
+
+
+def format_delta(delta: float) -> str:
+    sign = "+" if delta >= 0 else ""
+
+    return f"{sign}{delta:.4f}"
+
+
+def format_bool(value: bool) -> str:
+    return "yes" if value else "no"
+
+
+def format_plain_list(values: list[str]) -> str:
+    return ", ".join(values) if values else "-"
 
 
 def format_document_list(documents: list[str]) -> str:
