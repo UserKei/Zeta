@@ -6,7 +6,7 @@ from evals.site_export import export_ragas_reports_for_docs
 
 
 class SiteExportTest(unittest.TestCase):
-    def test_exports_ragas_reports_and_generates_docs_index(self):
+    def test_exports_ragas_reports_and_generates_latest_page(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             reports_dir = root / "evals" / "reports"
@@ -51,7 +51,8 @@ class SiteExportTest(unittest.TestCase):
             )
             public_csv = public_report.with_suffix(".csv")
             index_page = docs_site_dir / "eval-reports" / "index.md"
-            latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            legacy_latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            latest_page = docs_site_dir / "eval-reports" / "ragas" / "latest.md"
             deepeval_dir = (
                 docs_site_dir / "public" / "eval-reports" / "deepeval"
             )
@@ -59,20 +60,18 @@ class SiteExportTest(unittest.TestCase):
             self.assertTrue(public_report.exists())
             self.assertTrue(public_csv.exists())
             self.assertTrue(deepeval_dir.exists())
-            self.assertIn(
-                "| 2026-06-04 14:11:49 | local | 0.9500 | 0.5400 | 0.7000 | 0.9200 |",
-                index_page.read_text(encoding="utf-8"),
-            )
-            self.assertIn(
-                "./ragas/ragas-report-20260604-141149.md",
-                index_page.read_text(encoding="utf-8"),
-            )
+            self.assertFalse(index_page.exists())
+            self.assertFalse(legacy_latest_page.exists())
             self.assertIn(
                 "# Zeta RAG Evaluation Report",
                 latest_page.read_text(encoding="utf-8"),
             )
+            self.assertIn(
+                "./ragas-report-20260604-141149.md",
+                latest_page.read_text(encoding="utf-8"),
+            )
 
-    def test_writes_empty_index_when_no_reports_exist(self):
+    def test_writes_empty_latest_pages_when_no_reports_exist(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             docs_site_dir = root / "docs-site"
@@ -83,15 +82,23 @@ class SiteExportTest(unittest.TestCase):
             )
 
             index_page = docs_site_dir / "eval-reports" / "index.md"
-            latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            legacy_latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            ragas_latest_page = (
+                docs_site_dir / "eval-reports" / "ragas" / "latest.md"
+            )
+            deepeval_latest_page = (
+                docs_site_dir / "eval-reports" / "deepeval" / "latest.md"
+            )
 
+            self.assertFalse(index_page.exists())
+            self.assertFalse(legacy_latest_page.exists())
             self.assertIn(
                 "暂时还没有可展示的 Ragas 报告。",
-                index_page.read_text(encoding="utf-8"),
+                ragas_latest_page.read_text(encoding="utf-8"),
             )
             self.assertIn(
-                "暂时还没有可展示的 Ragas 报告。",
-                latest_page.read_text(encoding="utf-8"),
+                "暂时还没有可展示的 DeepEval 报告。",
+                deepeval_latest_page.read_text(encoding="utf-8"),
             )
 
     def test_uses_published_ragas_reports_when_runtime_reports_are_empty(self):
@@ -130,8 +137,7 @@ class SiteExportTest(unittest.TestCase):
                 published_ragas_dir=published_ragas_dir,
             )
 
-            index_page = docs_site_dir / "eval-reports" / "index.md"
-            latest_page = docs_site_dir / "eval-reports" / "latest.md"
+            latest_page = docs_site_dir / "eval-reports" / "ragas" / "latest.md"
             public_report = (
                 docs_site_dir
                 / "public"
@@ -141,7 +147,6 @@ class SiteExportTest(unittest.TestCase):
             )
 
             self.assertTrue(public_report.exists())
-            self.assertIn("0.7311", index_page.read_text(encoding="utf-8"))
             self.assertIn(
                 "# Published Ragas Report",
                 latest_page.read_text(encoding="utf-8"),
@@ -193,13 +198,13 @@ class SiteExportTest(unittest.TestCase):
                 published_ragas_dir=published_ragas_dir,
             )
 
-            index_text = (
-                docs_site_dir / "eval-reports" / "index.md"
+            latest_text = (
+                docs_site_dir / "eval-reports" / "ragas" / "latest.md"
             ).read_text(encoding="utf-8")
 
-            self.assertIn("published", index_text)
-            self.assertIn("2026-06-04 14:11:49", index_text)
-            self.assertNotIn("2026-06-04 15:00:00", index_text)
+            self.assertIn("published", latest_text)
+            self.assertIn("# Published Ragas Report", latest_text)
+            self.assertNotIn("# Local Ragas Report", latest_text)
             self.assertFalse(
                 (
                     docs_site_dir
@@ -257,13 +262,12 @@ class SiteExportTest(unittest.TestCase):
                 include_local_reports=True,
             )
 
-            index_text = (
-                docs_site_dir / "eval-reports" / "index.md"
+            latest_text = (
+                docs_site_dir / "eval-reports" / "ragas" / "latest.md"
             ).read_text(encoding="utf-8")
 
-            self.assertIn("local", index_text)
-            self.assertIn("published", index_text)
-            self.assertIn("2026-06-04 15:00:00", index_text)
+            self.assertIn("local", latest_text)
+            self.assertIn("# Local Ragas Report", latest_text)
             self.assertTrue(
                 (
                     docs_site_dir
@@ -274,7 +278,7 @@ class SiteExportTest(unittest.TestCase):
                 ).exists()
             )
 
-    def test_index_mentions_deepeval_status(self):
+    def test_writes_empty_deepeval_latest_page_when_no_report_exists(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             docs_site_dir = root / "docs-site"
@@ -284,12 +288,13 @@ class SiteExportTest(unittest.TestCase):
                 docs_site_dir=docs_site_dir,
             )
 
-            index_page = docs_site_dir / "eval-reports" / "index.md"
+            deepeval_latest_page = (
+                docs_site_dir / "eval-reports" / "deepeval" / "latest.md"
+            )
 
-            self.assertIn("## DeepEval", index_page.read_text(encoding="utf-8"))
             self.assertIn(
                 "暂时还没有可展示的 DeepEval 报告。",
-                index_page.read_text(encoding="utf-8"),
+                deepeval_latest_page.read_text(encoding="utf-8"),
             )
 
     def test_generates_deepeval_markdown_report_from_json(self):
@@ -371,17 +376,19 @@ class SiteExportTest(unittest.TestCase):
                 / "deepeval"
                 / "deepeval-report-20260604-142000.md"
             )
+            latest_page = docs_site_dir / "eval-reports" / "deepeval" / "latest.md"
             index_page = docs_site_dir / "eval-reports" / "index.md"
 
             self.assertFalse(public_html.exists())
             self.assertTrue(public_json.exists())
             self.assertTrue(markdown_page.exists())
-            self.assertIn("## DeepEval", index_page.read_text(encoding="utf-8"))
-            self.assertIn(
-                "./deepeval/deepeval-report-20260604-142000",
-                index_page.read_text(encoding="utf-8"),
-            )
+            self.assertTrue(latest_page.exists())
+            self.assertFalse(index_page.exists())
             self.assertIn("# DeepEval 报告", markdown_page.read_text(encoding="utf-8"))
+            self.assertIn(
+                "# 最新 DeepEval 报告",
+                latest_page.read_text(encoding="utf-8"),
+            )
             self.assertIn("What is Zeta?", markdown_page.read_text(encoding="utf-8"))
             self.assertIn("0.8000", markdown_page.read_text(encoding="utf-8"))
             self.assertIn("The answer missed one key fact.", markdown_page.read_text(encoding="utf-8"))

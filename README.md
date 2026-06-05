@@ -93,29 +93,15 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 ### Agent 问答流程
 
-```mermaid
-flowchart LR
-    question[用户发送问题]
-    session[创建或读取 ChatSession]
-    agent[读取 Agent 配置和绑定知识库]
-    embed[问题向量化]
-    retrieve[召回相关 Chunk]
-    prompt[组装 Prompt 和引用上下文]
-    adapter[Chat Model Adapter<br/>LangChain]
-    llm[调用 Chat LLM]
-    stream[SSE 流式返回回答]
-    persist[保存消息和引用]
-    source[展示引用来源]
+![Agent 问答流程](docs/assets/architecture/agent-chat-flow.png)
 
-    question --> session --> agent --> embed --> retrieve --> prompt --> adapter --> llm --> stream --> persist --> source
+### 文档入库流程
 
-    style question fill:#e1f5fe
-    style retrieve fill:#fff3e0
-    style adapter fill:#f3e5f5
-    style llm fill:#ede7f6
-    style stream fill:#e8f5e9
-    style source fill:#fce4ec
-```
+![文档入库流程](docs/assets/architecture/document-ingestion-flow.png)
+
+### 离线评测流程
+
+![离线评测流程](docs/assets/architecture/offline-evaluation-flow.png)
 
 ## 核心功能
 
@@ -256,7 +242,7 @@ pnpm docs:build
 pnpm docs:preview
 ```
 
-文档站位于 `apps/docs-site/`，使用 VitePress 构建。`docs:reports` 会把 `evals/reports/` 中的 Ragas Markdown / CSV 报告导出到文档站静态目录，并生成评测报告页。
+文档站位于 `apps/docs-site/`，使用 VitePress 构建。`docs:reports` 会把 Ragas / DeepEval 发布版报告导出到文档站，并生成对应的详细报告页。
 
 ### 本地基础设施
 

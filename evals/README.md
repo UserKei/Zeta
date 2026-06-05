@@ -150,12 +150,13 @@ pnpm eval:ragas --baseline evals/baselines/other.json
 pnpm docs:reports
 ```
 
-这个命令会把 `evals/reports/` 中的 Ragas Markdown / CSV 复制到 `apps/docs-site/public/eval-reports/ragas/`，也会把 DeepEval HTML / JSON 复制到 `apps/docs-site/public/eval-reports/deepeval/`，并生成：
+这个命令默认发布 `evals/published-reports/` 中确认过的基准报告。Ragas Markdown / CSV 会复制到 `apps/docs-site/public/eval-reports/ragas/`，DeepEval JSON 会复制到 `apps/docs-site/public/eval-reports/deepeval/`，并生成：
 
-- `apps/docs-site/eval-reports/index.md`
-- `apps/docs-site/eval-reports/latest.md`
+- `apps/docs-site/eval-reports/ragas/latest.md`
+- `apps/docs-site/eval-reports/deepeval/latest.md`
+- `apps/docs-site/eval-reports/deepeval/deepeval-report-<timestamp>.md`
 
-如果要随仓库发布一份 DeepEval 基准报告，把确认过的 HTML / JSON 放到 `evals/published-reports/deepeval/`，再运行 `pnpm docs:reports` 即可。
+如果要随仓库发布一份新的基准报告，把确认过的 Ragas Markdown / CSV 或 DeepEval JSON 放到 `evals/published-reports/` 对应目录，再运行 `pnpm docs:reports` 即可。
 
 ## 取舍
 

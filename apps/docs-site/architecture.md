@@ -41,48 +41,17 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 ## Agent 问答流程
 
-```mermaid
-flowchart LR
-    question[用户发送问题]
-    session[创建或读取 ChatSession]
-    agent[读取 Agent 配置和绑定知识库]
-    embed[问题向量化]
-    retrieve[召回相关 Chunk]
-    prompt[组装 Prompt 和引用上下文]
-    adapter[对话模型适配器<br/>LangChain]
-    llm[调用 Chat LLM]
-    stream[SSE 流式返回回答]
-    persist[保存消息和引用]
-    source[展示引用来源]
+架构页只保留三条关键动态链路：文档入库、Agent 问答和离线评测。它们分别对应 RAG 系统里的知识生产、知识消费和质量验证；登录、模型管理、文件解析细节已经由分层图或文件解析页承接，不再单独放一张流程图。
 
-    question --> session --> agent --> embed --> retrieve --> prompt --> adapter --> llm --> stream --> persist --> source
-```
+![Agent 问答流程](/images/architecture/agent-chat-flow.png)
 
 ## 文档入库流程
 
-```mermaid
-flowchart LR
-    upload[上传文档] --> preview[导入预览]
-    preview --> parser[Parser / TextSplitter]
-    parser --> chunks[Chunk 草稿]
-    chunks --> confirm[确认入库]
-    confirm --> indexing[ChunkIndexing]
-    indexing --> fts[全文索引]
-    indexing --> embedding[Embedding 向量]
-    embedding --> indexed[Indexed Document]
-```
+![文档入库流程](/images/architecture/document-ingestion-flow.png)
 
 ## 离线评测流程
 
-```mermaid
-flowchart LR
-    dataset[评测数据集] --> evalRunner[Ragas / DeepEval Runner]
-    evalRunner --> api[调用 Zeta Chat API]
-    api --> answer[回答 + 引用 + 命中上下文]
-    answer --> metrics[计算 RAG 指标]
-    metrics --> report[Markdown / CSV / JSON 报告]
-    report --> site[VitePress 文档站]
-```
+![离线评测流程](/images/architecture/offline-evaluation-flow.png)
 
 ## 架构取舍
 

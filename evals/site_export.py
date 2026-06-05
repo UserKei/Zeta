@@ -111,12 +111,15 @@ def export_ragas_reports_for_docs(
     ragas_public_dir = docs_site_dir / "public" / "eval-reports" / "ragas"
     deepeval_public_dir = docs_site_dir / "public" / "eval-reports" / "deepeval"
     report_pages_dir = docs_site_dir / "eval-reports"
+    ragas_pages_dir = report_pages_dir / "ragas"
     deepeval_pages_dir = report_pages_dir / "deepeval"
 
     reset_generated_directory(ragas_public_dir)
     reset_generated_directory(deepeval_public_dir)
+    reset_generated_directory(ragas_pages_dir)
     reset_generated_directory(deepeval_pages_dir)
     report_pages_dir.mkdir(parents=True, exist_ok=True)
+    remove_legacy_report_pages(report_pages_dir)
     (ragas_public_dir / ".gitkeep").touch()
     (deepeval_public_dir / ".gitkeep").touch()
 
@@ -142,8 +145,8 @@ def export_ragas_reports_for_docs(
     for entry in deepeval_entries:
         shutil.copy2(entry.json_path, deepeval_public_dir / entry.json_path.name)
 
-    write_ragas_index_page(report_pages_dir / "index.md", entries, deepeval_entries)
-    write_latest_ragas_page(report_pages_dir / "latest.md", entries)
+    write_latest_ragas_page(ragas_pages_dir / "latest.md", entries)
+    write_latest_deepeval_page(deepeval_pages_dir / "latest.md", deepeval_entries)
     write_deepeval_report_pages(deepeval_pages_dir, deepeval_entries)
 
 
@@ -158,6 +161,14 @@ def reset_generated_directory(path: Path) -> None:
             shutil.rmtree(child)
         else:
             child.unlink()
+
+
+def remove_legacy_report_pages(report_pages_dir: Path) -> None:
+    for legacy_page in ("index.md", "latest.md"):
+        path = report_pages_dir / legacy_page
+
+        if path.exists():
+            path.unlink()
 
 
 def build_report_sources(
@@ -402,160 +413,6 @@ def format_unknown(value: object) -> str:
     return str(value) if value is not None else "-"
 
 
-def write_ragas_index_page(
-    path: Path,
-    entries: list[RagasReportEntry],
-    deepeval_entries: list[DeepEvalReportEntry],
-) -> None:
-    lines = [
-        "# 评测报告",
-        "",
-        "本页由 `pnpm docs:reports` 从 `evals/published-reports/` 生成，用于在交付文档站中展示离线 RAG 评测结果。",
-        "",
-    ]
-
-    append_report_overview(lines, entries, deepeval_entries)
-    lines.extend(
-        [
-            "",
-            "> [!NOTE]",
-            "> 本地临时报告仍保留在 `evals/reports/`。文档站默认只发布 `evals/published-reports/` 中的基准报告；如需本地诊断，可使用 `pnpm docs:reports --include-local` 或 `ZETA_DOCS_INCLUDE_LOCAL_REPORTS=1 pnpm docs:reports`。",
-            "",
-        ]
-    )
-
-    if not entries:
-        lines.extend(["暂时还没有可展示的 Ragas 报告。", ""])
-        append_deepeval_status(lines, deepeval_entries)
-        path.write_text("\n".join(lines), encoding="utf-8")
-        return
-
-    lines.extend(
-        [
-            "## Ragas",
-            "",
-            "[查看最新 Ragas 报告](./latest)",
-            "",
-            "| 运行时间 | 来源 | answer_relevancy | context_precision | context_recall | faithfulness | Markdown | CSV |",
-            "| --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
-        ]
-    )
-
-    for entry in entries:
-        markdown_link = f'<a href="./ragas/{entry.markdown_path.name}">md</a>'
-        csv_link = (
-            f'<a href="./ragas/{entry.csv_path.name}">csv</a>'
-            if entry.csv_path
-            else "-"
-        )
-        lines.append(
-            "| "
-            f"{entry.display_time} | "
-            f"{entry.source} | "
-            f"{entry.scores['answer_relevancy']} | "
-            f"{entry.scores['context_precision']} | "
-            f"{entry.scores['context_recall']} | "
-            f"{entry.scores['faithfulness']} | "
-            f"{markdown_link} | "
-            f"{csv_link} |"
-        )
-
-    lines.append("")
-    append_deepeval_status(lines, deepeval_entries)
-    path.write_text("\n".join(lines), encoding="utf-8")
-
-
-def append_deepeval_status(
-    lines: list[str],
-    entries: list[DeepEvalReportEntry],
-) -> None:
-    lines.extend(["## DeepEval", ""])
-
-    if not entries:
-        lines.extend(
-            [
-                "暂时还没有可展示的 DeepEval 报告。",
-                "",
-            ]
-        )
-        return
-
-    lines.extend(
-        [
-            "| 运行时间 | 来源 | 通过 | answer_relevancy | context_precision | context_recall | faithfulness | 报告 | JSON |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
-        ]
-    )
-
-    for entry in entries:
-        report_link = f"[查看](./deepeval/{entry.json_path.stem})"
-        json_link = f'<a href="./deepeval/{entry.json_path.name}">json</a>'
-        lines.append(
-            "| "
-            f"{entry.display_time} | "
-            f"{entry.source} | "
-            f"{entry.passed_cases}/{entry.total_cases} | "
-            f"{entry.scores['answer_relevancy']} | "
-            f"{entry.scores['context_precision']} | "
-            f"{entry.scores['context_recall']} | "
-            f"{entry.scores['faithfulness']} | "
-            f"{report_link} | "
-            f"{json_link} |"
-        )
-
-    lines.append("")
-
-
-def append_report_overview(
-    lines: list[str],
-    ragas_entries: list[RagasReportEntry],
-    deepeval_entries: list[DeepEvalReportEntry],
-) -> None:
-    latest_ragas = ragas_entries[0] if ragas_entries else None
-    latest_deepeval = deepeval_entries[0] if deepeval_entries else None
-
-    if not latest_ragas and not latest_deepeval:
-        lines.extend(["暂时还没有可展示的评测报告。", ""])
-        return
-
-    lines.extend(
-        [
-            "| 报告 | 运行时间 | 来源 | 用例 / 通过 | answer_relevancy | context_precision | context_recall | faithfulness | 详情 |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
-        ]
-    )
-
-    if latest_ragas:
-        total = latest_ragas.summary.get("Total cases", "-")
-        succeeded = latest_ragas.summary.get("Succeeded cases", "-")
-        lines.append(
-            "| "
-            f"[Ragas](#ragas) | "
-            f"{latest_ragas.display_time} | "
-            f"{latest_ragas.source} | "
-            f"{succeeded}/{total} | "
-            f"{latest_ragas.scores['answer_relevancy']} | "
-            f"{latest_ragas.scores['context_precision']} | "
-            f"{latest_ragas.scores['context_recall']} | "
-            f"{latest_ragas.scores['faithfulness']} | "
-            "[最新报告](./latest) |"
-        )
-
-    if latest_deepeval:
-        lines.append(
-            "| "
-            f"[DeepEval](#deepeval) | "
-            f"{latest_deepeval.display_time} | "
-            f"{latest_deepeval.source} | "
-            f"{latest_deepeval.passed_cases}/{latest_deepeval.total_cases} | "
-            f"{latest_deepeval.scores['answer_relevancy']} | "
-            f"{latest_deepeval.scores['context_precision']} | "
-            f"{latest_deepeval.scores['context_recall']} | "
-            f"{latest_deepeval.scores['faithfulness']} | "
-            f"[最新报告](./deepeval/{latest_deepeval.json_path.stem}) |"
-        )
-
-
 def write_deepeval_report_pages(
     report_pages_dir: Path,
     entries: list[DeepEvalReportEntry],
@@ -726,6 +583,7 @@ def append_text_block(lines: list[str], label: str, value: object) -> None:
 
 
 def write_latest_ragas_page(path: Path, entries: list[RagasReportEntry]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# 最新 Ragas 报告",
         "",
@@ -741,10 +599,10 @@ def write_latest_ragas_page(path: Path, entries: list[RagasReportEntry]) -> None
     latest = entries[0]
     lines.extend(
         [
-            f'- 原始 Markdown：<a href="./ragas/{latest.markdown_path.name}">{latest.markdown_path.name}</a>',
+            f'- 原始 Markdown：<a href="./{latest.markdown_path.name}">{latest.markdown_path.name}</a>',
             f"- 来源：{latest.source}",
             (
-                f'- 原始 CSV：<a href="./ragas/{latest.csv_path.name}">{latest.csv_path.name}</a>'
+                f'- 原始 CSV：<a href="./{latest.csv_path.name}">{latest.csv_path.name}</a>'
                 if latest.csv_path
                 else "- 原始 CSV：-"
             ),
@@ -756,6 +614,30 @@ def write_latest_ragas_page(path: Path, entries: list[RagasReportEntry]) -> None
         ]
     )
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_latest_deepeval_page(
+    path: Path,
+    entries: list[DeepEvalReportEntry],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not entries:
+        lines = [
+            "# 最新 DeepEval 报告",
+            "",
+            "暂时还没有可展示的 DeepEval 报告。",
+            "",
+        ]
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return
+
+    markdown = build_deepeval_markdown(entries[0]).replace(
+        "# DeepEval 报告",
+        "# 最新 DeepEval 报告",
+        1,
+    )
+    path.write_text(markdown, encoding="utf-8")
 
 
 if __name__ == "__main__":

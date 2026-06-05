@@ -70,7 +70,7 @@ pnpm docs:build
 pnpm docs:preview
 ```
 
-`docs:reports` 默认只发布 `evals/published-reports/` 中的基准报告，并生成评测报告页。如果只是本地诊断，可以显式混入本地临时报告：
+`docs:reports` 默认只发布 `evals/published-reports/` 中的基准报告，并生成 Ragas / DeepEval 详细报告页。如果只是本地诊断，可以显式混入本地临时报告：
 
 ```bash
 pnpm docs:reports --include-local

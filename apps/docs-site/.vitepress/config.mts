@@ -18,7 +18,6 @@ export default defineConfig({
       { text: '项目介绍', link: '/' },
       { text: 'Demo', link: '/demo' },
       { text: 'RAG 评测', link: '/rag-evaluation' },
-      { text: '报告', link: '/eval-reports/' },
     ],
     sidebar: [
       {
@@ -30,7 +29,6 @@ export default defineConfig({
           { text: '系统架构', link: '/architecture' },
           { text: '文件解析链路', link: '/file-parsing' },
           { text: 'RAG 评测报告', link: '/rag-evaluation' },
-          { text: '评测报告', link: '/eval-reports/' },
           { text: '边界与后续计划', link: '/known-limits' },
         ],
       },
