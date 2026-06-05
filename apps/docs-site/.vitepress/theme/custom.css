@@ -9,36 +9,8 @@
   max-width: 760px;
 }
 
-.zeta-mermaid {
-  margin: 24px 0;
-  overflow-x: auto;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  background: var(--vp-c-bg-soft);
-  padding: 16px;
-}
-
-.zeta-mermaid__canvas {
-  min-width: 640px;
-}
-
-.zeta-mermaid__canvas svg {
-  display: block;
-  max-width: none !important;
-  height: auto;
-  margin: 0 auto;
-}
-
-.zeta-mermaid__status,
-.zeta-mermaid__error {
-  margin-top: 8px;
-  font-size: 14px;
-}
-
-.zeta-mermaid__status {
-  color: var(--vp-c-text-2);
-}
-
-.zeta-mermaid__error {
-  color: var(--vp-c-danger-1);
+.vp-doc table th,
+.vp-doc table td > a {
+  white-space: nowrap;
+  word-break: keep-all;
 }

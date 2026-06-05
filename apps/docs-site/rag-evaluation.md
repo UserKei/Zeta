@@ -86,14 +86,20 @@ evals/reports/deepeval-report-<timestamp>.json
 pnpm docs:reports
 ```
 
-这个命令会：
+这个命令默认只发布 `evals/published-reports/` 中的基准报告，避免把本地临时测试结果混进交付文档。它会：
 
-1. 读取 `evals/reports/` 中的 Ragas Markdown / CSV。
-2. 同时读取 `evals/published-reports/ragas/` 中随仓库提交的发布版 Ragas 报告。
-3. 把原始报告复制到 `apps/docs-site/public/eval-reports/ragas/`。
+1. 读取 `evals/published-reports/ragas/` 中随仓库提交的发布版 Ragas 报告。
+2. 读取 `evals/published-reports/deepeval/` 中随仓库提交的发布版 DeepEval JSON。
+3. 把原始 Ragas Markdown / CSV 复制到 `apps/docs-site/public/eval-reports/ragas/`。
 4. 生成 [评测报告](/eval-reports/)。
 5. 生成 [最新 Ragas 报告](/eval-reports/latest)。
 6. 读取 DeepEval JSON 报告，生成 VitePress Markdown 页面，并复制原始 JSON 到 `apps/docs-site/public/eval-reports/deepeval/`。
+
+如果需要在本地预览未发布的临时报告，可以显式执行：
+
+```bash
+pnpm docs:reports --include-local
+```
 
 ## DeepEval 报告方式
 

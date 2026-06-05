@@ -18,12 +18,15 @@
 
    当前评测是离线 Ragas 流程，不是生产监控。评测结果用于汇报、对比和调参，不作为线上阻断条件。
 
+5. **文档站部署路径**
+
+   GitHub Pages 项目页默认使用 `/Zeta/` 作为 `VITEPRESS_BASE`。如果后续改仓库名、迁移到组织站点根路径或使用自定义域名，需要同步调整 GitHub Actions 中的 `VITEPRESS_BASE`。
+
 ## 后续计划
 
 - PDF：评估 OCR fallback 或独立文档解析服务。
 - 多模态：在图片理解 Chunk 稳定后，再评估图片向量化和图文混合召回。
 - 评测：继续扩展 GitLab Handbook 或中文企业制度语料，并维护 baseline。
-- 文档站：把 DeepEval JSON 转成 Markdown 页面发布，不接 Confident AI 云 dashboard。
 - 检索：继续观察 document-level diversity、Rerank 和 topK 对 context precision / recall 的影响。
 
 ## 本轮明确不做

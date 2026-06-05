@@ -1,5 +1,12 @@
 # 快速开始
 
+## 前置要求
+
+- Node.js 24 或兼容版本。
+- pnpm 10。
+- Docker，用于启动本地 PostgreSQL + pgvector。
+- Python 3，用于生成文档站评测报告和运行 Ragas / DeepEval。
+
 ## 安装依赖
 
 ```bash
@@ -63,4 +70,24 @@ pnpm docs:build
 pnpm docs:preview
 ```
 
-`docs:reports` 会把 `evals/reports/` 中的 Ragas 报告导出到文档站静态目录，并生成评测报告页。
+`docs:reports` 默认只发布 `evals/published-reports/` 中的基准报告，并生成评测报告页。如果只是本地诊断，可以显式混入本地临时报告：
+
+```bash
+pnpm docs:reports --include-local
+```
+
+## 评测环境
+
+Ragas / DeepEval 评测需要单独安装 Python 依赖：
+
+```bash
+python3 -m venv evals/.venv
+evals/.venv/bin/pip install -r evals/requirements.txt
+```
+
+评测脚本会调用已经启动的 Zeta 后端，并使用 `.env` 中的模型 Key。常用命令：
+
+```bash
+pnpm eval:ragas
+pnpm eval:deepeval
+```

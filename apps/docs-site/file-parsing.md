@@ -4,17 +4,7 @@
 
 ## 总体流程
 
-```mermaid
-flowchart LR
-  upload[上传文件] --> parser[按类型选择 Parser]
-  parser --> drafts[生成分段草稿]
-  drafts --> preview[前端预览与人工调整]
-  preview --> import[确认入库]
-  import --> chunks[创建 Chunk]
-  chunks --> fts[刷新全文索引]
-  chunks --> embedding[重建 Embedding]
-  chunks --> status[更新文档状态与统计]
-```
+上传文件后，后端会按文件类型选择 Parser，先生成分段草稿给前端预览；确认入库后再创建 Chunk、刷新全文索引、重建 Embedding，并更新文档状态与统计。
 
 ## 处理方式
 
@@ -27,52 +17,30 @@ flowchart LR
 
 ## Markdown / TXT
 
-```mermaid
-flowchart LR
-  file[Markdown / TXT] --> parser[MarkdownParser / TextParser]
-  parser --> heading{有标题结构?}
-  heading -->|是| headingChunks[按标题生成 Chunk 草稿]
-  heading -->|否| split[TextSplitterService<br/>按长度和标点切分]
-  split --> chunks[Chunk 草稿]
-  headingChunks --> chunks
-```
+![Markdown 文件解析流程](/images/file-parsing/markdown-parser-flow.png)
+
+![TXT 文件解析流程](/images/file-parsing/text-parser-flow.png)
 
 Markdown 优先保留标题层级；TXT 没有结构信息，所以用长度和标点做兜底切分。
 
 ## HTML / DOCX
 
-```mermaid
-flowchart LR
-  html[HTML 文件] --> htmlToMd[Turndown 转 Markdown]
-  docx[DOCX 文件] --> mammoth[mammoth 转 HTML]
-  mammoth --> htmlToMd
-  htmlToMd --> mdParser[MarkdownParser]
-  mdParser --> chunks[Chunk 草稿]
-```
+![HTML 文件解析流程](/images/file-parsing/html-parser-flow.png)
+
+![DOCX 文件解析流程](/images/file-parsing/docx-parser-flow.png)
 
 HTML 和 DOCX 都先进入 Markdown 链路，避免分别维护两套分段规则。DOCX 图片会作为资产保存，Markdown 中保留图片引用。
 
 ## CSV / Excel
 
-```mermaid
-flowchart LR
-  sheet[CSV / XLS / XLSX] --> table[读取表头和数据行]
-  table --> rows[每行生成一个 Chunk 草稿]
-  rows --> chunks[结构化 Chunk]
-```
+![CSV、XLS、XLSX 文件解析流程](/images/file-parsing/spreadsheet-parser-flow.png)
 
 表格文件更适合按行入库。每个 Chunk 会带上表头语义，方便检索“限额、审批人、生效时间”这类业务问题。
 
 ## PDF
 
-```mermaid
-flowchart LR
-  pdf[PDF 文件] --> text[抽取可复制文本]
-  text --> usable{文本质量可用?}
-  usable -->|是| chunks[生成 Chunk 草稿]
-  usable -->|否| boundary[记录当前解析边界<br/>后续接 OCR / 视觉理解队列]
-```
+![PDF 文件解析流程](/images/file-parsing/pdf-parser-flow.png)
 
 PDF 是当前边界最明显的格式。文本 PDF 可以先抽取内容并尽量恢复结构；扫描件、复杂合同、公文和字体映射异常的 PDF 仍可能出现文字顺序错乱、字符异常或标题还原不稳定。
 
-当前策略是先保证文本 PDF 的主链路稳定，后续再评估 OCR fallback 或独立文档解析服务。
+当前策略是先保证文本 PDF 的主链路稳定。图中的 OCR fallback 和视觉理解队列属于后续增强方向，不是当前已完成的 PDF 入库主流程。

@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer'
 import { defineConfig } from 'vitepress'
 
 const base = process.env.VITEPRESS_BASE ?? (process.env.GITHUB_ACTIONS ? '/Zeta/' : '/')
@@ -11,30 +10,7 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ['public/eval-reports/**/*.md'],
-  markdown: {
-    config(md) {
-      const defaultFence = md.renderer.rules.fence
-
-      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
-        const token = tokens[idx]
-        const language = token.info.trim().split(/\s+/)[0]
-
-        if (language === 'mermaid') {
-          const encoded = Buffer.from(token.content, 'utf8').toString('base64')
-
-          return `<MermaidDiagram code="${encoded}" />`
-        }
-
-        if (defaultFence) {
-          return defaultFence(tokens, idx, options, env, self)
-        }
-
-        return self.renderToken(tokens, idx, options)
-      }
-    },
-  },
   themeConfig: {
-    logo: '/logo.svg',
     outline: {
       label: '本页目录',
     },
