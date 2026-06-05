@@ -39,6 +39,7 @@ class SiteExportTest(unittest.TestCase):
             export_ragas_reports_for_docs(
                 reports_dir=reports_dir,
                 docs_site_dir=docs_site_dir,
+                include_local_reports=True,
             )
 
             public_report = (
@@ -59,7 +60,7 @@ class SiteExportTest(unittest.TestCase):
             self.assertTrue(public_csv.exists())
             self.assertTrue(deepeval_dir.exists())
             self.assertIn(
-                "| 2026-06-04 14:11:49 | 0.9500 | 0.5400 | 0.7000 | 0.9200 |",
+                "| 2026-06-04 14:11:49 | local | 0.9500 | 0.5400 | 0.7000 | 0.9200 |",
                 index_page.read_text(encoding="utf-8"),
             )
             self.assertIn(
@@ -144,6 +145,133 @@ class SiteExportTest(unittest.TestCase):
             self.assertIn(
                 "# Published Ragas Report",
                 latest_page.read_text(encoding="utf-8"),
+            )
+
+    def test_does_not_mix_local_reports_by_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reports_dir = root / "evals" / "reports"
+            published_ragas_dir = root / "evals" / "published-reports" / "ragas"
+            docs_site_dir = root / "docs-site"
+            reports_dir.mkdir(parents=True)
+            published_ragas_dir.mkdir(parents=True)
+
+            (reports_dir / "ragas-report-20260604-150000.md").write_text(
+                "\n".join(
+                    [
+                        "# Local Ragas Report",
+                        "",
+                        "| Metric | Average |",
+                        "| --- | ---: |",
+                        "| answer_relevancy | 0.1000 |",
+                        "| context_precision | 0.1000 |",
+                        "| context_recall | 0.1000 |",
+                        "| faithfulness | 0.1000 |",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (published_ragas_dir / "ragas-report-20260604-141149.md").write_text(
+                "\n".join(
+                    [
+                        "# Published Ragas Report",
+                        "",
+                        "| Metric | Average |",
+                        "| --- | ---: |",
+                        "| answer_relevancy | 0.9000 |",
+                        "| context_precision | 0.9000 |",
+                        "| context_recall | 0.9000 |",
+                        "| faithfulness | 0.9000 |",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            export_ragas_reports_for_docs(
+                reports_dir=reports_dir,
+                docs_site_dir=docs_site_dir,
+                published_ragas_dir=published_ragas_dir,
+            )
+
+            index_text = (
+                docs_site_dir / "eval-reports" / "index.md"
+            ).read_text(encoding="utf-8")
+
+            self.assertIn("published", index_text)
+            self.assertIn("2026-06-04 14:11:49", index_text)
+            self.assertNotIn("2026-06-04 15:00:00", index_text)
+            self.assertFalse(
+                (
+                    docs_site_dir
+                    / "public"
+                    / "eval-reports"
+                    / "ragas"
+                    / "ragas-report-20260604-150000.md"
+                ).exists()
+            )
+
+    def test_can_include_local_reports_explicitly(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reports_dir = root / "evals" / "reports"
+            published_ragas_dir = root / "evals" / "published-reports" / "ragas"
+            docs_site_dir = root / "docs-site"
+            reports_dir.mkdir(parents=True)
+            published_ragas_dir.mkdir(parents=True)
+
+            (reports_dir / "ragas-report-20260604-150000.md").write_text(
+                "\n".join(
+                    [
+                        "# Local Ragas Report",
+                        "",
+                        "| Metric | Average |",
+                        "| --- | ---: |",
+                        "| answer_relevancy | 0.1000 |",
+                        "| context_precision | 0.1000 |",
+                        "| context_recall | 0.1000 |",
+                        "| faithfulness | 0.1000 |",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (published_ragas_dir / "ragas-report-20260604-141149.md").write_text(
+                "\n".join(
+                    [
+                        "# Published Ragas Report",
+                        "",
+                        "| Metric | Average |",
+                        "| --- | ---: |",
+                        "| answer_relevancy | 0.9000 |",
+                        "| context_precision | 0.9000 |",
+                        "| context_recall | 0.9000 |",
+                        "| faithfulness | 0.9000 |",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            export_ragas_reports_for_docs(
+                reports_dir=reports_dir,
+                docs_site_dir=docs_site_dir,
+                published_ragas_dir=published_ragas_dir,
+                include_local_reports=True,
+            )
+
+            index_text = (
+                docs_site_dir / "eval-reports" / "index.md"
+            ).read_text(encoding="utf-8")
+
+            self.assertIn("local", index_text)
+            self.assertIn("published", index_text)
+            self.assertIn("2026-06-04 15:00:00", index_text)
+            self.assertTrue(
+                (
+                    docs_site_dir
+                    / "public"
+                    / "eval-reports"
+                    / "ragas"
+                    / "ragas-report-20260604-150000.md"
+                ).exists()
             )
 
     def test_index_mentions_deepeval_status(self):
