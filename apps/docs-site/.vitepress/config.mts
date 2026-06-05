@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { devPorts } from '@zeta/config'
 
 const base = process.env.VITEPRESS_BASE ?? (process.env.GITHUB_ACTIONS ? '/Zeta/' : '/')
 
@@ -10,6 +11,14 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ['public/eval-reports/**/*.md'],
+  vite: {
+    server: {
+      port: devPorts.docs,
+    },
+    preview: {
+      port: devPorts.docs,
+    },
+  },
   themeConfig: {
     outline: {
       label: '本页目录',

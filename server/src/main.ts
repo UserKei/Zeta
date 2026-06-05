@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { HttpExceptionResponseFilter } from '@libs/shared/interceptor/http-exception.filter';
 import { ResponseInterceptor } from '@libs/shared/interceptor/response.interceptor';
+import { devPorts } from '@zeta/config';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -53,6 +54,6 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? devPorts.api);
 }
 void bootstrap();

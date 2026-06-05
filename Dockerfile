@@ -19,6 +19,7 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/common/package.json ./packages/common/package.json
+COPY packages/config/package.json ./packages/config/package.json
 COPY server/package.json ./server/package.json
 
 RUN pnpm install --frozen-lockfile

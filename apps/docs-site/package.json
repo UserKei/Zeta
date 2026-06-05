@@ -9,6 +9,7 @@
     "preview": "vitepress preview ."
   },
   "devDependencies": {
+    "@zeta/config": "workspace:*",
     "@types/node": "^24.12.4",
     "vitepress": "^1.6.4",
     "vue": "^3.5.34"
