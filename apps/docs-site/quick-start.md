@@ -26,7 +26,7 @@ cp .env.example .env
 DATABASE_URL="postgresql://zeta@localhost:5432/zeta?schema=public"
 ```
 
-如果需要使用 seed 默认模型、GitLab Handbook 语料导入或 Ragas 评测，需要在 `.env` 填写：
+如果要使用 seed 默认模型、GitLab Handbook 语料导入或 Ragas 评测，需要在 `.env` 填写：
 
 ```text
 DASHSCOPE_API_KEY="your-dashscope-key"
@@ -70,7 +70,7 @@ pnpm docs:build
 pnpm docs:preview
 ```
 
-`docs:reports` 默认只发布 `evals/published-reports/` 中的基准报告，并生成 Ragas / DeepEval 详细报告页。如果只是本地诊断，可以显式混入本地临时报告：
+`docs:reports` 默认只发布 `evals/published-reports/` 中的基准报告，并生成 Ragas / DeepEval 详细报告页。本地诊断时可以显式混入临时报告：
 
 ```bash
 pnpm docs:reports --include-local

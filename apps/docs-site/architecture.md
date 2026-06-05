@@ -1,18 +1,18 @@
 # 系统架构
 
-Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用，内部包含管理端页面和独立 Chat 页面；后端是 NestJS 模块化单体，统一负责数据库、检索、模型调用和业务流程。
+Zeta 使用 pnpm workspace Monorepo。前端是一个 Vue Web 应用，包含管理端页面和独立 Chat 页面；后端是 NestJS 模块化单体，负责数据库、检索、模型调用和业务流程。
 
-本页先用分层架构图说明主系统职责，再用流程图说明关键动态链路。Ragas、DeepEval 与文档站属于离线评测和交付链路，不进入生产问答主流程。
+本页先用分层架构图说明主系统职责，再用流程图说明文档入库、Agent 问答和离线评测。Ragas、DeepEval 与文档站属于交付链路，不进入生产问答请求。
 
 ## 分层架构图
 
-这张图表达主业务系统内部的分层职责。箭头只表示上层依赖下层，不表示所有 service 调用。
+这张图表达主业务系统内部的分层职责。箭头表示上层依赖下层，不表示每个 service 调用。
 
 ![Zeta 分层架构图](/images/zeta-layered-architecture.png)
 
 其中 `RetrievalService` 会合并关键词召回和向量召回；知识库配置 Reranker 后，再对候选分段进行精排。
 `ChatModelService` 当前基于 LangChain.js `ChatOpenAI` 接入 OpenAI-compatible 对话模型。
-应用层节点采用“功能名 + NestJS Module”，领域层节点采用“能力名 + Service”，方便中文汇报时先读职责，再对应到代码实现。
+应用层节点采用“功能名 + NestJS Module”，领域层节点采用“能力名 + Service”。汇报时先读中文职责，再对应代码模块。
 接入层只表达生产部署中的 Nginx 反向代理；表示层承接 Vue Web 页面和 NestJS 暴露的 REST/SSE API。
 `AiExtractedDocumentService` 当前服务于聊天日志的改进标注入库：把人工确认的回答片段写成知识库分段并完成索引，不表示自动 AI 提炼流程已经落地。
 `ParserModule` 是 NestJS 依赖注入模块，负责注册 `FileParserService`、各格式 Parser 和 `TextSplitterService`，因此没有作为运行时服务节点单独放进图里。
@@ -20,7 +20,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 ## 图中节点与代码路径
 
-这张分层图表达的是逻辑职责，不等同于真实目录层级。主要节点和代码入口如下：
+这张分层图表达逻辑职责，不等同于真实目录层级。主要节点和代码入口如下：
 
 | 图中节点                             | 代码路径                                          |
 | ------------------------------------ | ------------------------------------------------- |
@@ -41,7 +41,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 ## Agent 问答流程
 
-架构页只保留三条关键动态链路：文档入库、Agent 问答和离线评测。它们分别对应 RAG 系统里的知识生产、知识消费和质量验证；登录、模型管理、文件解析细节已经由分层图或文件解析页承接，不再单独放一张流程图。
+架构页只保留三条运行流程：文档入库、Agent 问答和离线评测。它们分别对应 RAG 系统里的语料入库、知识消费和结果评测；登录、模型管理和单文件解析放在分层图或文件解析页中说明。
 
 ![Agent 问答流程](/images/architecture/agent-chat-flow.png)
 
@@ -55,7 +55,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 ## 架构取舍
 
-- 不拆微服务：当前后端是 NestJS 模块化单体，便于本地开发、演示和部署。
+- 不拆微服务：后端保留 NestJS 模块化单体，降低本地启动和演示成本。
 - 不拆多个前端应用：管理端和 Chat 页面都在同一个 Vue 应用中，通过路由和 Layout 区分。
 - 模型调用放在后端：前端不接触模型供应商密钥。
 - RAG 可追溯：回答引用保存为结构化 Citation，可回溯到 Document 和 Chunk。
