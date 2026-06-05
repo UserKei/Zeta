@@ -58,6 +58,39 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 
 ![Zeta 分层架构图](docs/assets/zeta-layered-architecture.png)
 
+### 文件解析流程
+
+文件解析流程图在 README 中保留一份静态副本，方便在 GitHub 页面直接查看；文档站使用同一组图片的站点资源版本展示。
+
+<details>
+<summary>展开查看各格式解析流程图</summary>
+
+#### Markdown
+
+![Markdown 文件解析流程](docs/assets/file-parsing/markdown-parser-flow.png)
+
+#### TXT
+
+![TXT 文件解析流程](docs/assets/file-parsing/text-parser-flow.png)
+
+#### HTML
+
+![HTML 文件解析流程](docs/assets/file-parsing/html-parser-flow.png)
+
+#### DOCX
+
+![DOCX 文件解析流程](docs/assets/file-parsing/docx-parser-flow.png)
+
+#### CSV / XLS / XLSX
+
+![CSV、XLS、XLSX 文件解析流程](docs/assets/file-parsing/spreadsheet-parser-flow.png)
+
+#### PDF
+
+![PDF 文件解析流程](docs/assets/file-parsing/pdf-parser-flow.png)
+
+</details>
+
 ### Agent 问答流程
 
 ```mermaid
