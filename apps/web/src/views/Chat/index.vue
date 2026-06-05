@@ -239,14 +239,6 @@ const createLocalMessage = (message: {
   improveRecords: [],
 })
 
-const applySuggestedQuestion = (question: string) => {
-  if (sending.value) {
-    return
-  }
-
-  form.message = question
-}
-
 onMounted(load)
 </script>
 
@@ -300,7 +292,6 @@ onMounted(load)
           :messages="messages"
           :opening-message="agent?.openingMessage || agent?.description || ''"
           :streaming-message-id="streamingMessageId"
-          @ask="applySuggestedQuestion"
           @open-citations="openCitationDialog"
         />
 

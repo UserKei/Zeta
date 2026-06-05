@@ -15,14 +15,7 @@ const props = defineProps<{
 
 defineEmits<{
   openCitations: [citations: ChatCitation[]]
-  ask: [question: string]
 }>()
-
-const suggestedQuestions = [
-  '我怎么开通 IT 账号？',
-  'VPN 权限多久生效？',
-  '采购合同审批需要哪些材料？',
-]
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -63,20 +56,6 @@ const getCitationDocuments = (citations: ChatCitation[]) => {
           <p class="max-w-xl text-sm leading-7 text-muted-foreground">
             {{ openingMessage || '向 Agent 提问，它会基于绑定知识库回答并给出来源。' }}
           </p>
-        </div>
-
-        <div class="mt-1 flex flex-wrap justify-center gap-2">
-          <Button
-            v-for="question in suggestedQuestions"
-            :key="question"
-            type="button"
-            variant="outline"
-            size="sm"
-            class="rounded-full"
-            @click="$emit('ask', question)"
-          >
-            {{ question }}
-          </Button>
         </div>
       </div>
     </article>
