@@ -30,6 +30,7 @@ async function bootstrap() {
     .setTitle('Zeta API')
     .setDescription('Zeta AI 知识库管理平台 API')
     .setVersion('1.0.0')
+    .addServer('/api', 'Production API proxy')
     .addBearerAuth(
       {
         type: 'http',
