@@ -248,14 +248,15 @@ def collect_case_results(
     cases: list[run_ragas.EvaluationCase],
     default_agent_id: str | None,
     default_top_k: int,
-    progress_writer: Any = print,
+    progress_writer: Any | None = None,
 ) -> list[EvaluationCaseResult]:
     results = []
     total_cases = len(cases)
 
     for index, case in enumerate(cases, start=1):
-        progress_writer(
-            f"[DeepEval] Running Zeta chat case {index}/{total_cases}: {case.case_id}"
+        write_progress(
+            progress_writer,
+            f"[DeepEval] Running Zeta chat case {index}/{total_cases}: {case.case_id}",
         )
         results.append(
             run_ragas.run_case(
@@ -267,6 +268,14 @@ def collect_case_results(
         )
 
     return results
+
+
+def write_progress(progress_writer: Any | None, message: str) -> None:
+    if progress_writer is None:
+        print(message, flush=True)
+        return
+
+    progress_writer(message)
 
 
 def apply_deepeval_scores(

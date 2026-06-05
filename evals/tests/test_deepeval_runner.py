@@ -263,6 +263,54 @@ class DeepEvalRunnerTest(unittest.TestCase):
             ],
         )
 
+    def test_collect_case_results_flushes_default_progress(self):
+        messages = []
+        cases = [
+            run_deepeval.run_ragas.EvaluationCase(
+                case_id="case-1",
+                question="Question 1",
+                reference="Reference 1",
+                expected_documents=[],
+            ),
+        ]
+
+        def fake_run_case(**kwargs):
+            case = kwargs["case"]
+            return EvaluationCaseResult(
+                case_id=case.case_id,
+                question=case.question,
+                answer="Answer",
+                contexts=[],
+                expected_documents=[],
+                retrieved_documents=[],
+                citations_count=0,
+                scores={},
+            )
+
+        def fake_print(*args, **kwargs):
+            messages.append((args, kwargs))
+
+        with (
+            patch.object(run_deepeval.run_ragas, "run_case", fake_run_case),
+            patch("builtins.print", fake_print),
+        ):
+            run_deepeval.collect_case_results(
+                client=object(),
+                cases=cases,
+                default_agent_id="agent-1",
+                default_top_k=5,
+            )
+
+        self.assertEqual(
+            messages,
+            [
+                (
+                    ("[DeepEval] Running Zeta chat case 1/1: case-1",),
+                    {"flush": True},
+                )
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

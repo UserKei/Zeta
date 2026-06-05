@@ -393,6 +393,83 @@ class SiteExportTest(unittest.TestCase):
             self.assertIn("0.8000", markdown_page.read_text(encoding="utf-8"))
             self.assertIn("The answer missed one key fact.", markdown_page.read_text(encoding="utf-8"))
 
+    def test_deepeval_case_rows_use_per_case_metrics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reports_dir = root / "evals" / "reports"
+            published_deepeval_dir = (
+                root / "evals" / "published-reports" / "deepeval"
+            )
+            docs_site_dir = root / "docs-site"
+            reports_dir.mkdir(parents=True)
+            published_deepeval_dir.mkdir(parents=True)
+
+            (published_deepeval_dir / "deepeval-report-20260604-142000.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "testCases": [',
+                        "    {",
+                        '      "input": "Case A question",',
+                        '      "actualOutput": "Case A answer",',
+                        '      "expectedOutput": "Case A reference",',
+                        '      "retrievalContext": ["context"],',
+                        '      "success": true,',
+                        '      "metricsData": [',
+                        '        {"name": "Answer Relevancy", "score": 1, "success": true},',
+                        '        {"name": "Faithfulness", "score": 0.9, "success": true},',
+                        '        {"name": "Contextual Precision", "score": 0.8, "success": true},',
+                        '        {"name": "Contextual Recall", "score": 0.7, "success": true}',
+                        "      ]",
+                        "    },",
+                        "    {",
+                        '      "input": "Case B question",',
+                        '      "actualOutput": "Case B answer",',
+                        '      "expectedOutput": "Case B reference",',
+                        '      "retrievalContext": ["context"],',
+                        '      "success": false,',
+                        '      "metricsData": [',
+                        '        {"name": "Answer Relevancy", "score": 0.2, "success": false},',
+                        '        {"name": "Faithfulness", "score": 0.3, "success": false},',
+                        '        {"name": "Contextual Precision", "score": 0.4, "success": false},',
+                        '        {"name": "Contextual Recall", "score": 0.5, "success": true}',
+                        "      ]",
+                        "    }",
+                        "  ],",
+                        '  "metricsScores": [',
+                        '    {"metric": "Answer Relevancy", "scores": [0.2, 1], "passes": 1, "fails": 1, "errors": 0},',
+                        '    {"metric": "Faithfulness", "scores": [0.3, 0.9], "passes": 1, "fails": 1, "errors": 0},',
+                        '    {"metric": "Contextual Precision", "scores": [0.4, 0.8], "passes": 1, "fails": 1, "errors": 0},',
+                        '    {"metric": "Contextual Recall", "scores": [0.5, 0.7], "passes": 2, "fails": 0, "errors": 0}',
+                        "  ],",
+                        '  "testPassed": 1,',
+                        '  "testFailed": 1,',
+                        '  "runDuration": 1.2',
+                        "}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            export_ragas_reports_for_docs(
+                reports_dir=reports_dir,
+                docs_site_dir=docs_site_dir,
+                published_deepeval_dir=published_deepeval_dir,
+            )
+
+            latest_text = (
+                docs_site_dir / "eval-reports" / "deepeval" / "latest.md"
+            ).read_text(encoding="utf-8")
+
+            self.assertIn(
+                "| 1 | 通过 | Case A question | 1.0000 | 0.9000 | 0.8000 | 0.7000 |",
+                latest_text,
+            )
+            self.assertIn(
+                "| 2 | 未通过 | Case B question | 0.2000 | 0.3000 | 0.4000 | 0.5000 |",
+                latest_text,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

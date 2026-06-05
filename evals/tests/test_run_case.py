@@ -24,6 +24,58 @@ class FakeZetaClient:
 
 
 class RunCaseTest(unittest.TestCase):
+    def test_collect_case_results_prints_case_progress(self):
+        messages = []
+        cases = [
+            run_ragas.EvaluationCase(
+                case_id="case-1",
+                question="Question 1",
+                reference="Reference 1",
+                expected_documents=[],
+            ),
+            run_ragas.EvaluationCase(
+                case_id="case-2",
+                question="Question 2",
+                reference="Reference 2",
+                expected_documents=[],
+            ),
+        ]
+
+        def fake_run_case(**kwargs):
+            case = kwargs["case"]
+            return run_ragas.EvaluationCaseResult(
+                case_id=case.case_id,
+                question=case.question,
+                answer="Answer",
+                contexts=[],
+                expected_documents=[],
+                retrieved_documents=[],
+                citations_count=0,
+                scores={},
+            )
+
+        original_run_case = run_ragas.run_case
+        run_ragas.run_case = fake_run_case
+        try:
+            results = run_ragas.collect_case_results(
+                client=object(),
+                cases=cases,
+                default_agent_id="agent-1",
+                default_top_k=5,
+                progress_writer=messages.append,
+            )
+        finally:
+            run_ragas.run_case = original_run_case
+
+        self.assertEqual([result.case_id for result in results], ["case-1", "case-2"])
+        self.assertEqual(
+            messages,
+            [
+                "[Ragas] Running Zeta chat case 1/2: case-1",
+                "[Ragas] Running Zeta chat case 2/2: case-2",
+            ],
+        )
+
     def test_run_case_uses_only_chat_hits_as_ragas_contexts(self):
         client = FakeZetaClient(
             {

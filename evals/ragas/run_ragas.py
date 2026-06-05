@@ -91,15 +91,12 @@ def main() -> None:
     )
     run_timestamp = datetime.now().astimezone()
 
-    results = [
-        run_case(
-            client=client,
-            case=case,
-            default_agent_id=targets.agent_id,
-            default_top_k=args.top_k,
-        )
-        for case in cases
-    ]
+    results = collect_case_results(
+        client=client,
+        cases=cases,
+        default_agent_id=targets.agent_id,
+        default_top_k=args.top_k,
+    )
 
     ragas_error = None
     model_config = None
@@ -514,7 +511,8 @@ def load_cases(path: Path) -> list[EvaluationCase]:
 def parse_case(payload: dict[str, Any], line_number: int) -> EvaluationCase:
     question = read_required_string(payload, "question", line_number)
     reference = read_required_string(payload, "reference", line_number)
-    case_id = str(payload.get("id") or f"case-{line_number}")
+    case_id = str(payload.get("case_id") or payload.get("id") or f"case-{line_number}")
+    top_k = payload.get("topK", payload.get("top_k"))
 
     expected_documents = [
         str(document)
@@ -528,7 +526,7 @@ def parse_case(payload: dict[str, Any], line_number: int) -> EvaluationCase:
         reference=reference,
         expected_documents=expected_documents,
         agent_id=read_optional_string(payload, "agent_id"),
-        top_k=int(payload["top_k"]) if payload.get("top_k") else None,
+        top_k=int(top_k) if top_k else None,
     )
 
 
@@ -566,6 +564,41 @@ def run_case(
         )
     except Exception as cause:  # noqa: BLE001 - report every failed case
         return failed_case(case, str(cause))
+
+
+def collect_case_results(
+    client: ZetaClient,
+    cases: list[EvaluationCase],
+    default_agent_id: str | None,
+    default_top_k: int,
+    progress_writer: Any = print,
+) -> list[EvaluationCaseResult]:
+    results = []
+    total_cases = len(cases)
+
+    for index, case in enumerate(cases, start=1):
+        write_progress(
+            progress_writer,
+            f"[Ragas] Running Zeta chat case {index}/{total_cases}: {case.case_id}",
+        )
+        results.append(
+            run_case(
+                client=client,
+                case=case,
+                default_agent_id=default_agent_id,
+                default_top_k=default_top_k,
+            )
+        )
+
+    return results
+
+
+def write_progress(progress_writer: Any, message: str) -> None:
+    if progress_writer is print:
+        progress_writer(message, flush=True)
+        return
+
+    progress_writer(message)
 
 
 def format_hit_context(hit: dict[str, Any]) -> str:
