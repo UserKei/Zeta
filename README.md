@@ -244,6 +244,16 @@ pnpm docs:preview
 
 文档站位于 `apps/docs-site/`，使用 VitePress 构建。`docs:reports` 会把 Ragas / DeepEval 发布版报告导出到文档站，并生成对应的详细报告页。
 
+### RAG 评测
+
+```bash
+pnpm eval:setup
+pnpm eval:ragas
+pnpm eval:deepeval
+```
+
+首次运行评测前执行 `pnpm eval:setup`，它会创建 `evals/.venv` 并安装 Python 依赖。
+
 ### 本地基础设施
 
 ```bash

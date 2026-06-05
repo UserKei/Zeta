@@ -47,9 +47,7 @@ DeepEval 第一版同样关注 RAG 相关指标：
 3. 创建 Python 虚拟环境并安装依赖。建议使用 Python 3.11 或 3.12。
 
    ```bash
-   python3 -m venv evals/.venv
-   source evals/.venv/bin/activate
-   pip install -r evals/requirements.txt
+   pnpm eval:setup
    ```
 
 4. 在仓库根目录 `.env` 填写评测变量。

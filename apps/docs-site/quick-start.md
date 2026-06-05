@@ -78,14 +78,13 @@ pnpm docs:reports --include-local
 
 ## 评测环境
 
-Ragas / DeepEval 评测需要单独安装 Python 依赖：
+Ragas / DeepEval 评测需要单独安装 Python 依赖。首次运行前执行：
 
 ```bash
-python3 -m venv evals/.venv
-evals/.venv/bin/pip install -r evals/requirements.txt
+pnpm eval:setup
 ```
 
-评测脚本会调用已经启动的 Zeta 后端，并使用 `.env` 中的模型 Key。常用命令：
+这个命令会创建 `evals/.venv` 并安装 `evals/requirements.txt`。评测脚本会调用已经启动的 Zeta 后端，并使用 `.env` 中的模型 Key。常用命令：
 
 ```bash
 pnpm eval:ragas

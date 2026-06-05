@@ -26,9 +26,12 @@ Zeta 的 RAG 评测由离线脚本执行：脚本调用已经启动的 Zeta Chat
 ## 如何运行
 
 ```bash
+pnpm eval:setup
 pnpm eval:ragas
 pnpm eval:deepeval
 pnpm docs:reports
 ```
+
+首次运行评测前先执行 `pnpm eval:setup`，它会创建 `evals/.venv` 并安装 `evals/requirements.txt`。后续只有依赖变更时才需要重新执行。
 
 `pnpm docs:reports` 默认只发布 `evals/published-reports/` 中确认过的基准报告，避免把本地临时测试结果混进交付文档。
