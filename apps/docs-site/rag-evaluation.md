@@ -4,12 +4,12 @@ Zeta 的 RAG 评测由离线脚本执行：脚本调用已经启动的 Zeta Chat
 
 ## 当前评测结果
 
-发布版基准数据来自 GitLab Handbook 样例集，共 30 条问答用例。
+发布版基准数据来自 GitLab Handbook 样例集，共 100 条问答用例。
 
 | 工具     | 用例结果 | answer_relevancy | context_precision | context_recall | faithfulness | 详情                                      |
 | -------- | -------: | ---------------: | ----------------: | -------------: | -----------: | ----------------------------------------- |
-| Ragas    |    30/30 |           0.9178 |            0.7311 |         0.8667 |       0.9274 | [最新报告](/eval-reports/ragas/latest)    |
-| DeepEval |    21/30 |           0.8441 |            0.7678 |         0.9000 |       0.9381 | [最新报告](/eval-reports/deepeval/latest) |
+| Ragas    |  100/100 |           0.8006 |            0.8328 |         0.9400 |       0.9614 | [最新报告](/eval-reports/ragas/latest)    |
+| DeepEval |   82/100 |           0.8701 |            0.8470 |         0.9550 |       0.9614 | [最新报告](/eval-reports/deepeval/latest) |
 
 这组指标用于观察回答相关性、上下文精确率、上下文召回率和回答忠实度。Markdown / CSV / JSON 详情从上表进入。
 
