@@ -64,6 +64,7 @@ pids
 *.pid.lock
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .deepeval/
+/evals/published-reports/deepeval/*.html
 
 # generated assets
 /generated/prisma
