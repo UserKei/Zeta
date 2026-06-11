@@ -111,6 +111,7 @@ Zeta 当前采用轻量 pnpm workspace Monorepo。前端是一个 Vue Web 应用
 - 文档列表：按知识库管理文档、来源、状态、字符数和分段数。
 - 文档导入：上传 Markdown、TXT、HTML、PDF、DOCX、CSV、XLSX、XLS，解析为分段草稿，人工调整后确认入库。
 - 图片理解：DOCX 内嵌图片和 PDF 页面图会保存为文件资产；知识库配置视觉模型后，会额外生成图片理解 Chunk，继续进入全文索引和向量检索。
+- 扫描 PDF OCR：图片型 PDF 会先进入 Redis / BullMQ 异步队列，由独立 Python OCR 服务识别成 Markdown，再复用现有分段、全文索引、Embedding 和引用链路。
 - 分段管理：支持新增、编辑、删除、启停和拖拽重排分段。
 - 索引与检索：为启用分段写入全文索引和向量 Embedding，支持全文 + 向量混合召回；知识库配置 Reranker 后，会调用文本重排模型精排候选分段。
 - 知识热度：基于 Agent Chat 回答中的引用记录统计热门文档和热门分段。
@@ -254,6 +255,32 @@ pnpm eval:deepeval
 
 首次运行评测前执行 `pnpm eval:setup`，它会创建 `evals/.venv` 并安装 Python 依赖。
 
+### OCR 队列
+
+扫描 PDF / 图片型 PDF 不在上传请求里同步 OCR。后端会先创建 `OCR_PENDING` 文档并写入 BullMQ 队列，Worker 调用独立 Python OCR 服务，识别结果再进入现有 Chunk、全文索引、Embedding 和引用链路。
+
+本地启动 Redis、PostgreSQL 和 OCR 服务：
+
+```bash
+pnpm infra:up:ocr
+```
+
+OCR 服务健康检查：
+
+```bash
+curl http://localhost:8001/health
+```
+
+后端调用 OCR 服务默认 10 分钟超时，可通过 `OCR_REQUEST_TIMEOUT_MS` 调整。
+
+Python OCR 轻量单测：
+
+```bash
+pnpm ocr:test
+```
+
+当前 OCR 只作为扫描 PDF 的后续增强链路，不改变 Markdown、DOCX、CSV 和文本型 PDF 的同步导入流程。
+
 ### 本地基础设施
 
 ```bash
@@ -362,6 +389,9 @@ Zeta/
 │           ├── response/            # 统一响应封装
 │           ├── retrieval/           # 混合检索服务
 │           └── text-splitter/       # 文本切分能力
+│
+├── services/
+│   └── ocr/                         # Python OCR 服务：扫描 PDF 转 Markdown
 │
 ├── packages/
 │   └── common/                      # 前后端共享 API 契约类型

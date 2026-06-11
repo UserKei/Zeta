@@ -20,6 +20,47 @@ services:
       retries: 10
       start_period: 10s
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: zeta-prod-redis
+    restart: unless-stopped
+    volumes:
+      - zeta-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  ocr:
+    image: zeta-ocr:prod
+    container_name: zeta-prod-ocr
+    restart: unless-stopped
+    build:
+      context: ./services/ocr
+      dockerfile: Dockerfile
+    environment:
+      OCR_LANG: ${OCR_LANG:-ch}
+      OCR_VERSION: ${OCR_VERSION:-PP-OCRv4}
+      OCR_DETECTION_MODEL: ${OCR_DETECTION_MODEL:-PP-OCRv4_mobile_det}
+      OCR_RECOGNITION_MODEL: ${OCR_RECOGNITION_MODEL:-PP-OCRv4_mobile_rec}
+      OCR_MAX_PAGES: ${OCR_MAX_PAGES:-50}
+    expose:
+      - "8001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2).read()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   api:
     image: zeta-api:prod
     container_name: zeta-prod-api
@@ -40,8 +81,16 @@ services:
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD is required}
       SEED_ADMIN_DISPLAY_NAME: ${SEED_ADMIN_DISPLAY_NAME:-Zeta Admin}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OCR_SERVICE_URL: http://ocr:8001
+      OCR_REQUEST_TIMEOUT_MS: ${OCR_REQUEST_TIMEOUT_MS:-600000}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ocr:
         condition: service_healthy
     expose:
       - "3000"
@@ -63,3 +112,4 @@ services:
 
 volumes:
   zeta-postgres-data:
+  zeta-redis-data:
