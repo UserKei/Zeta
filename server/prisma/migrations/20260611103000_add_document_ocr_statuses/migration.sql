@@ -1,0 +1,2 @@
+ALTER TYPE "document_status" ADD VALUE 'OCR_PENDING';
+ALTER TYPE "document_status" ADD VALUE 'OCR_PROCESSING';

@@ -19,6 +19,7 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
   DocumentStatus: {
     CHUNKING: 'CHUNKING',
     EMBEDDING: 'EMBEDDING',
+    OCR_PENDING: 'OCR_PENDING',
     INDEXED: 'INDEXED',
     FAILED: 'FAILED',
   },
@@ -345,7 +346,7 @@ describe('DocumentImportService', () => {
     });
   });
 
-  it('creates image understanding chunks for saved PDF page images', async () => {
+  it('creates image understanding chunks for saved document images', async () => {
     const createdChunks: CreatedChunk[] = [];
     type DocumentCreateInput = {
       data: { status: string; sourceType: string; name: string };
@@ -391,7 +392,7 @@ describe('DocumentImportService', () => {
             id: 'doc-1',
             knowledgeBaseId: 'kb-1',
             sourceFileId: 'source-file-1',
-            name: '扫描件',
+            name: '图文材料',
             sourceType: 'FILE_UPLOAD',
             status: 'CHUNKING',
             charCount: 0,
@@ -407,7 +408,7 @@ describe('DocumentImportService', () => {
             id: 'doc-1',
             knowledgeBaseId: 'kb-1',
             sourceFileId: 'source-file-1',
-            name: '扫描件',
+            name: '图文材料',
             sourceType: 'FILE_UPLOAD',
             status: 'INDEXED',
             charCount: 80,
@@ -434,7 +435,7 @@ describe('DocumentImportService', () => {
               content: chunk.content,
               metadata: chunk.metadata,
               document: {
-                name: '扫描件',
+                name: '图文材料',
                 metadata: {},
               },
             })),
@@ -463,14 +464,15 @@ describe('DocumentImportService', () => {
         .fn()
         .mockResolvedValueOnce({
           id: 'source-file-1',
-          fileName: '扫描件.pdf',
-          mimeType: 'application/pdf',
+          fileName: '图文材料.docx',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           fileSize: 1024,
           sha256Hash: 'source-hash',
         })
         .mockResolvedValueOnce({
           id: 'asset-file-1',
-          fileName: 'page-1.png',
+          fileName: 'image1.png',
           mimeType: 'image/png',
           fileSize: 64,
           sha256Hash: 'asset-hash',
@@ -479,6 +481,226 @@ describe('DocumentImportService', () => {
         mimeType: 'image/png',
         buffer: Buffer.from('image-bytes'),
       }),
+    };
+    const fileParser = {
+      parse: jest.fn().mockResolvedValue({
+        fileName: '图文材料.docx',
+        documentName: '图文材料',
+        sourceFormat: 'DOCX',
+        chunks: [
+          {
+            title: '图文材料',
+            content: '![流程图](./files/image1.png)',
+            status: 'ACTIVE',
+            metadata: {
+              assetReference: './files/image1.png',
+            },
+          },
+        ],
+        assets: [
+          {
+            source: 'DOCX_IMAGE',
+            fileName: 'image1.png',
+            mimeType: 'image/png',
+            reference: './files/image1.png',
+            buffer: Buffer.from('image-bytes'),
+          },
+        ],
+      }),
+    };
+    const imageUnderstandingService = {
+      understandImage: jest
+        .fn()
+        .mockResolvedValue('图片文字：VPN 申请单。业务信息：需要主管审批。'),
+    };
+    const documentAssetService = new DocumentAssetService(
+      fileStorageService as never,
+      imageUnderstandingService as never,
+    );
+    const chunkIndexingService = new ChunkIndexingService(
+      prisma as never,
+      embeddingService as never,
+      fileStorageService as never,
+    );
+    const service = new DocumentImportService(
+      prisma as never,
+      fileStorageService as never,
+      fileParser as never,
+      documentAssetService,
+      chunkIndexingService,
+    );
+
+    const result = await service.createFileDocuments(
+      'kb-1',
+      [
+        {
+          originalname: '图文材料.docx',
+          mimetype:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          size: 1024,
+          buffer: Buffer.from('pdf-bytes'),
+        },
+      ],
+      {
+        documents: [
+          {
+            fileIndex: 0,
+            name: '图文材料',
+            chunks: [
+              {
+                title: '图文材料',
+                content: '![流程图](./files/image1.png)',
+                status: 'ACTIVE',
+                metadata: {
+                  assetReference: './files/image1.png',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    const documentCreateInput = prisma.document.create.mock.calls[0]?.[0];
+    const documentUpdateInputs = prisma.document.update.mock.calls.map(
+      ([input]) => input,
+    );
+
+    expect(documentCreateInput?.data.status).toBe('CHUNKING');
+    expect(documentCreateInput?.data.sourceType).toBe('FILE_UPLOAD');
+    expect(documentCreateInput?.data.name).toBe('图文材料');
+    expect(
+      documentUpdateInputs.some(
+        (input) =>
+          input.where.id === 'doc-1' &&
+          input.data.status === 'EMBEDDING' &&
+          input.data.errorMessage === null,
+      ),
+    ).toBe(true);
+    expect(documentUpdateInputs.at(-1)).toEqual(
+      expect.objectContaining({
+        where: { id: 'doc-1' },
+        data: { status: 'INDEXED', errorMessage: null },
+      }),
+    );
+    expect(fileStorageService.readBuffer).toHaveBeenCalledWith('asset-file-1');
+    expect(imageUnderstandingService.understandImage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'vision-1', modelName: 'qwen-vl-max' }),
+      {
+        dataUrl: 'data:image/png;base64,aW1hZ2UtYnl0ZXM=',
+        prompt: '提取图片中的文字并总结业务信息。',
+      },
+    );
+    const originalPageChunk = createdChunks.find(
+      (chunk) => chunk.title === '图文材料',
+    );
+    const imageUnderstandingChunk = createdChunks.find(
+      (chunk) => chunk.title === '图片理解 / image1.png',
+    );
+
+    expect(originalPageChunk).toEqual(
+      expect.objectContaining({
+        title: '图文材料',
+        content: '![流程图](./files/asset-file-1)',
+        position: 0,
+        status: 'ACTIVE',
+        charCount: '![流程图](./files/asset-file-1)'.length,
+      }),
+    );
+    expect(originalPageChunk?.metadata).toEqual(
+      expect.objectContaining({
+        assetReference: './files/asset-file-1',
+        assetFileId: 'asset-file-1',
+        assetSource: 'DOCX_IMAGE',
+      }),
+    );
+    expect(imageUnderstandingChunk).toEqual(
+      expect.objectContaining({
+        title: '图片理解 / image1.png',
+        content: '图片文字：VPN 申请单。业务信息：需要主管审批。',
+        position: 1,
+        status: 'ACTIVE',
+        charCount: '图片文字：VPN 申请单。业务信息：需要主管审批。'.length,
+        metadata: {
+          contentKind: 'IMAGE_UNDERSTANDING',
+          assetFileId: 'asset-file-1',
+          assetSource: 'DOCX_IMAGE',
+        },
+      }),
+    );
+    expect(embeddingService.embedInputs).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'embedding-1' }),
+      [
+        {
+          text: '图文材料\n![流程图](./files/asset-file-1)',
+        },
+        {
+          text: '图文材料\n图片理解 / image1.png\n图片文字：VPN 申请单。业务信息：需要主管审批。',
+        },
+      ],
+    );
+    expect(result.documents).toEqual([
+      expect.objectContaining({
+        id: 'doc-1',
+        name: '图文材料',
+        status: 'INDEXED',
+      }),
+    ]);
+  });
+
+  it('queues image-only PDF documents for OCR instead of indexing them synchronously', async () => {
+    type DocumentCreateInput = {
+      data: { status: string; sourceType: string; name: string };
+    };
+    const prisma = {
+      knowledgeBase: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'kb-1',
+          status: 'ACTIVE',
+          metadata: {},
+          chunkSize: 1024,
+          chunkOverlap: 128,
+          embeddingModel: {
+            id: 'embedding-1',
+            type: 'EMBEDDING',
+            isEnabled: true,
+            modelName: 'text-embedding-v4',
+            baseUrl: 'https://embedding.example.com/v1',
+            apiKey: 'sk-embedding',
+            configJson: {},
+          },
+          visionModel: null,
+        }),
+      },
+      document: {
+        create: jest
+          .fn<Promise<unknown>, [DocumentCreateInput]>()
+          .mockResolvedValue({
+            id: 'doc-1',
+            knowledgeBaseId: 'kb-1',
+            sourceFileId: 'source-file-1',
+            name: '扫描件',
+            sourceType: 'FILE_UPLOAD',
+            status: 'OCR_PENDING',
+            charCount: 0,
+            chunkCount: 0,
+            errorMessage: null,
+            metadata: {},
+            createdAt: new Date('2026-05-31T00:00:00.000Z'),
+            updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+          }),
+        update: jest.fn(),
+      },
+    };
+    const fileStorageService = {
+      saveBuffer: jest.fn().mockResolvedValue({
+        id: 'source-file-1',
+        fileName: '扫描件.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        sha256Hash: 'source-hash',
+      }),
+      removeFileIfUnreferenced: jest.fn(),
     };
     const fileParser = {
       parse: jest.fn().mockResolvedValue({
@@ -508,26 +730,28 @@ describe('DocumentImportService', () => {
         ],
       }),
     };
-    const imageUnderstandingService = {
-      understandImage: jest
-        .fn()
-        .mockResolvedValue('图片文字：VPN 申请单。业务信息：需要主管审批。'),
+    const documentAssetService = {
+      saveParsedAssets: jest.fn(),
+      rewriteChunkAssetReferences: jest.fn(),
+      createImageUnderstandingChunks: jest.fn(),
     };
-    const documentAssetService = new DocumentAssetService(
-      fileStorageService as never,
-      imageUnderstandingService as never,
-    );
-    const chunkIndexingService = new ChunkIndexingService(
-      prisma as never,
-      embeddingService as never,
-      fileStorageService as never,
-    );
-    const service = new DocumentImportService(
-      prisma as never,
-      fileStorageService as never,
-      fileParser as never,
+    const chunkIndexingService = {
+      createChunks: jest.fn(),
+      refreshDocumentSearchVector: jest.fn(),
+      rebuildDocumentEmbeddings: jest.fn(),
+    };
+    const documentProcessingJobService = {
+      enqueueOcrDocument: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new (DocumentImportService as unknown as new (
+      ...args: unknown[]
+    ) => DocumentImportService)(
+      prisma,
+      fileStorageService,
+      fileParser,
       documentAssetService,
       chunkIndexingService,
+      documentProcessingJobService,
     );
 
     const result = await service.createFileDocuments(
@@ -563,90 +787,27 @@ describe('DocumentImportService', () => {
     );
 
     const documentCreateInput = prisma.document.create.mock.calls[0]?.[0];
-    const documentUpdateInputs = prisma.document.update.mock.calls.map(
-      ([input]) => input,
-    );
 
-    expect(documentCreateInput?.data.status).toBe('CHUNKING');
-    expect(documentCreateInput?.data.sourceType).toBe('FILE_UPLOAD');
-    expect(documentCreateInput?.data.name).toBe('扫描件');
+    expect(documentCreateInput?.data.status).toBe('OCR_PENDING');
+    expect(documentCreateInput?.data.charCount).toBe(0);
+    expect(documentCreateInput?.data.chunkCount).toBe(0);
     expect(
-      documentUpdateInputs.some(
-        (input) =>
-          input.where.id === 'doc-1' &&
-          input.data.status === 'EMBEDDING' &&
-          input.data.errorMessage === null,
-      ),
-    ).toBe(true);
-    expect(documentUpdateInputs.at(-1)).toEqual(
-      expect.objectContaining({
-        where: { id: 'doc-1' },
-        data: { status: 'INDEXED', errorMessage: null },
-      }),
-    );
-    expect(fileStorageService.readBuffer).toHaveBeenCalledWith('asset-file-1');
-    expect(imageUnderstandingService.understandImage).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'vision-1', modelName: 'qwen-vl-max' }),
-      {
-        dataUrl: 'data:image/png;base64,aW1hZ2UtYnl0ZXM=',
-        prompt: '提取图片中的文字并总结业务信息。',
-      },
-    );
-    const originalPageChunk = createdChunks.find(
-      (chunk) => chunk.title === '扫描件 / 第 1 页',
-    );
-    const imageUnderstandingChunk = createdChunks.find(
-      (chunk) => chunk.title === '图片理解 / 第 1 页',
-    );
-
-    expect(originalPageChunk).toEqual(
-      expect.objectContaining({
-        title: '扫描件 / 第 1 页',
-        content: '![扫描件 第 1 页](./files/asset-file-1)',
-        position: 0,
-        status: 'ACTIVE',
-        charCount: '![扫描件 第 1 页](./files/asset-file-1)'.length,
-      }),
-    );
-    expect(originalPageChunk?.metadata).toEqual(
-      expect.objectContaining({
-        contentKind: 'PDF_PAGE_IMAGE',
-        assetReference: './files/asset-file-1',
-        assetFileId: 'asset-file-1',
-        assetSource: 'PDF_PAGE_SCREENSHOT',
-        pageNumber: 1,
-      }),
-    );
-    expect(imageUnderstandingChunk).toEqual(
-      expect.objectContaining({
-        title: '图片理解 / 第 1 页',
-        content: '图片文字：VPN 申请单。业务信息：需要主管审批。',
-        position: 1,
-        status: 'ACTIVE',
-        charCount: '图片文字：VPN 申请单。业务信息：需要主管审批。'.length,
-        metadata: {
-          contentKind: 'IMAGE_UNDERSTANDING',
-          assetFileId: 'asset-file-1',
-          assetSource: 'PDF_PAGE_SCREENSHOT',
-        },
-      }),
-    );
-    expect(embeddingService.embedInputs).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'embedding-1' }),
-      [
-        {
-          text: '扫描件\n扫描件 / 第 1 页\n![扫描件 第 1 页](./files/asset-file-1)',
-        },
-        {
-          text: '扫描件\n图片理解 / 第 1 页\n图片文字：VPN 申请单。业务信息：需要主管审批。',
-        },
-      ],
-    );
+      documentProcessingJobService.enqueueOcrDocument,
+    ).toHaveBeenCalledWith({
+      documentId: 'doc-1',
+      knowledgeBaseId: 'kb-1',
+      sourceFileId: 'source-file-1',
+    });
+    expect(documentAssetService.saveParsedAssets).not.toHaveBeenCalled();
+    expect(chunkIndexingService.createChunks).not.toHaveBeenCalled();
+    expect(
+      chunkIndexingService.rebuildDocumentEmbeddings,
+    ).not.toHaveBeenCalled();
     expect(result.documents).toEqual([
       expect.objectContaining({
         id: 'doc-1',
         name: '扫描件',
-        status: 'INDEXED',
+        status: 'OCR_PENDING',
       }),
     ]);
   });
