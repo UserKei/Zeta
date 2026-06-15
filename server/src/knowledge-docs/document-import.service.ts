@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { basename } from 'node:path';
 import {
@@ -38,6 +39,7 @@ import {
   type ImageUnderstandingWarning,
 } from './document-asset.service';
 import { ChunkIndexingService } from './chunk-indexing.service';
+import { DocumentProcessingJobService } from './document-processing-job.service';
 import { documentSelect } from './knowledge-docs.select';
 import {
   toDocumentResponse,
@@ -81,6 +83,8 @@ export class DocumentImportService {
     private readonly fileParser: FileParserService,
     private readonly documentAssetService: DocumentAssetService,
     private readonly chunkIndexingService: ChunkIndexingService,
+    @Optional()
+    private readonly documentProcessingJobService?: DocumentProcessingJobService,
   ) {}
 
   async previewMarkdownFile(
@@ -223,6 +227,37 @@ export class DocumentImportService {
         sha256Hash: sourceFile.sha256Hash,
         originalCharCount,
       };
+
+      if (this.shouldQueueOcr(parsedFile, chunks)) {
+        if (!this.documentProcessingJobService) {
+          throw new Error('document processing queue is not configured');
+        }
+
+        document = await this.prisma.document.create({
+          data: {
+            knowledgeBase: { connect: { id: knowledgeBase.id } },
+            sourceFile: { connect: { id: sourceFile.id } },
+            name: input.name,
+            sourceType: DocumentSourceType.FILE_UPLOAD,
+            status: DocumentStatus.OCR_PENDING,
+            charCount: 0,
+            chunkCount: 0,
+            metadata: {
+              ...documentMetadata,
+              processingStage: 'OCR',
+            },
+          },
+          select: documentSelect,
+        });
+
+        await this.documentProcessingJobService.enqueueOcrDocument({
+          documentId: document.id,
+          knowledgeBaseId: knowledgeBase.id,
+          sourceFileId: sourceFile.id,
+        });
+
+        return toDocumentResponse(document);
+      }
 
       document = await this.prisma.document.create({
         data: {
@@ -509,6 +544,30 @@ export class DocumentImportService {
     }
 
     return decodedFileName;
+  }
+
+  private shouldQueueOcr(parsedFile: FileParseResult, chunks: ChunkDraft[]) {
+    return (
+      parsedFile.sourceFormat === 'PDF' &&
+      chunks.length > 0 &&
+      chunks.every((chunk) => this.isPdfPageImageChunk(chunk))
+    );
+  }
+
+  private isPdfPageImageChunk(chunk: ChunkDraft) {
+    const metadata = chunk.metadata;
+
+    if (
+      typeof metadata !== 'object' ||
+      metadata === null ||
+      Array.isArray(metadata)
+    ) {
+      return false;
+    }
+
+    return (
+      (metadata as Record<string, unknown>).contentKind === 'PDF_PAGE_IMAGE'
+    );
   }
 
   private async requireKnowledgeBase(id: string) {

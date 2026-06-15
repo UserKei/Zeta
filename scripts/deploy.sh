@@ -24,9 +24,9 @@ else
 fi
 
 $DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d postgres
-$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build api web
-$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" run --rm api pnpm --dir server exec prisma migrate deploy
-$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" run --rm api pnpm --dir server exec prisma db seed
-$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d api web --remove-orphans
+$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build api web ocr
+$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" run --rm --no-deps api pnpm --dir server exec prisma migrate deploy
+$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" run --rm --no-deps api pnpm --dir server exec prisma db seed
+$DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d redis ocr api web --remove-orphans
 $DOCKER image prune -f --filter "until=24h"
 $DOCKER compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
