@@ -45,6 +45,11 @@ export class KnowledgeBasesController {
     return this.knowledgeBasesService.create(body);
   }
 
+  @Post(':id/reindex')
+  reindex(@Param('id') id: string) {
+    return this.knowledgeBasesService.reindex(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: KnowledgeBaseUpdateDto) {
     return this.knowledgeBasesService.update(id, body);

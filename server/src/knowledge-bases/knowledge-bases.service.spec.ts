@@ -19,6 +19,10 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
     ACTIVE: 'ACTIVE',
     DISABLED: 'DISABLED',
   },
+  DocumentStatus: {
+    EMBEDDING: 'EMBEDDING',
+    FAILED: 'FAILED',
+  },
   KnowledgeBaseStatus: {
     ACTIVE: 'ACTIVE',
     DISABLED: 'DISABLED',
@@ -348,5 +352,140 @@ describe('KnowledgeBasesService reranker settings', () => {
       },
       select: expect.any(Object) as unknown,
     });
+  });
+});
+
+describe('KnowledgeBasesService embedding model updates', () => {
+  const createService = (
+    prisma: Record<string, unknown>,
+    documentProcessingJobService?: Record<string, unknown>,
+  ) =>
+    new KnowledgeBasesService(
+      prisma as never,
+      {} as never,
+      documentProcessingJobService as never,
+    );
+
+  it('queues existing documents for embedding when the embedding model changes', async () => {
+    const knowledgeBaseUpdate = jest.fn().mockResolvedValue({
+      id: 'kb-1',
+      embeddingModelId: 'embedding-new',
+    });
+    const documentUpdate = jest.fn().mockResolvedValue({
+      updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+    });
+    const enqueueDocumentEmbedding = jest.fn().mockResolvedValue(undefined);
+    const service = createService(
+      {
+        knowledgeBase: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            metadata: {},
+            embeddingModelId: 'embedding-old',
+          }),
+          update: knowledgeBaseUpdate,
+        },
+        aiModel: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'embedding-new' }),
+        },
+        document: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ id: 'doc-1' }, { id: 'doc-2' }]),
+          update: documentUpdate,
+        },
+      },
+      { enqueueDocumentEmbedding },
+    );
+
+    await service.update('kb-1', { embeddingModelId: 'embedding-new' });
+
+    expect(documentUpdate).toHaveBeenCalledTimes(2);
+    expect(documentUpdate).toHaveBeenCalledWith({
+      where: { id: 'doc-1' },
+      data: { status: 'EMBEDDING', errorMessage: null },
+      select: { updatedAt: true },
+    });
+    expect(enqueueDocumentEmbedding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+      }),
+    );
+    expect(enqueueDocumentEmbedding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-2',
+        knowledgeBaseId: 'kb-1',
+      }),
+    );
+  });
+
+  it('does not queue documents when the embedding model id is unchanged', async () => {
+    const enqueueDocumentEmbedding = jest.fn();
+    const documentFindMany = jest.fn();
+    const service = createService(
+      {
+        knowledgeBase: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            metadata: {},
+            embeddingModelId: 'embedding-1',
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            embeddingModelId: 'embedding-1',
+          }),
+        },
+        aiModel: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'embedding-1' }),
+        },
+        document: {
+          findMany: documentFindMany,
+          update: jest.fn(),
+        },
+      },
+      { enqueueDocumentEmbedding },
+    );
+
+    await service.update('kb-1', { embeddingModelId: 'embedding-1' });
+
+    expect(documentFindMany).not.toHaveBeenCalled();
+    expect(enqueueDocumentEmbedding).not.toHaveBeenCalled();
+  });
+
+  it('queues existing documents when rebuilding a knowledge base index', async () => {
+    const documentUpdate = jest.fn().mockResolvedValue({
+      updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+    });
+    const enqueueDocumentEmbedding = jest.fn().mockResolvedValue(undefined);
+    const service = createService(
+      {
+        knowledgeBase: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'kb-1',
+            metadata: {},
+            embeddingModelId: 'embedding-1',
+          }),
+        },
+        document: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'doc-1' }]),
+          update: documentUpdate,
+        },
+      },
+      { enqueueDocumentEmbedding },
+    );
+
+    await expect(service.reindex('kb-1')).resolves.toEqual({ id: 'kb-1' });
+    expect(documentUpdate).toHaveBeenCalledWith({
+      where: { id: 'doc-1' },
+      data: { status: 'EMBEDDING', errorMessage: null },
+      select: { updatedAt: true },
+    });
+    expect(enqueueDocumentEmbedding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+      }),
+    );
   });
 });

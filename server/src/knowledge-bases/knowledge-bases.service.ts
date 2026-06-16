@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { FileStorageService, PrismaService } from '@libs/shared';
 import {
   AiModelType,
   ChunkStatus,
+  DocumentStatus,
   KnowledgeBaseStatus,
 } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
@@ -16,6 +18,7 @@ import type {
   KnowledgeUsageRange,
   KnowledgeUsageSummary,
 } from '@zeta/common/knowledge-bases';
+import { DocumentProcessingJobService } from '../knowledge-docs/document-processing-job.service';
 import { knowledgeBaseSelect } from './knowledge-bases.select';
 
 type KnowledgeBaseInput = {
@@ -40,6 +43,8 @@ export class KnowledgeBasesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fileStorageService: FileStorageService,
+    @Optional()
+    private readonly documentProcessingJobService?: DocumentProcessingJobService,
   ) {}
 
   async list() {
@@ -220,11 +225,29 @@ export class KnowledgeBasesService {
       );
     }
 
-    return this.prisma.knowledgeBase.update({
+    const nextEmbeddingModelId = input.embeddingModelId?.trim();
+    const shouldRebuildEmbeddings =
+      nextEmbeddingModelId !== undefined &&
+      nextEmbeddingModelId !== knowledgeBase.embeddingModelId;
+
+    const updated = await this.prisma.knowledgeBase.update({
       where: { id },
       data,
       select: knowledgeBaseSelect,
     });
+
+    if (shouldRebuildEmbeddings) {
+      await this.queueKnowledgeBaseDocumentEmbeddings(id);
+    }
+
+    return updated;
+  }
+
+  async reindex(id: string) {
+    await this.requireKnowledgeBase(id);
+    await this.queueKnowledgeBaseDocumentEmbeddings(id);
+
+    return { id };
   }
 
   async remove(id: string) {
@@ -578,7 +601,7 @@ export class KnowledgeBasesService {
   private async requireKnowledgeBase(id: string) {
     const knowledgeBase = await this.prisma.knowledgeBase.findUnique({
       where: { id },
-      select: { id: true, metadata: true },
+      select: { id: true, metadata: true, embeddingModelId: true },
     });
 
     if (!knowledgeBase) {
@@ -586,6 +609,49 @@ export class KnowledgeBasesService {
     }
 
     return knowledgeBase;
+  }
+
+  private async queueKnowledgeBaseDocumentEmbeddings(knowledgeBaseId: string) {
+    if (!this.documentProcessingJobService) {
+      throw new Error('document processing queue is not configured');
+    }
+
+    const documents = await this.prisma.document.findMany({
+      where: {
+        knowledgeBaseId,
+        chunkCount: { gt: 0 },
+      },
+      select: { id: true },
+    });
+
+    for (const document of documents) {
+      const embeddingDocument = await this.prisma.document.update({
+        where: { id: document.id },
+        data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
+        select: { updatedAt: true },
+      });
+
+      try {
+        await this.documentProcessingJobService.enqueueDocumentEmbedding({
+          documentId: document.id,
+          knowledgeBaseId,
+          requestedAt: embeddingDocument.updatedAt.toISOString(),
+        });
+      } catch (cause) {
+        await this.prisma.document.update({
+          where: { id: document.id },
+          data: {
+            status: DocumentStatus.FAILED,
+            errorMessage:
+              cause instanceof Error
+                ? cause.message
+                : 'document indexing failed',
+          },
+        });
+
+        throw cause;
+      }
+    }
   }
 
   private async requireEmbeddingModel(id: string) {
