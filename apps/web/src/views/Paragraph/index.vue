@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowLeftIcon,
@@ -11,9 +20,7 @@ import {
   SearchIcon,
   TrashIcon,
 } from '@lucide/vue'
-import { MdEditor } from 'md-editor-v3'
 import { VueDraggable } from 'vue-draggable-plus'
-import 'md-editor-v3/lib/style.css'
 import MarkdownPreview from '@/components/markdown/MarkdownPreview.vue'
 import {
   AlertDialog,
@@ -65,6 +72,10 @@ import { showErrorMessage } from '@/utils/feedback'
 defineOptions({
   name: 'ParagraphView',
 })
+
+const MarkdownEditor = defineAsyncComponent(
+  () => import('@/components/markdown/MarkdownEditor.vue'),
+)
 
 type DialogMode = 'view' | 'edit' | 'add'
 
@@ -613,7 +624,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="grid gap-2 md:col-span-2">
               <Label>内容</Label>
-              <MdEditor v-model="chunkForm.content" :preview="false" style="height: 420px" />
+              <MarkdownEditor v-model="chunkForm.content" :preview="false" style="height: 420px" />
             </div>
           </div>
         </form>
