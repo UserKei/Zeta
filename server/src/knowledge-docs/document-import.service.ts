@@ -34,10 +34,7 @@ import {
   toChunkDrafts,
   type ChunkDraft,
 } from './chunk-draft-normalizer';
-import {
-  DocumentAssetService,
-  type ImageUnderstandingWarning,
-} from './document-asset.service';
+import { DocumentAssetService } from './document-asset.service';
 import { ChunkIndexingService } from './chunk-indexing.service';
 import { DocumentProcessingJobService } from './document-processing-job.service';
 import { documentSelect } from './knowledge-docs.select';
@@ -278,7 +275,6 @@ export class DocumentImportService {
         sourceFile.id,
         parsedFile,
       );
-      const imageUnderstandingWarnings: ImageUnderstandingWarning[] = [];
 
       if (assets.length > 0) {
         chunks = this.documentAssetService.rewriteChunkAssetReferences(
@@ -288,33 +284,19 @@ export class DocumentImportService {
       }
 
       if (assets.length > 0) {
-        const imageUnderstandingResult =
-          await this.documentAssetService.createImageUnderstandingChunks(
-            knowledgeBase,
-            assets,
-            chunks,
-          );
-
-        chunks = [...chunks, ...imageUnderstandingResult.chunks];
-        imageUnderstandingWarnings.push(...imageUnderstandingResult.warnings);
-      }
-
-      if (assets.length > 0 || imageUnderstandingWarnings.length > 0) {
         assertDocumentChunks(chunks);
 
-        await this.prisma.document.update({
+        document = await this.prisma.document.update({
           where: { id: document.id },
           data: {
             charCount: countChunkChars(chunks),
             chunkCount: chunks.length,
             metadata: {
               ...documentMetadata,
-              ...(assets.length > 0 ? { assets } : {}),
-              ...(imageUnderstandingWarnings.length > 0
-                ? { imageUnderstandingWarnings }
-                : {}),
+              assets,
             },
           },
+          select: documentSelect,
         });
       }
 
@@ -325,23 +307,32 @@ export class DocumentImportService {
       );
       await this.chunkIndexingService.refreshDocumentSearchVector(document.id);
 
-      await this.prisma.document.update({
+      if (!this.documentProcessingJobService) {
+        throw new Error('document processing queue is not configured');
+      }
+
+      if (assets.length > 0) {
+        await this.documentProcessingJobService.enqueueImageUnderstanding({
+          documentId: document.id,
+          knowledgeBaseId: knowledgeBase.id,
+        });
+
+        return toDocumentResponse(document);
+      }
+
+      const embeddingDocument = await this.prisma.document.update({
         where: { id: document.id },
         data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
-      });
-
-      await this.chunkIndexingService.rebuildDocumentEmbeddings(
-        document.id,
-        knowledgeBase.embeddingModel,
-      );
-
-      const indexedDocument = await this.prisma.document.update({
-        where: { id: document.id },
-        data: { status: DocumentStatus.INDEXED, errorMessage: null },
         select: documentSelect,
       });
 
-      return toDocumentResponse(indexedDocument);
+      await this.documentProcessingJobService.enqueueDocumentEmbedding({
+        documentId: document.id,
+        knowledgeBaseId: knowledgeBase.id,
+        requestedAt: embeddingDocument.updatedAt.toISOString(),
+      });
+
+      return toDocumentResponse(embeddingDocument);
     } catch (cause) {
       if (document) {
         await this.prisma.document.update({

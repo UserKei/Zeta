@@ -15,7 +15,9 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
   },
   DocumentStatus: {
     CHUNKING: 'CHUNKING',
+    EMBEDDING: 'EMBEDDING',
     INDEXED: 'INDEXED',
+    FAILED: 'FAILED',
   },
   KnowledgeBaseStatus: {
     ACTIVE: 'ACTIVE',
@@ -75,13 +77,13 @@ describe('AiExtractedDocumentService', () => {
         createdAt: new Date('2026-06-01T00:00:00.000Z'),
         updatedAt: new Date('2026-06-01T00:00:00.000Z'),
       });
-    const indexedDocument = {
+    const embeddingDocument = {
       id: 'doc-1',
       knowledgeBaseId: 'kb-1',
       sourceFileId: null,
       name: '聊天补充知识',
       sourceType: 'AI_EXTRACTED',
-      status: 'INDEXED',
+      status: 'EMBEDDING',
       charCount: 13,
       chunkCount: 1,
       errorMessage: null,
@@ -107,7 +109,8 @@ describe('AiExtractedDocumentService', () => {
       document: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: documentCreate,
-        findUnique: jest.fn().mockResolvedValue(indexedDocument),
+        findUnique: jest.fn().mockResolvedValue(embeddingDocument),
+        update: jest.fn().mockResolvedValue(embeddingDocument),
       },
       chunk: {
         count: jest.fn().mockResolvedValue(0),
@@ -159,7 +162,7 @@ describe('AiExtractedDocumentService', () => {
                     visionModel: null,
                   },
                 })
-                .mockResolvedValueOnce(indexedDocument),
+                .mockResolvedValueOnce(embeddingDocument),
             },
             chunk: {
               count: jest.fn().mockResolvedValue(0),
@@ -172,10 +175,15 @@ describe('AiExtractedDocumentService', () => {
       refreshChunkSearchVector: jest.fn(),
       syncChunkEmbedding: jest.fn(),
       refreshIndexedDocumentStats: jest.fn(),
+      refreshDocumentStats: jest.fn(),
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn(),
     };
     const service = new AiExtractedDocumentService(
       prisma as never,
       chunkIndexingService as never,
+      documentProcessingJobService as never,
     );
 
     const result = await service.createChunk('kb-1', {
@@ -204,14 +212,26 @@ describe('AiExtractedDocumentService', () => {
     expect(chunkIndexingService.refreshChunkSearchVector).toHaveBeenCalledWith(
       'chunk-1',
     );
-    expect(chunkIndexingService.syncChunkEmbedding).toHaveBeenCalledWith(
-      'chunk-1',
-      embeddingModel,
-      'ACTIVE',
+    expect(chunkIndexingService.refreshDocumentStats).toHaveBeenCalledWith(
+      'doc-1',
     );
+    expect(chunkIndexingService.syncChunkEmbedding).not.toHaveBeenCalled();
     expect(
       chunkIndexingService.refreshIndexedDocumentStats,
-    ).toHaveBeenCalledWith('doc-1');
+    ).not.toHaveBeenCalled();
+    expect(prisma.document.update).toHaveBeenCalledWith({
+      where: { id: 'doc-1' },
+      data: { status: 'EMBEDDING', errorMessage: null },
+      select: { updatedAt: true },
+    });
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+      }),
+    );
     expect(result.document).toEqual(
       expect.objectContaining({
         id: 'doc-1',

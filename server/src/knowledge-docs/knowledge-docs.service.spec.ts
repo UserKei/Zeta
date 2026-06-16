@@ -47,6 +47,41 @@ jest.mock('@libs/shared/generated/prisma/enums', () => ({
 import { KnowledgeDocsService } from './knowledge-docs.service';
 
 describe('KnowledgeDocsService manual documents', () => {
+  const embeddingModel = {
+    id: 'embedding-1',
+    type: 'EMBEDDING',
+    isEnabled: true,
+    modelName: 'text-embedding-v4',
+    baseUrl: 'https://embedding.example.com/v1',
+    apiKey: 'sk-embedding',
+    configJson: {},
+  };
+
+  const indexableKnowledgeBase = {
+    id: 'kb-1',
+    status: 'ACTIVE',
+    metadata: {},
+    chunkSize: 800,
+    chunkOverlap: 80,
+    embeddingModel,
+    visionModel: null,
+  };
+
+  const activeChunk = {
+    id: 'chunk-1',
+    knowledgeBaseId: 'kb-1',
+    documentId: 'doc-1',
+    title: '规则',
+    content: '采购审批规则',
+    position: 0,
+    tokenCount: null,
+    charCount: 6,
+    status: 'ACTIVE',
+    metadata: {},
+    createdAt: new Date('2026-05-31T00:00:00.000Z'),
+    updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+  };
+
   it('creates a blank manual document without chunks or embeddings', async () => {
     type BlankDocumentCreateArgs = {
       data: {
@@ -142,6 +177,264 @@ describe('KnowledgeDocsService manual documents', () => {
       chunkIndexingService.rebuildDocumentEmbeddings,
     ).not.toHaveBeenCalled();
     expect(documentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('queues document embedding after creating a chunk', async () => {
+    const transactionDb = {
+      chunk: {
+        count: jest.fn().mockResolvedValue(1),
+        create: jest.fn().mockResolvedValue(activeChunk),
+      },
+    };
+    const prisma = {
+      document: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          chunkCount: 1,
+          knowledgeBase: indexableKnowledgeBase,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          sourceFileId: null,
+          name: '规则文档',
+          sourceType: 'MANUAL',
+          status: 'EMBEDDING',
+          charCount: 6,
+          chunkCount: 1,
+          errorMessage: null,
+          metadata: {},
+          createdAt: new Date('2026-05-31T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+        }),
+      },
+      chunk: {
+        count: jest.fn().mockResolvedValue(1),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(activeChunk),
+      },
+      $transaction: jest.fn((callback: (db: typeof transactionDb) => unknown) =>
+        Promise.resolve(callback(transactionDb)),
+      ),
+    };
+    const chunkIndexingService = {
+      refreshChunkSearchVector: jest.fn().mockResolvedValue(undefined),
+      refreshDocumentStats: jest.fn().mockResolvedValue(undefined),
+      syncChunkEmbedding: jest.fn(),
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      chunkIndexingService as never,
+      documentProcessingJobService as never,
+    );
+
+    await service.createChunk('doc-1', {
+      title: '规则',
+      content: '采购审批规则',
+      status: 'ACTIVE',
+    });
+
+    expect(chunkIndexingService.refreshChunkSearchVector).toHaveBeenCalledWith(
+      'chunk-1',
+    );
+    expect(chunkIndexingService.refreshDocumentStats).toHaveBeenCalledWith(
+      'doc-1',
+    );
+    expect(chunkIndexingService.syncChunkEmbedding).not.toHaveBeenCalled();
+    expect(prisma.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'doc-1' },
+        data: { status: 'EMBEDDING', errorMessage: null },
+      }),
+    );
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+        requestedAt: '2026-05-31T00:00:00.000Z',
+      }),
+    );
+  });
+
+  it('clears stale chunk embeddings and queues document embedding after updating a chunk', async () => {
+    const updatedChunk = {
+      ...activeChunk,
+      content: '采购审批需要部门负责人确认',
+      charCount: 14,
+    };
+    const prisma = {
+      document: {
+        update: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          sourceFileId: null,
+          name: '规则文档',
+          sourceType: 'MANUAL',
+          status: 'EMBEDDING',
+          charCount: 14,
+          chunkCount: 1,
+          errorMessage: null,
+          metadata: {},
+          createdAt: new Date('2026-05-31T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+        }),
+      },
+      chunk: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'chunk-1',
+          documentId: 'doc-1',
+          title: '规则',
+          content: '采购审批规则',
+          status: 'ACTIVE',
+          document: { knowledgeBase: indexableKnowledgeBase },
+        }),
+        update: jest.fn().mockResolvedValue(updatedChunk),
+      },
+    };
+    const chunkIndexingService = {
+      refreshChunkSearchVector: jest.fn().mockResolvedValue(undefined),
+      deleteChunkEmbeddings: jest.fn().mockResolvedValue(undefined),
+      refreshDocumentStats: jest.fn().mockResolvedValue(undefined),
+      syncChunkEmbedding: jest.fn(),
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      chunkIndexingService as never,
+      documentProcessingJobService as never,
+    );
+
+    await service.updateChunk('chunk-1', {
+      content: '采购审批需要部门负责人确认',
+    });
+
+    expect(chunkIndexingService.refreshChunkSearchVector).toHaveBeenCalledWith(
+      'chunk-1',
+    );
+    expect(chunkIndexingService.deleteChunkEmbeddings).toHaveBeenCalledWith(
+      'chunk-1',
+    );
+    expect(chunkIndexingService.refreshDocumentStats).toHaveBeenCalledWith(
+      'doc-1',
+    );
+    expect(chunkIndexingService.syncChunkEmbedding).not.toHaveBeenCalled();
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+        requestedAt: '2026-05-31T00:00:00.000Z',
+      }),
+    );
+  });
+
+  it('queues document embedding when reindexing a document', async () => {
+    const prisma = {
+      document: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          knowledgeBase: indexableKnowledgeBase,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          sourceFileId: null,
+          name: '规则文档',
+          sourceType: 'MANUAL',
+          status: 'EMBEDDING',
+          charCount: 6,
+          chunkCount: 1,
+          errorMessage: null,
+          metadata: {},
+          createdAt: new Date('2026-05-31T00:00:00.000Z'),
+          updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+        }),
+      },
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      documentProcessingJobService as never,
+    );
+
+    const document = await service.reindexDocument('doc-1');
+
+    expect(prisma.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'doc-1' },
+        data: { status: 'EMBEDDING', errorMessage: null },
+      }),
+    );
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+        requestedAt: '2026-05-31T00:00:00.000Z',
+      }),
+    );
+    expect(document).toEqual(
+      expect.objectContaining({ id: 'doc-1', status: 'EMBEDDING' }),
+    );
+  });
+
+  it('rejects reindexing a document without chunks', async () => {
+    const prisma = {
+      document: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'doc-1',
+          knowledgeBaseId: 'kb-1',
+          chunkCount: 0,
+          knowledgeBase: indexableKnowledgeBase,
+        }),
+        update: jest.fn(),
+      },
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn(),
+    };
+    const service = new KnowledgeDocsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      documentProcessingJobService as never,
+    );
+
+    await expect(service.reindexDocument('doc-1')).rejects.toThrow(
+      'document must have chunks',
+    );
+    expect(prisma.document.update).not.toHaveBeenCalled();
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).not.toHaveBeenCalled();
   });
 
   it('removes document database records in one transaction before file cleanup', async () => {

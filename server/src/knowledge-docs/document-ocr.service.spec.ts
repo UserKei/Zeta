@@ -28,7 +28,7 @@ jest.mock('@libs/shared', () => ({
 import { DocumentOcrService } from './document-ocr.service';
 
 describe('DocumentOcrService', () => {
-  it('indexes OCR markdown through the existing chunk and embedding pipeline', async () => {
+  it('indexes OCR markdown through chunks and queues embedding generation', async () => {
     const document = {
       id: 'doc-1',
       knowledgeBaseId: 'kb-1',
@@ -55,7 +55,9 @@ describe('DocumentOcrService', () => {
     const prisma = {
       document: {
         findUnique: jest.fn().mockResolvedValue(document),
-        update: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue({
+          updatedAt: new Date('2026-05-31T00:00:00.000Z'),
+        }),
       },
       chunk: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -95,7 +97,10 @@ describe('DocumentOcrService', () => {
     const chunkIndexingService = {
       createChunks: jest.fn().mockResolvedValue(undefined),
       refreshDocumentSearchVector: jest.fn().mockResolvedValue(undefined),
-      rebuildDocumentEmbeddings: jest.fn().mockResolvedValue(undefined),
+      rebuildDocumentEmbeddings: jest.fn(),
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn().mockResolvedValue(undefined),
     };
     const service = new DocumentOcrService(
       prisma as never,
@@ -103,6 +108,7 @@ describe('DocumentOcrService', () => {
       ocrClient as never,
       fileParser as never,
       chunkIndexingService as never,
+      documentProcessingJobService as never,
     );
 
     await service.processDocument({
@@ -153,18 +159,10 @@ describe('DocumentOcrService', () => {
     expect(
       chunkIndexingService.refreshDocumentSearchVector,
     ).toHaveBeenCalledWith('doc-1');
-    expect(prisma.document.update).toHaveBeenCalledWith({
-      where: { id: 'doc-1' },
-      data: { status: 'EMBEDDING', errorMessage: null },
-    });
-    expect(chunkIndexingService.rebuildDocumentEmbeddings).toHaveBeenCalledWith(
-      'doc-1',
-      document.knowledgeBase.embeddingModel,
-    );
     expect(prisma.document.update).toHaveBeenLastCalledWith({
       where: { id: 'doc-1' },
       data: {
-        status: 'INDEXED',
+        status: 'EMBEDDING',
         charCount: 'VPN 申请需要主管审批。'.length,
         chunkCount: 1,
         errorMessage: null,
@@ -175,7 +173,19 @@ describe('DocumentOcrService', () => {
           },
         },
       },
+      select: { updatedAt: true },
     });
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+      }),
+    );
+    expect(
+      chunkIndexingService.rebuildDocumentEmbeddings,
+    ).not.toHaveBeenCalled();
   });
 
   it('marks the document as failed when OCR processing fails', async () => {
@@ -231,12 +241,16 @@ describe('DocumentOcrService', () => {
       refreshDocumentSearchVector: jest.fn(),
       rebuildDocumentEmbeddings: jest.fn(),
     };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn(),
+    };
     const service = new DocumentOcrService(
       prisma as never,
       fileStorageService as never,
       ocrClient as never,
       fileParser as never,
       chunkIndexingService as never,
+      documentProcessingJobService as never,
     );
 
     await expect(
@@ -262,5 +276,8 @@ describe('DocumentOcrService', () => {
     });
     expect(fileParser.parse).not.toHaveBeenCalled();
     expect(chunkIndexingService.createChunks).not.toHaveBeenCalled();
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).not.toHaveBeenCalled();
   });
 });

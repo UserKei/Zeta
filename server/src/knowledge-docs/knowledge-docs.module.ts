@@ -8,6 +8,8 @@ import { FileStorageModule, ParserModule } from '@libs/shared';
 import { RetrievalModule } from '../retrieval/retrieval.module';
 import { AiExtractedDocumentService } from './ai-extracted-document.service';
 import { ChunkIndexingService } from './chunk-indexing.service';
+import { DocumentEmbeddingService } from './document-embedding.service';
+import { DocumentImageUnderstandingService } from './document-image-understanding.service';
 import { DocumentAssetService } from './document-asset.service';
 import { DocumentImportService } from './document-import.service';
 import { DocumentOcrService } from './document-ocr.service';
@@ -33,6 +35,8 @@ import { OcrClientService } from './ocr-client.service';
   providers: [
     AiExtractedDocumentService,
     ChunkIndexingService,
+    DocumentEmbeddingService,
+    DocumentImageUnderstandingService,
     DocumentAssetService,
     DocumentImportService,
     DocumentOcrService,

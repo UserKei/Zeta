@@ -215,6 +215,11 @@ export class KnowledgeDocsController {
     return this.knowledgeDocsService.getDocument(id);
   }
 
+  @Post('documents/:id/reindex')
+  reindexDocument(@Param('id') id: string) {
+    return this.knowledgeDocsService.reindexDocument(id);
+  }
+
   @Patch('documents/:id')
   updateDocument(@Param('id') id: string, @Body() body: DocumentUpdateDto) {
     return this.knowledgeDocsService.updateDocument(id, body);

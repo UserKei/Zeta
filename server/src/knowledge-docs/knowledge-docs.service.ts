@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { FileStorageService, PrismaService } from '@libs/shared';
@@ -34,6 +35,7 @@ import {
   type AiExtractedChunkInput,
 } from './ai-extracted-document.service';
 import { DocumentAssetService } from './document-asset.service';
+import { DocumentProcessingJobService } from './document-processing-job.service';
 import { ChunkIndexingService } from './chunk-indexing.service';
 import { chunkSelect, documentSelect } from './knowledge-docs.select';
 import { toDocumentResponse } from './document-response.mapper';
@@ -54,6 +56,8 @@ export class KnowledgeDocsService {
     private readonly aiExtractedDocumentService: AiExtractedDocumentService,
     private readonly documentAssetService: DocumentAssetService,
     private readonly chunkIndexingService: ChunkIndexingService,
+    @Optional()
+    private readonly documentProcessingJobService?: DocumentProcessingJobService,
   ) {}
 
   async listByKnowledgeBase(knowledgeBaseId: string) {
@@ -79,6 +83,21 @@ export class KnowledgeDocsService {
     }
 
     return toDocumentResponse(document);
+  }
+
+  async reindexDocument(id: string) {
+    const document = await this.requireIndexableDocument(id);
+
+    if (document.chunkCount <= 0) {
+      throw new BadRequestException('document must have chunks');
+    }
+
+    const embeddingDocument = await this.queueDocumentEmbedding(
+      document.id,
+      document.knowledgeBaseId,
+    );
+
+    return toDocumentResponse(embeddingDocument);
   }
 
   async updateDocument(id: string, input: DocumentUpdatePayload) {
@@ -165,23 +184,12 @@ export class KnowledgeDocsService {
       );
       await this.chunkIndexingService.refreshDocumentSearchVector(document.id);
 
-      await this.prisma.document.update({
-        where: { id: document.id },
-        data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
-      });
-
-      await this.chunkIndexingService.rebuildDocumentEmbeddings(
+      const embeddingDocument = await this.queueDocumentEmbedding(
         document.id,
-        knowledgeBase.embeddingModel,
+        knowledgeBase.id,
       );
 
-      const indexedDocument = await this.prisma.document.update({
-        where: { id: document.id },
-        data: { status: DocumentStatus.INDEXED, errorMessage: null },
-        select: documentSelect,
-      });
-
-      return toDocumentResponse(indexedDocument);
+      return toDocumentResponse(embeddingDocument);
     } catch (cause) {
       await this.prisma.document.update({
         where: { id: document.id },
@@ -268,12 +276,8 @@ export class KnowledgeDocsService {
     });
 
     await this.chunkIndexingService.refreshChunkSearchVector(created.id);
-    await this.chunkIndexingService.syncChunkEmbedding(
-      created.id,
-      document.knowledgeBase.embeddingModel,
-      created.status,
-    );
-    await this.chunkIndexingService.refreshIndexedDocumentStats(documentId);
+    await this.chunkIndexingService.refreshDocumentStats(documentId);
+    await this.queueDocumentEmbedding(documentId, document.knowledgeBaseId);
 
     return this.prisma.chunk.findUniqueOrThrow({
       where: { id: created.id },
@@ -316,13 +320,11 @@ export class KnowledgeDocsService {
     });
 
     await this.chunkIndexingService.refreshChunkSearchVector(updated.id);
-    await this.chunkIndexingService.syncChunkEmbedding(
-      updated.id,
-      chunk.document.knowledgeBase.embeddingModel,
-      updated.status,
-    );
-    await this.chunkIndexingService.refreshIndexedDocumentStats(
+    await this.chunkIndexingService.deleteChunkEmbeddings(updated.id);
+    await this.chunkIndexingService.refreshDocumentStats(updated.documentId);
+    await this.queueDocumentEmbedding(
       updated.documentId,
+      chunk.document.knowledgeBase.id,
     );
 
     return updated;
@@ -496,6 +498,42 @@ export class KnowledgeDocsService {
     });
   }
 
+  private async queueDocumentEmbedding(
+    documentId: string,
+    knowledgeBaseId: string,
+  ) {
+    const embeddingDocument = await this.prisma.document.update({
+      where: { id: documentId },
+      data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
+      select: documentSelect,
+    });
+
+    if (!this.documentProcessingJobService) {
+      throw new Error('document processing queue is not configured');
+    }
+
+    try {
+      await this.documentProcessingJobService.enqueueDocumentEmbedding({
+        documentId,
+        knowledgeBaseId,
+        requestedAt: embeddingDocument.updatedAt.toISOString(),
+      });
+    } catch (cause) {
+      await this.prisma.document.update({
+        where: { id: documentId },
+        data: {
+          status: DocumentStatus.FAILED,
+          errorMessage:
+            cause instanceof Error ? cause.message : 'document indexing failed',
+        },
+      });
+
+      throw cause;
+    }
+
+    return embeddingDocument;
+  }
+
   private async requireDocument(id: string) {
     const document = await this.prisma.document.findUnique({
       where: { id },
@@ -528,6 +566,7 @@ export class KnowledgeDocsService {
       select: {
         id: true,
         knowledgeBaseId: true,
+        chunkCount: true,
         knowledgeBase: {
           select: indexableKnowledgeBaseSelect,
         },

@@ -21,6 +21,7 @@ import {
   withIndexableEmbeddingModel,
 } from './knowledge-base-model-resolver';
 import type { OcrDocumentJobData } from './document-processing.constants';
+import { DocumentProcessingJobService } from './document-processing-job.service';
 import { OcrClientService } from './ocr-client.service';
 
 @Injectable()
@@ -31,6 +32,7 @@ export class DocumentOcrService {
     private readonly ocrClientService: OcrClientService,
     private readonly fileParser: FileParserService,
     private readonly chunkIndexingService: ChunkIndexingService,
+    private readonly documentProcessingJobService: DocumentProcessingJobService,
   ) {}
 
   async processDocument(job: OcrDocumentJobData) {
@@ -107,20 +109,10 @@ export class DocumentOcrService {
       );
       await this.chunkIndexingService.refreshDocumentSearchVector(document.id);
 
-      await this.prisma.document.update({
-        where: { id: document.id },
-        data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
-      });
-
-      await this.chunkIndexingService.rebuildDocumentEmbeddings(
-        document.id,
-        knowledgeBase.embeddingModel,
-      );
-
-      await this.prisma.document.update({
+      const embeddingDocument = await this.prisma.document.update({
         where: { id: document.id },
         data: {
-          status: DocumentStatus.INDEXED,
+          status: DocumentStatus.EMBEDDING,
           charCount: countChunkChars(chunks),
           chunkCount: chunks.length,
           errorMessage: null,
@@ -129,6 +121,13 @@ export class DocumentOcrService {
             ocr: { status: 'completed' },
           },
         },
+        select: { updatedAt: true },
+      });
+
+      await this.documentProcessingJobService.enqueueDocumentEmbedding({
+        documentId: document.id,
+        knowledgeBaseId: knowledgeBase.id,
+        requestedAt: embeddingDocument.updatedAt.toISOString(),
       });
     } catch (cause) {
       await this.prisma.document.update({

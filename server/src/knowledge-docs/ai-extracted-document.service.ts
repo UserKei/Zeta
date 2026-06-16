@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '@libs/shared';
@@ -25,6 +26,7 @@ import {
   indexableKnowledgeBaseSelect,
   withIndexableEmbeddingModel,
 } from './knowledge-base-model-resolver';
+import { DocumentProcessingJobService } from './document-processing-job.service';
 
 type ChunkRecord = Prisma.ChunkGetPayload<{
   select: typeof chunkSelect;
@@ -51,6 +53,8 @@ export class AiExtractedDocumentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chunkIndexingService: ChunkIndexingService,
+    @Optional()
+    private readonly documentProcessingJobService?: DocumentProcessingJobService,
   ) {}
 
   async createChunk(knowledgeBaseId: string, input: AiExtractedChunkInput) {
@@ -115,14 +119,46 @@ export class AiExtractedDocumentService {
 
   async indexCreatedChunk(created: AiExtractedChunkRecord) {
     await this.chunkIndexingService.refreshChunkSearchVector(created.chunk.id);
-    await this.chunkIndexingService.syncChunkEmbedding(
-      created.chunk.id,
-      created.embeddingModel,
-      created.chunk.status,
-    );
-    await this.chunkIndexingService.refreshIndexedDocumentStats(
+    await this.chunkIndexingService.refreshDocumentStats(created.document.id);
+
+    await this.queueDocumentEmbedding(
       created.document.id,
+      created.document.knowledgeBaseId,
     );
+  }
+
+  private async queueDocumentEmbedding(
+    documentId: string,
+    knowledgeBaseId: string,
+  ) {
+    const embeddingDocument = await this.prisma.document.update({
+      where: { id: documentId },
+      data: { status: DocumentStatus.EMBEDDING, errorMessage: null },
+      select: { updatedAt: true },
+    });
+
+    if (!this.documentProcessingJobService) {
+      throw new Error('document processing queue is not configured');
+    }
+
+    try {
+      await this.documentProcessingJobService.enqueueDocumentEmbedding({
+        documentId,
+        knowledgeBaseId,
+        requestedAt: embeddingDocument.updatedAt.toISOString(),
+      });
+    } catch (cause) {
+      await this.prisma.document.update({
+        where: { id: documentId },
+        data: {
+          status: DocumentStatus.FAILED,
+          errorMessage:
+            cause instanceof Error ? cause.message : 'document indexing failed',
+        },
+      });
+
+      throw cause;
+    }
   }
 
   private async createActiveChunkRecord(

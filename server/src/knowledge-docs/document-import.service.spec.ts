@@ -47,6 +47,21 @@ type CreateManyChunksArgs = {
   data: CreatedChunk[];
 };
 
+type DocumentUpdateArgs = {
+  where: { id: string };
+  data: {
+    charCount?: number;
+    chunkCount?: number;
+    metadata?: {
+      assets?: Array<{
+        fileId?: string;
+        originalReference?: string;
+        reference?: string;
+      }>;
+    };
+  };
+};
+
 describe('DocumentImportService', () => {
   it('uses knowledge base chunk size and overlap when previewing files', async () => {
     const fileParser = {
@@ -205,8 +220,8 @@ describe('DocumentImportService', () => {
     expect(chunkIndexingService.createChunks).not.toHaveBeenCalled();
   });
 
-  it('marks the document as failed and preserves the source file when indexing fails', async () => {
-    const indexingError = new Error('embedding failed');
+  it('marks the document as failed and preserves the source file when embedding job enqueue fails', async () => {
+    const enqueueError = new Error('queue unavailable');
     type DocumentUpdateInput = {
       where: { id: string };
       data: Record<string, unknown>;
@@ -296,7 +311,10 @@ describe('DocumentImportService', () => {
     const chunkIndexingService = {
       createChunks: jest.fn().mockResolvedValue(undefined),
       refreshDocumentSearchVector: jest.fn().mockResolvedValue(undefined),
-      rebuildDocumentEmbeddings: jest.fn().mockRejectedValue(indexingError),
+      rebuildDocumentEmbeddings: jest.fn(),
+    };
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn().mockRejectedValue(enqueueError),
     };
     const service = new DocumentImportService(
       prisma as never,
@@ -304,6 +322,7 @@ describe('DocumentImportService', () => {
       fileParser as never,
       documentAssetService as never,
       chunkIndexingService as never,
+      documentProcessingJobService as never,
     );
 
     await expect(
@@ -333,20 +352,33 @@ describe('DocumentImportService', () => {
           ],
         },
       ),
-    ).rejects.toThrow(indexingError);
+    ).rejects.toThrow(enqueueError);
 
     expect(fileStorageService.removeFileIfUnreferenced).not.toHaveBeenCalled();
+    expect(prisma.document.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'doc-1' },
+        data: { status: 'EMBEDDING', errorMessage: null },
+      }),
+    );
     expect(prisma.document.update).toHaveBeenCalledWith({
       where: { id: 'doc-1' },
-      data: { status: 'EMBEDDING', errorMessage: null },
+      data: { status: 'FAILED', errorMessage: 'queue unavailable' },
     });
-    expect(prisma.document.update).toHaveBeenCalledWith({
-      where: { id: 'doc-1' },
-      data: { status: 'FAILED', errorMessage: 'embedding failed' },
-    });
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        knowledgeBaseId: 'kb-1',
+      }),
+    );
+    expect(
+      chunkIndexingService.rebuildDocumentEmbeddings,
+    ).not.toHaveBeenCalled();
   });
 
-  it('creates image understanding chunks for saved document images', async () => {
+  it('queues image understanding for saved document images', async () => {
     const createdChunks: CreatedChunk[] = [];
     type DocumentCreateInput = {
       data: { status: string; sourceType: string; name: string };
@@ -410,11 +442,24 @@ describe('DocumentImportService', () => {
             sourceFileId: 'source-file-1',
             name: '图文材料',
             sourceType: 'FILE_UPLOAD',
-            status: 'INDEXED',
-            charCount: 80,
-            chunkCount: 2,
+            status: 'CHUNKING',
+            charCount: '![流程图](./files/asset-file-1)'.length,
+            chunkCount: 1,
             errorMessage: null,
-            metadata: {},
+            metadata: {
+              assets: [
+                {
+                  source: 'DOCX_IMAGE',
+                  fileId: 'asset-file-1',
+                  fileName: 'image1.png',
+                  mimeType: 'image/png',
+                  fileSize: 64,
+                  sha256Hash: 'asset-hash',
+                  originalReference: './files/image1.png',
+                  reference: './files/asset-file-1',
+                },
+              ],
+            },
             createdAt: new Date('2026-05-31T00:00:00.000Z'),
             updatedAt: new Date('2026-05-31T00:00:00.000Z'),
           }),
@@ -522,12 +567,17 @@ describe('DocumentImportService', () => {
       embeddingService as never,
       fileStorageService as never,
     );
+    const documentProcessingJobService = {
+      enqueueDocumentEmbedding: jest.fn().mockResolvedValue(undefined),
+      enqueueImageUnderstanding: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new DocumentImportService(
       prisma as never,
       fileStorageService as never,
       fileParser as never,
       documentAssetService,
       chunkIndexingService,
+      documentProcessingJobService as never,
     );
 
     const result = await service.createFileDocuments(
@@ -562,40 +612,28 @@ describe('DocumentImportService', () => {
     );
 
     const documentCreateInput = prisma.document.create.mock.calls[0]?.[0];
-    const documentUpdateInputs = prisma.document.update.mock.calls.map(
-      ([input]) => input,
-    );
+    const documentUpdateInputs: DocumentUpdateArgs[] =
+      prisma.document.update.mock.calls.map(([input]) => input);
+    const lastDocumentUpdateInput = documentUpdateInputs.at(-1);
 
     expect(documentCreateInput?.data.status).toBe('CHUNKING');
     expect(documentCreateInput?.data.sourceType).toBe('FILE_UPLOAD');
     expect(documentCreateInput?.data.name).toBe('图文材料');
-    expect(
-      documentUpdateInputs.some(
-        (input) =>
-          input.where.id === 'doc-1' &&
-          input.data.status === 'EMBEDDING' &&
-          input.data.errorMessage === null,
-      ),
-    ).toBe(true);
-    expect(documentUpdateInputs.at(-1)).toEqual(
-      expect.objectContaining({
-        where: { id: 'doc-1' },
-        data: { status: 'INDEXED', errorMessage: null },
-      }),
+    expect(documentUpdateInputs).toHaveLength(1);
+    expect(lastDocumentUpdateInput?.where).toEqual({ id: 'doc-1' });
+    expect(lastDocumentUpdateInput?.data.charCount).toBe(
+      '![流程图](./files/asset-file-1)'.length,
     );
-    expect(fileStorageService.readBuffer).toHaveBeenCalledWith('asset-file-1');
-    expect(imageUnderstandingService.understandImage).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'vision-1', modelName: 'qwen-vl-max' }),
-      {
-        dataUrl: 'data:image/png;base64,aW1hZ2UtYnl0ZXM=',
-        prompt: '提取图片中的文字并总结业务信息。',
-      },
-    );
+    expect(lastDocumentUpdateInput?.data.chunkCount).toBe(1);
+    expect(lastDocumentUpdateInput?.data.metadata?.assets?.[0]).toMatchObject({
+      fileId: 'asset-file-1',
+      originalReference: './files/image1.png',
+      reference: './files/asset-file-1',
+    });
+    expect(fileStorageService.readBuffer).not.toHaveBeenCalled();
+    expect(imageUnderstandingService.understandImage).not.toHaveBeenCalled();
     const originalPageChunk = createdChunks.find(
       (chunk) => chunk.title === '图文材料',
-    );
-    const imageUnderstandingChunk = createdChunks.find(
-      (chunk) => chunk.title === '图片理解 / image1.png',
     );
 
     expect(originalPageChunk).toEqual(
@@ -614,36 +652,22 @@ describe('DocumentImportService', () => {
         assetSource: 'DOCX_IMAGE',
       }),
     );
-    expect(imageUnderstandingChunk).toEqual(
-      expect.objectContaining({
-        title: '图片理解 / image1.png',
-        content: '图片文字：VPN 申请单。业务信息：需要主管审批。',
-        position: 1,
-        status: 'ACTIVE',
-        charCount: '图片文字：VPN 申请单。业务信息：需要主管审批。'.length,
-        metadata: {
-          contentKind: 'IMAGE_UNDERSTANDING',
-          assetFileId: 'asset-file-1',
-          assetSource: 'DOCX_IMAGE',
-        },
-      }),
-    );
-    expect(embeddingService.embedInputs).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'embedding-1' }),
-      [
-        {
-          text: '图文材料\n![流程图](./files/asset-file-1)',
-        },
-        {
-          text: '图文材料\n图片理解 / image1.png\n图片文字：VPN 申请单。业务信息：需要主管审批。',
-        },
-      ],
-    );
+    expect(createdChunks).toHaveLength(1);
+    expect(embeddingService.embedInputs).not.toHaveBeenCalled();
+    expect(
+      documentProcessingJobService.enqueueImageUnderstanding,
+    ).toHaveBeenCalledWith({
+      documentId: 'doc-1',
+      knowledgeBaseId: 'kb-1',
+    });
+    expect(
+      documentProcessingJobService.enqueueDocumentEmbedding,
+    ).not.toHaveBeenCalled();
     expect(result.documents).toEqual([
       expect.objectContaining({
         id: 'doc-1',
         name: '图文材料',
-        status: 'INDEXED',
+        status: 'CHUNKING',
       }),
     ]);
   });
