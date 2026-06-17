@@ -419,9 +419,9 @@ onMounted(loadKnowledgeBase)
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col bg-background text-foreground">
+  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
     <Card class="min-h-0 flex-1 gap-0 overflow-hidden p-0">
-      <CardContent class="min-h-0 flex-1 overflow-hidden p-0">
+      <CardContent class="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
         <div v-if="loading" class="grid gap-4 p-6">
           <Skeleton class="h-10 w-48" />
           <Skeleton class="h-80 w-full" />
@@ -551,18 +551,6 @@ onMounted(loadKnowledgeBase)
                     <h3 class="m-0 text-base font-medium">智能分段（推荐）</h3>
                     <p class="m-0 mt-2 text-sm text-muted-foreground">
                       系统会根据文件格式、标题结构、表格行和解析结果自动生成分段。
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <section class="rounded-lg border border-border bg-card p-4 opacity-70">
-                <div class="flex items-start gap-3">
-                  <span class="mt-1 size-2 rounded-full border border-border" />
-                  <div class="min-w-0">
-                    <h3 class="m-0 text-base font-medium">高级分段</h3>
-                    <p class="m-0 mt-2 text-sm text-muted-foreground">
-                      后续可扩展自定义分段标识、长度和清洗规则；本轮暂不开放配置。
                     </p>
                   </div>
                 </div>
