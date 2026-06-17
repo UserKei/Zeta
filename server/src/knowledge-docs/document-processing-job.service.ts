@@ -21,7 +21,7 @@ export class DocumentProcessingJobService {
 
   async enqueueOcrDocument(data: OcrDocumentJobData) {
     await this.documentProcessingQueue.add(OCR_DOCUMENT_JOB, data, {
-      jobId: `${OCR_DOCUMENT_JOB}:${data.documentId}`,
+      jobId: this.createJobId(OCR_DOCUMENT_JOB, data.documentId),
       attempts: 2,
       backoff: { type: 'exponential', delay: 3000 },
       removeOnComplete: 100,
@@ -31,7 +31,11 @@ export class DocumentProcessingJobService {
 
   async enqueueDocumentEmbedding(data: EmbedDocumentJobData) {
     await this.documentProcessingQueue.add(EMBED_DOCUMENT_JOB, data, {
-      jobId: `${EMBED_DOCUMENT_JOB}:${data.documentId}:${data.requestedAt}`,
+      jobId: this.createJobId(
+        EMBED_DOCUMENT_JOB,
+        data.documentId,
+        data.requestedAt,
+      ),
       attempts: 3,
       backoff: { type: 'exponential', delay: 3000 },
       removeOnComplete: true,
@@ -41,11 +45,15 @@ export class DocumentProcessingJobService {
 
   async enqueueImageUnderstanding(data: ImageUnderstandingJobData) {
     await this.documentProcessingQueue.add(IMAGE_UNDERSTANDING_JOB, data, {
-      jobId: `${IMAGE_UNDERSTANDING_JOB}:${data.documentId}`,
+      jobId: this.createJobId(IMAGE_UNDERSTANDING_JOB, data.documentId),
       attempts: 2,
       backoff: { type: 'exponential', delay: 3000 },
       removeOnComplete: true,
       removeOnFail: 500,
     });
+  }
+
+  private createJobId(...parts: string[]) {
+    return parts.map((part) => part.replaceAll(':', '-')).join('__');
   }
 }
