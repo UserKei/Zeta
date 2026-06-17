@@ -100,7 +100,7 @@ describe('ModelsService catalog', () => {
       expect.arrayContaining([
         expect.objectContaining({
           value: AiModelType.CHAT,
-          label: '大语言模型',
+          label: '对话模型',
         }),
         expect.objectContaining({
           value: AiModelType.EMBEDDING,

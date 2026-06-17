@@ -27,7 +27,7 @@ export type ModelCatalogProvider = {
 };
 
 export const modelTypes: ModelTypeOption[] = [
-  { value: AiModelType.CHAT, label: '大语言模型' },
+  { value: AiModelType.CHAT, label: '对话模型' },
   { value: AiModelType.EMBEDDING, label: '向量模型' },
   { value: AiModelType.RERANKER, label: '重排模型' },
   { value: AiModelType.IMAGE, label: '视觉模型' },
