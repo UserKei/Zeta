@@ -1,4 +1,5 @@
 import Layout from '@/layout/index.vue'
+import { loadModelsView } from '@/router/view-loaders'
 
 export default [
   {
@@ -15,7 +16,7 @@ export default [
           title: '模型管理',
           breadcrumb: [{ label: '模型管理' }],
         },
-        component: () => import('@/views/Models/index.vue'),
+        component: loadModelsView,
       },
     ],
   },

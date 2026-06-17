@@ -2,6 +2,7 @@ import Layout from '@/layout/index.vue'
 import WorkspaceLayout from '@/layout/workspace/index.vue'
 import { MessageCircleIcon, SettingsIcon } from '@lucide/vue'
 import type { RouteLocation } from 'vue-router'
+import { loadAgentChatLogsView, loadAgentSettingsView, loadAgentsView } from '@/router/view-loaders'
 
 export default [
   {
@@ -18,7 +19,7 @@ export default [
           title: '专家 Agent',
           breadcrumb: [{ label: '专家 Agent' }],
         },
-        component: () => import('@/views/Agents/index.vue'),
+        component: loadAgentsView,
       },
       {
         path: ':agentId',
@@ -41,10 +42,11 @@ export default [
               workspaceMenu: true,
               title: '设置',
               icon: SettingsIcon,
+              preload: loadAgentSettingsView,
               breadcrumb: [{ label: '专家 Agent', to: { name: 'agents' } }, { label: '设置' }],
               breadcrumbBack: { name: 'agents' },
             },
-            component: () => import('@/views/AgentSettings/index.vue'),
+            component: loadAgentSettingsView,
           },
           {
             path: 'chat-logs',
@@ -55,10 +57,11 @@ export default [
               workspaceMenu: true,
               title: '对话日志',
               icon: MessageCircleIcon,
+              preload: loadAgentChatLogsView,
               breadcrumb: [{ label: '专家 Agent', to: { name: 'agents' } }, { label: '对话日志' }],
               breadcrumbBack: { name: 'agents' },
             },
-            component: () => import('@/views/ChatLogs/index.vue'),
+            component: loadAgentChatLogsView,
           },
         ],
       },

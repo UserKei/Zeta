@@ -1,3 +1,5 @@
+import { loadAgentChatView } from '@/router/view-loaders'
+
 export default [
   {
     path: '/chat/index/:agentId',
@@ -6,6 +8,6 @@ export default [
       requiresAuth: true,
       title: 'Agent 聊天',
     },
-    component: () => import('@/views/Chat/index.vue'),
+    component: loadAgentChatView,
   },
 ]

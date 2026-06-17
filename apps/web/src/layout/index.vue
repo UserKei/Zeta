@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { RouterView, useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import {
   ArrowLeftIcon,
@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
+import { loadAgentsView, loadKnowledgeBasesView, loadModelsView } from '@/router/view-loaders'
 import { useUserStore } from '@/stores/user'
 
 defineOptions({
@@ -36,12 +37,24 @@ type BreadcrumbItemConfig = {
   label: string
   to?: BreadcrumbTarget
 }
+type NavItem = {
+  name: string
+  label: string
+  icon: Component
+  preload: () => Promise<unknown>
+}
 
-const navItems = [
-  { name: 'models', label: '模型管理', icon: BoxIcon },
-  { name: 'knowledge-bases', label: '知识库', icon: LibraryIcon },
-  { name: 'agents', label: '专家 Agent', icon: MessageCircleIcon },
+const navItems: NavItem[] = [
+  { name: 'models', label: '模型管理', icon: BoxIcon, preload: loadModelsView },
+  {
+    name: 'knowledge-bases',
+    label: '知识库',
+    icon: LibraryIcon,
+    preload: loadKnowledgeBasesView,
+  },
+  { name: 'agents', label: '专家 Agent', icon: MessageCircleIcon, preload: loadAgentsView },
 ]
+const preloadedMenus = new Set<string>()
 
 const activeMenu = computed(() => {
   const activeMenu = route.meta.activeMenu
@@ -74,6 +87,17 @@ const resolveRouteTarget = (target?: BreadcrumbTarget) => {
 
 const openMenu = async (name: string) => {
   await router.push({ name })
+}
+
+const preloadMenu = (item: NavItem) => {
+  if (preloadedMenus.has(item.name)) {
+    return
+  }
+
+  preloadedMenus.add(item.name)
+  void item.preload().catch(() => {
+    preloadedMenus.delete(item.name)
+  })
 }
 
 const openBreadcrumbTarget = async (target?: BreadcrumbTarget) => {
@@ -196,6 +220,8 @@ const logout = async () => {
                   activeMenu !== item.name && 'text-muted-foreground',
                 )
               "
+              @mouseenter="preloadMenu(item)"
+              @focus="preloadMenu(item)"
               @click="openMenu(item.name)"
             >
               <component :is="item.icon" data-icon="inline-start" />

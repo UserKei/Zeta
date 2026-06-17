@@ -7,6 +7,15 @@ import {
   SettingsIcon,
 } from '@lucide/vue'
 import type { RouteLocation, RouteLocationNormalizedLoaded } from 'vue-router'
+import {
+  loadKnowledgeBasesView,
+  loadKnowledgeDocumentUploadView,
+  loadKnowledgeDocumentsView,
+  loadKnowledgeRetrievalView,
+  loadKnowledgeSettingsView,
+  loadKnowledgeUsageView,
+  loadParagraphView,
+} from '@/router/view-loaders'
 
 export default [
   {
@@ -23,7 +32,7 @@ export default [
           title: '知识库',
           breadcrumb: [{ label: '知识库' }],
         },
-        component: () => import('@/views/KnowledgeBases/index.vue'),
+        component: loadKnowledgeBasesView,
       },
       {
         path: ':knowledgeBaseId/document/upload',
@@ -48,7 +57,7 @@ export default [
             params: { knowledgeBaseId: route.params.knowledgeBaseId },
           }),
         },
-        component: () => import('@/views/DocumentUpload/index.vue'),
+        component: loadKnowledgeDocumentUploadView,
       },
       {
         path: ':knowledgeBaseId',
@@ -71,13 +80,14 @@ export default [
               workspaceMenu: true,
               title: '文档管理',
               icon: FileTextIcon,
+              preload: loadKnowledgeDocumentsView,
               breadcrumb: [
                 { label: '知识库', to: { name: 'knowledge-bases' } },
                 { label: '文档管理' },
               ],
               breadcrumbBack: { name: 'knowledge-bases' },
             },
-            component: () => import('@/views/KnowledgeDocuments/index.vue'),
+            component: loadKnowledgeDocumentsView,
           },
           {
             path: 'retrieval',
@@ -88,13 +98,14 @@ export default [
               workspaceMenu: true,
               title: '检索测试',
               icon: SearchIcon,
+              preload: loadKnowledgeRetrievalView,
               breadcrumb: [
                 { label: '知识库', to: { name: 'knowledge-bases' } },
                 { label: '检索测试' },
               ],
               breadcrumbBack: { name: 'knowledge-bases' },
             },
-            component: () => import('@/views/KnowledgeRetrieval/index.vue'),
+            component: loadKnowledgeRetrievalView,
           },
           {
             path: 'usage',
@@ -105,13 +116,14 @@ export default [
               workspaceMenu: true,
               title: '知识热度',
               icon: ChartNoAxesColumnIncreasingIcon,
+              preload: loadKnowledgeUsageView,
               breadcrumb: [
                 { label: '知识库', to: { name: 'knowledge-bases' } },
                 { label: '知识热度' },
               ],
               breadcrumbBack: { name: 'knowledge-bases' },
             },
-            component: () => import('@/views/KnowledgeUsage/index.vue'),
+            component: loadKnowledgeUsageView,
           },
           {
             path: 'settings',
@@ -122,13 +134,14 @@ export default [
               workspaceMenu: true,
               title: '知识库设置',
               icon: SettingsIcon,
+              preload: loadKnowledgeSettingsView,
               breadcrumb: [
                 { label: '知识库', to: { name: 'knowledge-bases' } },
                 { label: '知识库设置' },
               ],
               breadcrumbBack: { name: 'knowledge-bases' },
             },
-            component: () => import('@/views/KnowledgeSettings/index.vue'),
+            component: loadKnowledgeSettingsView,
           },
         ],
       },
@@ -162,7 +175,7 @@ export default [
             params: { knowledgeBaseId: route.params.knowledgeBaseId },
           }),
         },
-        component: () => import('@/views/Paragraph/index.vue'),
+        component: loadParagraphView,
       },
     ],
   },

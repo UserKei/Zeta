@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { RouteRecordName } from 'vue-router'
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { FolderOpenIcon } from '@lucide/vue'
 
@@ -24,6 +24,20 @@ defineOptions({
 const route = useRoute()
 const router = useRouter()
 
+type RoutePreload = () => Promise<unknown>
+type WorkspaceMenu = {
+  name: RouteRecordName
+  label: string
+  icon?: Component
+  preload?: RoutePreload
+}
+
+const preloadedMenus = new Set<RouteRecordName>()
+
+function isRoutePreload(value: unknown): value is RoutePreload {
+  return typeof value === 'function'
+}
+
 const workspaceRoute = computed(() =>
   route.matched.find((record) => record.children?.some((child) => child.meta?.workspaceMenu)),
 )
@@ -37,7 +51,8 @@ const workspaceMenus = computed(() => {
     .map((child) => ({
       name: child.name as RouteRecordName,
       label: String(child.meta?.title || child.name),
-      icon: child.meta?.icon,
+      icon: child.meta?.icon as Component | undefined,
+      preload: isRoutePreload(child.meta?.preload) ? child.meta.preload : undefined,
     }))
 })
 
@@ -47,6 +62,17 @@ const activeMenu = computed(
 
 function openMenu(menu: { name: RouteRecordName }) {
   router.push({ name: menu.name, params: route.params })
+}
+
+function preloadMenu(menu: WorkspaceMenu) {
+  if (!menu.preload || preloadedMenus.has(menu.name)) {
+    return
+  }
+
+  preloadedMenus.add(menu.name)
+  void menu.preload().catch(() => {
+    preloadedMenus.delete(menu.name)
+  })
 }
 </script>
 
@@ -68,6 +94,8 @@ function openMenu(menu: { name: RouteRecordName }) {
                   type="button"
                   size="lg"
                   :is-active="activeMenu === menu.name"
+                  @mouseenter="preloadMenu(menu)"
+                  @focus="preloadMenu(menu)"
                   @click="openMenu(menu)"
                 >
                   <component :is="menu.icon || FolderOpenIcon" />
