@@ -97,9 +97,9 @@ const logout = async () => {
 </script>
 
 <template>
-  <main class="flex min-h-screen flex-col bg-muted/40">
+  <main class="flex h-screen min-h-0 flex-col overflow-hidden bg-muted/40">
     <header
-      class="sticky top-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur"
+      class="sticky top-0 z-20 shrink-0 border-b border-border bg-background/95 shadow-sm backdrop-blur"
     >
       <div
         class="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(170px,1fr)_auto_minmax(220px,1fr)] lg:items-center lg:px-8"
@@ -225,7 +225,7 @@ const logout = async () => {
       </div>
     </header>
 
-    <section class="flex min-w-0 min-h-0 flex-1 flex-col">
+    <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <RouterView />
     </section>
   </main>

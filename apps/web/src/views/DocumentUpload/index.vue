@@ -728,7 +728,7 @@ onMounted(loadKnowledgeBase)
 
     <footer
       v-if="activeStep !== 2"
-      class="fixed inset-x-0 bottom-0 z-30 flex justify-end gap-2 border-t border-border bg-card px-6 py-4"
+      class="flex shrink-0 justify-end gap-2 border-t border-border bg-card px-6 py-4"
     >
       <Button variant="outline" @click="goBack">取消</Button>
       <Button v-if="activeStep === 1" variant="outline" @click="activeStep = 0">上一步</Button>

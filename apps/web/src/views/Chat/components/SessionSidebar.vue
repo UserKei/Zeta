@@ -84,18 +84,6 @@ const formatTime = (value: string) =>
       </div>
 
       <SidebarInput v-model="keyword" placeholder="搜索会话" type="search" />
-
-      <div
-        class="rounded-lg border border-sidebar-border bg-sidebar-accent p-3 text-sidebar-accent-foreground"
-      >
-        <p class="text-xs font-medium text-sidebar-primary">Current Agent</p>
-        <h1 class="mt-1 truncate text-base font-semibold">
-          {{ agent?.name || 'Agent 聊天' }}
-        </h1>
-        <p class="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-          {{ agent?.description || agent?.openingMessage || '基于知识库回答问题。' }}
-        </p>
-      </div>
     </SidebarHeader>
 
     <SidebarContent>

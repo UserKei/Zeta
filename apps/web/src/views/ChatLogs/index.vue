@@ -443,7 +443,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col p-4 lg:p-6">
+  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-4 lg:p-6">
     <Alert
       v-if="notice"
       :variant="notice.type === 'error' ? 'destructive' : 'default'"
@@ -458,7 +458,7 @@ onMounted(load)
       </AlertAction>
     </Alert>
 
-    <Card class="gap-0 overflow-hidden py-0">
+    <Card class="min-h-0 flex-1 gap-0 overflow-hidden py-0">
       <div
         class="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 lg:flex-row lg:items-center lg:justify-between"
       >
@@ -492,7 +492,7 @@ onMounted(load)
         </div>
       </div>
 
-      <CardContent class="p-0">
+      <CardContent class="min-h-0 flex-1 overflow-auto p-0">
         <Table>
           <TableHeader>
             <TableRow class="bg-muted/60 hover:bg-muted/60">

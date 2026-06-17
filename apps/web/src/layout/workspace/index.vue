@@ -52,7 +52,7 @@ function openMenu(menu: { name: RouteRecordName }) {
 
 <template>
   <SidebarProvider
-    class="min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background md:flex-row"
+    class="h-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-background md:flex-row"
   >
     <Sidebar
       collapsible="none"
