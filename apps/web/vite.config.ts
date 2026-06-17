@@ -7,14 +7,14 @@ import tailwindcss from '@tailwindcss/vite'
 import { devPorts } from '@zeta/config'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   server: {
     port: devPorts.web,
   },
-  plugins: [vue(), vueDevTools(), tailwindcss()],
+  plugins: [vue(), command === 'serve' && vueDevTools(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-})
+}))

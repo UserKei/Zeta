@@ -26,7 +26,7 @@ describe('DocumentProcessingJobService', () => {
         sourceFileId: 'file-1',
       },
       {
-        jobId: `${OCR_DOCUMENT_JOB}:doc-1`,
+        jobId: `${OCR_DOCUMENT_JOB}__doc-1`,
         attempts: 2,
         backoff: { type: 'exponential', delay: 3000 },
         removeOnComplete: 100,
@@ -56,7 +56,7 @@ describe('DocumentProcessingJobService', () => {
         requestedAt,
       },
       {
-        jobId: `${EMBED_DOCUMENT_JOB}:doc-1:${requestedAt}`,
+        jobId: `${EMBED_DOCUMENT_JOB}__doc-1__2026-06-16T10-00-00.000Z`,
         attempts: 3,
         backoff: { type: 'exponential', delay: 3000 },
         removeOnComplete: true,
@@ -83,7 +83,7 @@ describe('DocumentProcessingJobService', () => {
         knowledgeBaseId: 'kb-1',
       },
       {
-        jobId: `${IMAGE_UNDERSTANDING_JOB}:doc-1`,
+        jobId: `${IMAGE_UNDERSTANDING_JOB}__doc-1`,
         attempts: 2,
         backoff: { type: 'exponential', delay: 3000 },
         removeOnComplete: true,

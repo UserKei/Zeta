@@ -90,7 +90,7 @@ let catalogRequestId = 0
 const CATALOG_ERROR_MESSAGE = '模型目录加载失败，请稍后重试'
 
 const fallbackModelTypes: { value: AiModelType; label: string }[] = [
-  { value: 'CHAT', label: '大语言模型' },
+  { value: 'CHAT', label: '对话模型' },
   { value: 'EMBEDDING', label: '向量模型' },
   { value: 'RERANKER', label: '重排模型' },
   { value: 'IMAGE', label: '视觉模型' },
