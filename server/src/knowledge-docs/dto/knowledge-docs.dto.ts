@@ -11,7 +11,11 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ChunkStatus } from '@libs/shared/generated/prisma/enums';
+import {
+  ChunkStatus,
+  DocumentStatus,
+} from '@libs/shared/generated/prisma/enums';
+import { PaginationQueryDto } from '../../common/pagination';
 import type {
   ChunkDraftPayload,
   ChunkPayload,
@@ -22,6 +26,25 @@ import type {
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
+
+export class DocumentListQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ example: '员工手册' })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @ApiPropertyOptional({ enum: { ALL: 'ALL', ...DocumentStatus } })
+  @IsOptional()
+  @IsEnum({ ALL: 'ALL', ...DocumentStatus })
+  status?: 'ALL' | DocumentStatus;
+}
+
+export class ChunkListQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ example: 'VPN' })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+}
 
 export class ChunkDraftDto implements ChunkDraftPayload {
   @ApiPropertyOptional({ example: 'VPN 权限申请' })

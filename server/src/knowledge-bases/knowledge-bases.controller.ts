@@ -37,7 +37,7 @@ export class KnowledgeBasesController {
 
   @Get(':id/usage')
   getUsage(@Param('id') id: string, @Query() query: KnowledgeUsageQueryDto) {
-    return this.knowledgeBasesService.getUsage(id, query.range ?? '30d');
+    return this.knowledgeBasesService.getUsage(id, query);
   }
 
   @Post()

@@ -13,12 +13,12 @@ import {
 } from '@libs/shared/generated/prisma/enums';
 import { Prisma } from '@libs/shared/generated/prisma/client';
 import type {
-  KnowledgeUsageChunkItem,
-  KnowledgeUsageDocumentItem,
+  KnowledgeUsageQuery,
   KnowledgeUsageRange,
   KnowledgeUsageSummary,
 } from '@zeta/common/knowledge-bases';
 import { DocumentProcessingJobService } from '../knowledge-docs/document-processing-job.service';
+import { normalizePagination, toPageResult } from '../common/pagination';
 import { knowledgeBaseSelect } from './knowledge-bases.select';
 
 type KnowledgeBaseInput = {
@@ -31,6 +31,36 @@ type KnowledgeBaseInput = {
   imageUnderstandingPrompt?: string | null;
   chunkSize?: number;
   chunkOverlap?: number;
+};
+
+type KnowledgeUsageSummaryRow = {
+  totalCitations: number | bigint;
+  citedDocumentCount: number | bigint;
+  citedChunkCount: number | bigint;
+  lastCitedAt: Date | null;
+};
+
+type KnowledgeUsageDocumentRow = {
+  documentId: string;
+  documentName: string;
+  sourceType: string;
+  citationCount: number | bigint;
+  chunkCount: number | bigint;
+  citedChunkCount: number | bigint;
+  lastCitedAt: Date;
+  total: number | bigint;
+};
+
+type KnowledgeUsageChunkRow = {
+  chunkId: string;
+  documentId: string;
+  documentName: string;
+  chunkPosition: number;
+  title: string | null;
+  preview: string;
+  citationCount: number | bigint;
+  lastCitedAt: Date;
+  total: number | bigint;
 };
 
 const KNOWLEDGE_USAGE_RANGE_DAYS = {
@@ -65,144 +95,138 @@ export class KnowledgeBasesService {
 
   async getUsage(
     id: string,
-    range: KnowledgeUsageRange = '30d',
+    query: KnowledgeUsageQuery | KnowledgeUsageRange = {},
   ): Promise<KnowledgeUsageSummary> {
     await this.requireKnowledgeBase(id);
+    const usageQuery = typeof query === 'string' ? { range: query } : query;
+    const range = usageQuery.range ?? '30d';
     this.validateUsageRange(range);
     const rangeStart = this.getUsageRangeStart(range);
-    const where: Prisma.ChatCitationWhereInput = {
-      document: { knowledgeBaseId: id },
-    };
-
-    if (rangeStart) {
-      where.createdAt = { gte: rangeStart };
-    }
-
-    const [citations, activeChunks] = await Promise.all([
-      this.prisma.chatCitation.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          createdAt: true,
-          document: {
-            select: {
-              id: true,
-              name: true,
-              sourceType: true,
-            },
+    const documentPagination = normalizePagination({
+      page: usageQuery.documentPage,
+      pageSize: usageQuery.documentPageSize ?? 10,
+    });
+    const chunkPagination = normalizePagination({
+      page: usageQuery.chunkPage,
+      pageSize: usageQuery.chunkPageSize ?? 10,
+    });
+    const rangeFilterSql = rangeStart
+      ? Prisma.sql`AND cc.created_at >= ${rangeStart}`
+      : Prisma.empty;
+    const [summaryRows, activeChunkCount, documentRows, chunkRows] =
+      await Promise.all([
+        this.prisma.$queryRaw<KnowledgeUsageSummaryRow[]>(
+          Prisma.sql`
+            SELECT
+              COUNT(cc.id)::int AS "totalCitations",
+              COUNT(DISTINCT cc.document_id)::int AS "citedDocumentCount",
+              COUNT(DISTINCT cc.chunk_id)::int AS "citedChunkCount",
+              MAX(cc.created_at) AS "lastCitedAt"
+            FROM chat_citations cc
+            JOIN documents d ON d.id = cc.document_id
+            WHERE d.knowledge_base_id = ${id}::uuid
+              ${rangeFilterSql}
+          `,
+        ),
+        this.prisma.chunk.count({
+          where: {
+            knowledgeBaseId: id,
+            status: ChunkStatus.ACTIVE,
           },
-          chunk: {
-            select: {
-              id: true,
-              documentId: true,
-              title: true,
-              position: true,
-              content: true,
-            },
-          },
-        },
-      }),
-      this.prisma.chunk.findMany({
-        where: {
-          knowledgeBaseId: id,
-          status: ChunkStatus.ACTIVE,
-        },
-        select: {
-          id: true,
-          documentId: true,
-        },
-      }),
-    ]);
+        }),
+        this.prisma.$queryRaw<KnowledgeUsageDocumentRow[]>(
+          Prisma.sql`
+            SELECT
+              d.id AS "documentId",
+              d.name AS "documentName",
+              d.source_type::text AS "sourceType",
+              COUNT(cc.id)::int AS "citationCount",
+              d.chunk_count::int AS "chunkCount",
+              COUNT(DISTINCT cc.chunk_id)::int AS "citedChunkCount",
+              MAX(cc.created_at) AS "lastCitedAt",
+              COUNT(*) OVER()::int AS total
+            FROM chat_citations cc
+            JOIN documents d ON d.id = cc.document_id
+            WHERE d.knowledge_base_id = ${id}::uuid
+              ${rangeFilterSql}
+            GROUP BY d.id, d.name, d.source_type, d.chunk_count
+            ORDER BY "citationCount" DESC, "lastCitedAt" DESC
+            LIMIT ${documentPagination.take}
+            OFFSET ${documentPagination.skip}
+          `,
+        ),
+        this.prisma.$queryRaw<KnowledgeUsageChunkRow[]>(
+          Prisma.sql`
+            SELECT
+              ch.id AS "chunkId",
+              ch.document_id AS "documentId",
+              d.name AS "documentName",
+              ch.position::int AS "chunkPosition",
+              ch.title,
+              LEFT(REGEXP_REPLACE(ch.content, '\\s+', ' ', 'g'), 160) AS preview,
+              COUNT(cc.id)::int AS "citationCount",
+              MAX(cc.created_at) AS "lastCitedAt",
+              COUNT(*) OVER()::int AS total
+            FROM chat_citations cc
+            JOIN chunks ch ON ch.id = cc.chunk_id
+            JOIN documents d ON d.id = cc.document_id
+            WHERE d.knowledge_base_id = ${id}::uuid
+              ${rangeFilterSql}
+            GROUP BY ch.id, ch.document_id, d.name, ch.position, ch.title, ch.content
+            ORDER BY "citationCount" DESC, "lastCitedAt" DESC
+            LIMIT ${chunkPagination.take}
+            OFFSET ${chunkPagination.skip}
+          `,
+        ),
+      ]);
+    const summary = summaryRows[0];
+    const totalCitations = Number(summary?.totalCitations ?? 0);
+    const citedDocumentCount = Number(summary?.citedDocumentCount ?? 0);
+    const citedChunkCount = Number(summary?.citedChunkCount ?? 0);
+    const topDocuments = documentRows.map((row) => {
+      const chunkCount = Number(row.chunkCount);
+      const citedChunkCount = Number(row.citedChunkCount);
 
-    const documentMap = new Map<
-      string,
-      KnowledgeUsageDocumentItem & { chunkIds: Set<string> }
-    >();
-    const chunkMap = new Map<string, KnowledgeUsageChunkItem>();
-    const documentChunkCounts = new Map<string, number>();
-    let lastCitedAt: string | null = null;
-
-    for (const chunk of activeChunks) {
-      documentChunkCounts.set(
-        chunk.documentId,
-        (documentChunkCounts.get(chunk.documentId) ?? 0) + 1,
-      );
-    }
-
-    for (const citation of citations) {
-      const citedAt = citation.createdAt.toISOString();
-      const document = citation.document;
-      const chunk = citation.chunk;
-
-      if (!lastCitedAt || citedAt > lastCitedAt) {
-        lastCitedAt = citedAt;
-      }
-
-      const documentUsage = documentMap.get(document.id) ?? {
-        documentId: document.id,
-        documentName: document.name,
-        sourceType: document.sourceType,
-        citationCount: 0,
-        chunkCount: documentChunkCounts.get(document.id) ?? 0,
-        citedChunkCount: 0,
-        chunkCoverageRate: 0,
-        lastCitedAt: citedAt,
-        chunkIds: new Set<string>(),
+      return {
+        documentId: row.documentId,
+        documentName: row.documentName,
+        sourceType: row.sourceType,
+        citationCount: Number(row.citationCount),
+        chunkCount,
+        citedChunkCount,
+        chunkCoverageRate: this.toCoverageRate(citedChunkCount, chunkCount),
+        lastCitedAt: row.lastCitedAt.toISOString(),
       };
-      documentUsage.citationCount += 1;
-      documentUsage.chunkIds.add(chunk.id);
-
-      if (citedAt > documentUsage.lastCitedAt) {
-        documentUsage.lastCitedAt = citedAt;
-      }
-
-      documentMap.set(document.id, documentUsage);
-
-      const chunkUsage = chunkMap.get(chunk.id) ?? {
-        chunkId: chunk.id,
-        documentId: chunk.documentId,
-        documentName: document.name,
-        chunkPosition: chunk.position,
-        title: chunk.title,
-        preview: this.toUsagePreview(chunk.content),
-        citationCount: 0,
-        lastCitedAt: citedAt,
-      };
-      chunkUsage.citationCount += 1;
-
-      if (citedAt > chunkUsage.lastCitedAt) {
-        chunkUsage.lastCitedAt = citedAt;
-      }
-
-      chunkMap.set(chunk.id, chunkUsage);
-    }
-
-    const topDocuments = Array.from(documentMap.values())
-      .map(({ chunkIds, ...item }) => ({
-        ...item,
-        citedChunkCount: chunkIds.size,
-        chunkCoverageRate: this.toCoverageRate(chunkIds.size, item.chunkCount),
-      }))
-      .sort((left, right) => this.compareUsageItems(left, right));
-
-    const topChunks = Array.from(chunkMap.values()).sort((left, right) =>
-      this.compareUsageItems(left, right),
-    );
+    });
+    const topChunks = chunkRows.map((row) => ({
+      chunkId: row.chunkId,
+      documentId: row.documentId,
+      documentName: row.documentName,
+      chunkPosition: row.chunkPosition,
+      title: row.title,
+      preview: this.toUsagePreview(row.preview),
+      citationCount: Number(row.citationCount),
+      lastCitedAt: row.lastCitedAt.toISOString(),
+    }));
 
     return {
       range,
-      totalCitations: citations.length,
-      totalChunkCount: activeChunks.length,
-      citedDocumentCount: documentMap.size,
-      citedChunkCount: chunkMap.size,
-      chunkCoverageRate: this.toCoverageRate(
-        chunkMap.size,
-        activeChunks.length,
+      totalCitations,
+      totalChunkCount: activeChunkCount,
+      citedDocumentCount,
+      citedChunkCount,
+      chunkCoverageRate: this.toCoverageRate(citedChunkCount, activeChunkCount),
+      lastCitedAt: summary?.lastCitedAt?.toISOString() ?? null,
+      topDocuments: toPageResult(
+        topDocuments,
+        Number(documentRows[0]?.total ?? 0),
+        documentPagination,
       ),
-      lastCitedAt,
-      topDocuments,
-      topChunks,
+      topChunks: toPageResult(
+        topChunks,
+        Number(chunkRows[0]?.total ?? 0),
+        chunkPagination,
+      ),
     };
   }
 
@@ -578,16 +602,6 @@ export class KnowledgeBasesService {
 
   private toUsagePreview(content: string) {
     return content.replace(/\s+/g, ' ').trim().slice(0, 160);
-  }
-
-  private compareUsageItems(
-    left: { citationCount: number; lastCitedAt: string },
-    right: { citationCount: number; lastCitedAt: string },
-  ) {
-    return (
-      right.citationCount - left.citationCount ||
-      right.lastCitedAt.localeCompare(left.lastCitedAt)
-    );
   }
 
   private toCoverageRate(citedCount: number, totalCount: number) {

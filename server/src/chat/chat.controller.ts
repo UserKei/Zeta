@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -14,7 +15,13 @@ import type { Request, Response } from 'express';
 import { AuthGuard, AuthRequestUser } from '@libs/shared';
 import type { ChatStreamEvent } from '@zeta/common/chat';
 import { ChatService } from './chat.service';
-import { ChatDto, ChatImproveDto } from './dto/chat.dto';
+import {
+  ChatDto,
+  ChatImproveDto,
+  ChatMessageListQueryDto,
+  ChatSessionListQueryDto,
+  ChatSessionSummaryQueryDto,
+} from './dto/chat.dto';
 
 type AuthenticatedRequest = Request & {
   user: AuthRequestUser;
@@ -110,21 +117,33 @@ export class ChatController {
   }
 
   @Get('chat-sessions')
-  listSessions(@Req() request: AuthenticatedRequest) {
-    return this.chatService.listSessions(request.user.id);
+  listSessions(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ChatSessionListQueryDto,
+  ) {
+    return this.chatService.listSessions(request.user.id, query);
   }
 
   @Get('agents/:agentId/chat-sessions/summary')
   listAgentSessionSummaries(
     @Param('agentId') agentId: string,
     @Req() request: AuthenticatedRequest,
+    @Query() query: ChatSessionSummaryQueryDto,
   ) {
-    return this.chatService.listAgentSessionSummaries(agentId, request.user.id);
+    return this.chatService.listAgentSessionSummaries(
+      agentId,
+      request.user.id,
+      query,
+    );
   }
 
   @Get('chat-sessions/:id/messages')
-  listMessages(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
-    return this.chatService.listMessages(id, request.user.id);
+  listMessages(
+    @Param('id') id: string,
+    @Req() request: AuthenticatedRequest,
+    @Query() query: ChatMessageListQueryDto,
+  ) {
+    return this.chatService.listMessages(id, request.user.id, query);
   }
 
   private writeSseEvent(response: Response, event: ChatStreamEvent) {

@@ -25,6 +25,10 @@
       "types": "./knowledge-docs/index.ts",
       "default": "./knowledge-docs/index.ts"
     },
+    "./pagination": {
+      "types": "./pagination/index.ts",
+      "default": "./pagination/index.ts"
+    },
     "./models": {
       "types": "./models/index.ts",
       "default": "./models/index.ts"

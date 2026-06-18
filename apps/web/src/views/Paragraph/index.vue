@@ -22,6 +22,7 @@ import {
 } from '@lucide/vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import MarkdownPreview from '@/components/markdown/MarkdownPreview.vue'
+import PaginationBar from '@/components/common/PaginationBar.vue'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -94,6 +95,9 @@ const documentDetail = ref<KnowledgeDocument | null>(null)
 const chunks = ref<KnowledgeChunk[]>([])
 const loading = ref(false)
 const ordering = ref(false)
+const chunkPage = ref(1)
+const chunkPageSize = 20
+const chunkTotal = ref(0)
 const searchText = ref('')
 const searchType = ref<'title' | 'content'>('title')
 const sidebarCollapsed = ref(false)
@@ -116,6 +120,9 @@ const chunkForm = reactive<ChunkForm>({
 })
 
 const visibleChunkCount = computed(() => chunks.value.filter((chunk) => matchesChunk(chunk)).length)
+const canReorderAllChunks = computed(
+  () => !searchText.value.trim() && chunks.value.length === chunkTotal.value,
+)
 
 const dialogTitle = computed(() => {
   if (dialogMode.value === 'add') {
@@ -129,16 +136,23 @@ const dialogTitle = computed(() => {
   return '分段详情'
 })
 
+const loadChunksPage = async () => {
+  const chunkList = await listDocumentChunks(documentId.value, {
+    page: chunkPage.value,
+    pageSize: chunkPageSize,
+    keyword: searchText.value.trim() || undefined,
+  })
+  chunks.value = chunkList.items
+  chunkTotal.value = chunkList.total
+  chunkPage.value = chunkList.page
+}
+
 const load = async () => {
   loading.value = true
 
   try {
-    const [documentResult, chunkList] = await Promise.all([
-      getDocument(documentId.value),
-      listDocumentChunks(documentId.value),
-    ])
+    const [documentResult] = await Promise.all([getDocument(documentId.value), loadChunksPage()])
     documentDetail.value = documentResult
-    chunks.value = chunkList
   } catch (cause) {
     showErrorMessage(cause, '加载分段失败')
   } finally {
@@ -226,7 +240,7 @@ const saveChunk = async () => {
         status: chunkForm.status,
         afterChunkId: afterChunkId.value,
       })
-      chunks.value = await listDocumentChunks(documentId.value)
+      await loadChunksPage()
     }
 
     await refreshDocument()
@@ -264,7 +278,7 @@ const confirmRemoveChunk = async () => {
 
   try {
     await deleteDocumentChunk(deletingChunk.value.id)
-    chunks.value = await listDocumentChunks(documentId.value)
+    await loadChunksPage()
     await refreshDocument()
     deleteOpen.value = false
     deletingChunk.value = null
@@ -276,7 +290,7 @@ const confirmRemoveChunk = async () => {
 }
 
 const saveOrder = async () => {
-  if (searchText.value.trim()) {
+  if (!canReorderAllChunks.value) {
     return
   }
 
@@ -288,7 +302,7 @@ const saveOrder = async () => {
     })
   } catch (cause) {
     showErrorMessage(cause, '保存分段顺序失败')
-    chunks.value = await listDocumentChunks(documentId.value)
+    await loadChunksPage()
   } finally {
     ordering.value = false
   }
@@ -340,6 +354,24 @@ watch(
   },
 )
 
+watch(searchText, () => {
+  chunkPage.value = 1
+  void load()
+})
+
+const changeChunkPage = async (page: number) => {
+  chunkPage.value = page
+  loading.value = true
+
+  try {
+    await loadChunksPage()
+  } catch (cause) {
+    showErrorMessage(cause, '加载分段失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(async () => {
   await load()
   await focusChunkFromQuery()
@@ -375,9 +407,7 @@ onBeforeUnmount(() => {
             {{ documentDetail?.name || '分段' }}
           </h1>
           <div class="mt-2 flex flex-wrap gap-2">
-            <Badge variant="outline"
-              >{{ documentDetail?.chunkCount ?? chunks.length }} 个分段</Badge
-            >
+            <Badge variant="outline">{{ documentDetail?.chunkCount ?? chunkTotal }} 个分段</Badge>
             <Badge variant="secondary"> {{ documentDetail?.charCount ?? 0 }} 字符 </Badge>
             <Badge v-if="documentDetail" variant="secondary">
               更新于 {{ formatTime(documentDetail.updatedAt) }}
@@ -396,7 +426,7 @@ onBeforeUnmount(() => {
         class="flex flex-col justify-between gap-3 border-b border-border bg-muted/30 p-4 lg:flex-row lg:items-center"
       >
         <span class="text-sm text-muted-foreground">
-          {{ ordering ? '正在保存排序...' : `${visibleChunkCount} / ${chunks.length} 个分段` }}
+          {{ ordering ? '正在保存排序...' : `当前页 ${visibleChunkCount} / ${chunkTotal} 个分段` }}
         </span>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
           <Select v-model="searchType">
@@ -494,7 +524,8 @@ onBeforeUnmount(() => {
             v-else
             v-model="chunks"
             :animation="150"
-            :disabled="Boolean(searchText.trim())"
+            :disabled="!canReorderAllChunks"
+            :class="canReorderAllChunks ? '' : '[&_.chunk-drag-handle]:cursor-default'"
             handle=".chunk-drag-handle"
             @end="saveOrder"
           >
@@ -565,6 +596,13 @@ onBeforeUnmount(() => {
               />
             </article>
           </VueDraggable>
+          <PaginationBar
+            :page="chunkPage"
+            :page-size="chunkPageSize"
+            :total="chunkTotal"
+            :disabled="loading"
+            @update:page="changeChunkPage"
+          />
         </main>
       </div>
     </Card>

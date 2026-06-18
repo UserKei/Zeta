@@ -617,7 +617,7 @@ onMounted(loadKnowledgeBase)
               </div>
             </header>
 
-            <div class="min-h-0 flex-1 overflow-auto">
+            <div class="min-h-0 flex-1 overflow-auto overscroll-contain pb-24">
               <div class="grid gap-3 p-4">
                 <section class="rounded-lg border border-border bg-card p-3">
                   <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
@@ -716,7 +716,7 @@ onMounted(loadKnowledgeBase)
 
     <footer
       v-if="activeStep !== 2"
-      class="flex shrink-0 justify-end gap-2 border-t border-border bg-card px-6 py-4"
+      class="sticky bottom-0 z-10 flex shrink-0 justify-end gap-2 border-t border-border bg-card px-6 py-4"
     >
       <Button variant="outline" @click="goBack">取消</Button>
       <Button v-if="activeStep === 1" variant="outline" @click="activeStep = 0">上一步</Button>

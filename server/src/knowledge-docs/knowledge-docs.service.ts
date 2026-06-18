@@ -17,9 +17,12 @@ import type {
   ChunkPayload,
   ChunkUpdatePayload,
   DocumentUpdatePayload,
+  KnowledgeChunkListQuery,
+  KnowledgeDocumentListQuery,
   ManualDocumentPayload,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs';
+import { normalizePagination, toPageResult } from '../common/pagination';
 import { MAX_CHUNK_CONTENT_LENGTH } from './knowledge-docs.constants';
 import {
   assertDocumentChunks,
@@ -60,16 +63,40 @@ export class KnowledgeDocsService {
     private readonly documentProcessingJobService?: DocumentProcessingJobService,
   ) {}
 
-  async listByKnowledgeBase(knowledgeBaseId: string) {
+  async listByKnowledgeBase(
+    knowledgeBaseId: string,
+    query: KnowledgeDocumentListQuery = {},
+  ) {
     await this.requireKnowledgeBase(knowledgeBaseId);
+    const pagination = normalizePagination(query);
+    const keyword = query.keyword?.trim();
+    const where: Prisma.DocumentWhereInput = {
+      knowledgeBaseId,
+    };
 
-    const documents = await this.prisma.document.findMany({
-      where: { knowledgeBaseId },
-      orderBy: { updatedAt: 'desc' },
-      select: documentSelect,
-    });
+    if (query.status && query.status !== 'ALL') {
+      where.status = query.status;
+    }
 
-    return documents.map(toDocumentResponse);
+    if (keyword) {
+      where.OR = [
+        { name: { contains: keyword } },
+        { errorMessage: { contains: keyword } },
+      ];
+    }
+
+    const [total, documents] = await Promise.all([
+      this.prisma.document.count({ where }),
+      this.prisma.document.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: pagination.skip,
+        take: pagination.take,
+        select: documentSelect,
+      }),
+    ]);
+
+    return toPageResult(documents.map(toDocumentResponse), total, pagination);
   }
 
   async getDocument(id: string) {
@@ -211,14 +238,31 @@ export class KnowledgeDocsService {
     return this.aiExtractedDocumentService.createChunk(knowledgeBaseId, input);
   }
 
-  async listChunks(documentId: string) {
+  async listChunks(documentId: string, query: KnowledgeChunkListQuery = {}) {
     await this.requireDocument(documentId);
+    const pagination = normalizePagination(query);
+    const keyword = query.keyword?.trim();
+    const where: Prisma.ChunkWhereInput = { documentId };
 
-    return this.prisma.chunk.findMany({
-      where: { documentId },
-      orderBy: { position: 'asc' },
-      select: chunkSelect,
-    });
+    if (keyword) {
+      where.OR = [
+        { title: { contains: keyword } },
+        { content: { contains: keyword } },
+      ];
+    }
+
+    const [total, chunks] = await Promise.all([
+      this.prisma.chunk.count({ where }),
+      this.prisma.chunk.findMany({
+        where,
+        orderBy: { position: 'asc' },
+        skip: pagination.skip,
+        take: pagination.take,
+        select: chunkSelect,
+      }),
+    ]);
+
+    return toPageResult(chunks, total, pagination);
   }
 
   async createChunk(documentId: string, input: ChunkPayload) {
@@ -418,7 +462,7 @@ export class KnowledgeDocsService {
       }
     });
 
-    return this.listChunks(documentId);
+    return this.findChunksByDocument(documentId);
   }
 
   async remove(documentId: string) {
@@ -495,6 +539,14 @@ export class KnowledgeDocsService {
   private async countActiveChunks(documentId: string) {
     return this.prisma.chunk.count({
       where: { documentId, status: ChunkStatus.ACTIVE },
+    });
+  }
+
+  private async findChunksByDocument(documentId: string) {
+    return this.prisma.chunk.findMany({
+      where: { documentId },
+      orderBy: { position: 'asc' },
+      select: chunkSelect,
     });
   }
 

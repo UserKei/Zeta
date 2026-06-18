@@ -7,12 +7,16 @@ import type {
   ChatImproveRecordDetail,
   ChatImproveResponse,
   ChatMessage,
+  ChatMessageListQuery,
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatSessionListQuery,
   ChatSessionSummary,
+  ChatSessionSummaryQuery,
   ChatStreamEvent,
 } from '@zeta/common/chat'
+import type { PageResult } from '@zeta/common/pagination'
 
 export type {
   ChatCitation,
@@ -22,11 +26,14 @@ export type {
   ChatImproveRecordDetail,
   ChatImproveResponse,
   ChatMessage,
+  ChatMessageListQuery,
   ChatMessageRole,
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatSessionListQuery,
   ChatSessionSummary,
+  ChatSessionSummaryQuery,
   ChatStreamEvent,
 } from '@zeta/common/chat'
 
@@ -80,19 +87,28 @@ export const sendAgentMessageStream = async (
   })
 }
 
-export const listChatSessions = () =>
-  responseData(serverApi.get('/chat-sessions') as Promise<Response<ChatSession[]>>)
-
-export const listAgentChatSessionSummaries = (agentId: string) =>
+export const listChatSessions = (query: ChatSessionListQuery = {}) =>
   responseData(
-    serverApi.get(`/agents/${agentId}/chat-sessions/summary`) as Promise<
-      Response<ChatSessionSummary[]>
+    serverApi.get('/chat-sessions', { params: query }) as Promise<
+      Response<PageResult<ChatSession>>
     >,
   )
 
-export const listChatMessages = (sessionId: string) =>
+export const listAgentChatSessionSummaries = (
+  agentId: string,
+  query: ChatSessionSummaryQuery = {},
+) =>
   responseData(
-    serverApi.get(`/chat-sessions/${sessionId}/messages`) as Promise<Response<ChatMessage[]>>,
+    serverApi.get(`/agents/${agentId}/chat-sessions/summary`, {
+      params: query,
+    }) as Promise<Response<PageResult<ChatSessionSummary>>>,
+  )
+
+export const listChatMessages = (sessionId: string, query: ChatMessageListQuery = {}) =>
+  responseData(
+    serverApi.get(`/chat-sessions/${sessionId}/messages`, { params: query }) as Promise<
+      Response<PageResult<ChatMessage>>
+    >,
   )
 
 export const improveChatMessage = (messageId: string, payload: ChatImprovePayload) =>

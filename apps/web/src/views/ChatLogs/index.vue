@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { EyeIcon, PencilIcon, TrashIcon } from '@lucide/vue'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -44,6 +44,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import PaginationBar from '@/components/common/PaginationBar.vue'
 import {
   deleteChatMessageImprove,
   improveChatMessage,
@@ -77,6 +78,9 @@ const router = useRouter()
 const agentId = computed(() => route.params.agentId as string)
 const agent = ref<Agent | null>(null)
 const sessions = ref<ChatSessionSummary[]>([])
+const sessionPage = ref(1)
+const sessionPageSize = 20
+const sessionTotal = ref(0)
 const messageCache = ref<Record<string, ChatMessage[]>>({})
 const messages = ref<ChatMessage[]>([])
 const documents = ref<KnowledgeDocument[]>([])
@@ -110,22 +114,7 @@ const form = reactive({
 })
 
 const currentSessions = computed(() => sessions.value)
-
 const sessionRows = computed<SessionRow[]>(() => currentSessions.value.map((session) => session))
-
-const filteredSessionRows = computed(() => {
-  const keyword = searchText.value.trim().toLowerCase()
-
-  return sessionRows.value.filter((session) => {
-    const matchKeyword = !keyword || (session.title || '新会话').toLowerCase().includes(keyword)
-    const matchMark =
-      markFilter.value === 'ALL' ||
-      (markFilter.value === 'MARKED' && session.improveCount > 0) ||
-      (markFilter.value === 'UNMARKED' && session.improveCount === 0)
-
-    return matchKeyword && matchMark
-  })
-})
 
 const targetKnowledgeBases = computed(
   () => agent.value?.knowledgeBases.filter((item) => item.status === 'ACTIVE') ?? [],
@@ -159,16 +148,24 @@ const clearNotice = () => {
   notice.value = null
 }
 
+const loadSessionPage = async () => {
+  const pageResult = await listAgentChatSessionSummaries(agentId.value, {
+    page: sessionPage.value,
+    pageSize: sessionPageSize,
+    keyword: searchText.value.trim() || undefined,
+    markFilter: markFilter.value,
+  })
+  sessions.value = pageResult.items
+  sessionTotal.value = pageResult.total
+  sessionPage.value = pageResult.page
+}
+
 const load = async () => {
   loading.value = true
 
   try {
-    const [agentDetail, sessionSummaries] = await Promise.all([
-      getAgent(agentId.value),
-      listAgentChatSessionSummaries(agentId.value),
-    ])
+    const [agentDetail] = await Promise.all([getAgent(agentId.value), loadSessionPage()])
     agent.value = agentDetail
-    sessions.value = sessionSummaries
   } catch (cause) {
     showFailure(cause, '加载对话日志失败')
   } finally {
@@ -193,8 +190,8 @@ const loadMessages = async (sessionId: string, force = false) => {
   messageLoading.value = true
 
   try {
-    const sessionMessages = await listChatMessages(sessionId)
-    setSessionMessages(sessionId, sessionMessages)
+    const sessionMessages = await listChatMessages(sessionId, { pageSize: 100 })
+    setSessionMessages(sessionId, sessionMessages.items)
   } catch (cause) {
     showFailure(cause, '加载会话消息失败')
   } finally {
@@ -268,7 +265,8 @@ const loadDocuments = async (knowledgeBaseId: string) => {
   documentLoading.value = true
 
   try {
-    documents.value = await listDocuments(knowledgeBaseId)
+    const documentPage = await listDocuments(knowledgeBaseId, { pageSize: 100 })
+    documents.value = documentPage.items
   } catch (cause) {
     showFailure(cause, '加载文档列表失败')
   } finally {
@@ -440,6 +438,24 @@ const formatTime = (value: string) =>
   }).format(new Date(value))
 
 onMounted(load)
+
+const changeSessionPage = async (page: number) => {
+  sessionPage.value = page
+  loading.value = true
+
+  try {
+    await loadSessionPage()
+  } catch (cause) {
+    showFailure(cause, '加载对话日志失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+watch([searchText, markFilter], () => {
+  sessionPage.value = 1
+  void load()
+})
 </script>
 
 <template>
@@ -478,7 +494,7 @@ onMounted(load)
           </Select>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>会话 {{ sessionRows.length }}</span>
+          <span>会话 {{ sessionTotal }}</span>
           <span>标注 {{ totalImproveCount }}</span>
           <Button
             :disabled="!agent?.model"
@@ -509,14 +525,14 @@ onMounted(load)
                 正在加载对话日志...
               </TableCell>
             </TableRow>
-            <TableRow v-else-if="filteredSessionRows.length === 0">
+            <TableRow v-else-if="sessionRows.length === 0">
               <TableCell colspan="5" class="h-24 text-center text-muted-foreground">
                 暂无对话日志
               </TableCell>
             </TableRow>
             <template v-else>
               <TableRow
-                v-for="session in filteredSessionRows"
+                v-for="session in sessionRows"
                 :key="session.id"
                 class="cursor-pointer"
                 @click="openSession(session)"
@@ -550,6 +566,13 @@ onMounted(load)
           </TableBody>
         </Table>
       </CardContent>
+      <PaginationBar
+        :page="sessionPage"
+        :page-size="sessionPageSize"
+        :total="sessionTotal"
+        :disabled="loading"
+        @update:page="changeSessionPage"
+      />
     </Card>
 
     <ChatLogDetailSheet

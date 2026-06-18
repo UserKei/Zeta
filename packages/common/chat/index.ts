@@ -1,4 +1,5 @@
 import type { RetrievalHit } from "../knowledge-docs";
+import type { PageQuery } from "../pagination";
 
 export const ChatMessageRole = {
   SYSTEM: "SYSTEM",
@@ -28,6 +29,15 @@ export type ChatSessionSummary = ChatSession & {
   messageCount: number;
   improveCount: number;
 };
+
+export type ChatSessionListQuery = PageQuery;
+
+export type ChatSessionSummaryQuery = PageQuery & {
+  keyword?: string;
+  markFilter?: "ALL" | "MARKED" | "UNMARKED";
+};
+
+export type ChatMessageListQuery = PageQuery;
 
 export type ChatCitation = {
   id: string;

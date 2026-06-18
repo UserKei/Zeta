@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -9,6 +10,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { ChatImprovePayload, ChatPayload } from '@zeta/common/chat';
+import { PaginationQueryDto } from '../../common/pagination';
 
 export class ChatDto implements ChatPayload {
   @ApiProperty({ example: 'VPN 权限多久生效？' })
@@ -59,4 +61,20 @@ export class ChatImproveDto implements ChatImprovePayload {
   @IsString()
   @MinLength(1)
   content!: string;
+}
+
+export class ChatSessionListQueryDto extends PaginationQueryDto {}
+
+export class ChatMessageListQueryDto extends PaginationQueryDto {}
+
+export class ChatSessionSummaryQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ example: 'VPN' })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @ApiPropertyOptional({ enum: ['ALL', 'MARKED', 'UNMARKED'] })
+  @IsOptional()
+  @IsIn(['ALL', 'MARKED', 'UNMARKED'])
+  markFilter?: 'ALL' | 'MARKED' | 'UNMARKED';
 }

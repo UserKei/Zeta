@@ -8,13 +8,16 @@ import type {
   FileImportResult,
   FilePreviewResult,
   KnowledgeChunk,
+  KnowledgeChunkListQuery,
   KnowledgeDocument,
+  KnowledgeDocumentListQuery,
   MarkdownImportPayload,
   MarkdownPreviewResult,
   ManualDocumentPayload,
   RetrievalResult,
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs'
+import type { PageResult } from '@zeta/common/pagination'
 
 export type {
   ChunkDraftPayload,
@@ -31,7 +34,9 @@ export type {
   FilePreviewResult,
   FileSourceFormat,
   KnowledgeChunk,
+  KnowledgeChunkListQuery,
   KnowledgeDocument,
+  KnowledgeDocumentListQuery,
   MarkdownImportPayload,
   MarkdownPreviewResult,
   ManualDocumentPayload,
@@ -40,22 +45,18 @@ export type {
   RetrievalTestPayload,
 } from '@zeta/common/knowledge-docs'
 
-export const listDocuments = (knowledgeBaseId: string) =>
+export const listDocuments = (knowledgeBaseId: string, query: KnowledgeDocumentListQuery = {}) =>
   responseData(
-    serverApi.get(`/knowledge-bases/${knowledgeBaseId}/documents`) as Promise<
-      Response<KnowledgeDocument[]>
-    >,
+    serverApi.get(`/knowledge-bases/${knowledgeBaseId}/documents`, {
+      params: query,
+    }) as Promise<Response<PageResult<KnowledgeDocument>>>,
   )
 
-export const createManualDocument = (
-  knowledgeBaseId: string,
-  payload: ManualDocumentPayload,
-) =>
+export const createManualDocument = (knowledgeBaseId: string, payload: ManualDocumentPayload) =>
   responseData(
-    serverApi.post(
-      `/knowledge-bases/${knowledgeBaseId}/documents/manual`,
-      payload,
-    ) as Promise<Response<KnowledgeDocument>>,
+    serverApi.post(`/knowledge-bases/${knowledgeBaseId}/documents/manual`, payload) as Promise<
+      Response<KnowledgeDocument>
+    >,
   )
 
 export const previewMarkdownDocument = (knowledgeBaseId: string, file: File) => {
@@ -70,10 +71,7 @@ export const previewMarkdownDocument = (knowledgeBaseId: string, file: File) => 
   )
 }
 
-export const previewDocumentFiles = (
-  knowledgeBaseId: string,
-  files: File[],
-) => {
+export const previewDocumentFiles = (knowledgeBaseId: string, files: File[]) => {
   const formData = new FormData()
 
   for (const file of files) {
@@ -103,10 +101,9 @@ export const createMarkdownDocument = (
   }
 
   return responseData(
-    serverApi.post(
-      `/knowledge-bases/${knowledgeBaseId}/documents/markdown`,
-      formData,
-    ) as Promise<Response<KnowledgeDocument>>,
+    serverApi.post(`/knowledge-bases/${knowledgeBaseId}/documents/markdown`, formData) as Promise<
+      Response<KnowledgeDocument>
+    >,
   )
 }
 
@@ -124,84 +121,54 @@ export const createFileDocuments = (
   formData.append('documents', JSON.stringify(documents))
 
   return responseData(
-    serverApi.post(
-      `/knowledge-bases/${knowledgeBaseId}/documents/files`,
-      formData,
-    ) as Promise<Response<FileImportResult>>,
+    serverApi.post(`/knowledge-bases/${knowledgeBaseId}/documents/files`, formData) as Promise<
+      Response<FileImportResult>
+    >,
   )
 }
 
-export const listDocumentChunks = (documentId: string) =>
+export const listDocumentChunks = (documentId: string, query: KnowledgeChunkListQuery = {}) =>
   responseData(
-    serverApi.get(`/documents/${documentId}/chunks`) as Promise<
-      Response<KnowledgeChunk[]>
-    >,
+    serverApi.get(`/documents/${documentId}/chunks`, {
+      params: query,
+    }) as Promise<Response<PageResult<KnowledgeChunk>>>,
   )
 
 export const getDocument = (documentId: string) =>
-  responseData(
-    serverApi.get(`/documents/${documentId}`) as Promise<
-      Response<KnowledgeDocument>
-    >,
-  )
+  responseData(serverApi.get(`/documents/${documentId}`) as Promise<Response<KnowledgeDocument>>)
 
-export const updateDocument = (
-  documentId: string,
-  payload: DocumentUpdatePayload,
-) =>
+export const updateDocument = (documentId: string, payload: DocumentUpdatePayload) =>
   responseData(
-    serverApi.patch(`/documents/${documentId}`, payload) as Promise<
-      Response<KnowledgeDocument>
-    >,
+    serverApi.patch(`/documents/${documentId}`, payload) as Promise<Response<KnowledgeDocument>>,
   )
 
 export const createDocumentChunk = (documentId: string, payload: ChunkPayload) =>
   responseData(
-    serverApi.post(`/documents/${documentId}/chunks`, payload) as Promise<
-      Response<KnowledgeChunk>
-    >,
+    serverApi.post(`/documents/${documentId}/chunks`, payload) as Promise<Response<KnowledgeChunk>>,
   )
 
-export const updateDocumentChunk = (
-  chunkId: string,
-  payload: ChunkUpdatePayload,
-) =>
-  responseData(
-    serverApi.patch(`/chunks/${chunkId}`, payload) as Promise<
-      Response<KnowledgeChunk>
-    >,
-  )
+export const updateDocumentChunk = (chunkId: string, payload: ChunkUpdatePayload) =>
+  responseData(serverApi.patch(`/chunks/${chunkId}`, payload) as Promise<Response<KnowledgeChunk>>)
 
 export const deleteDocumentChunk = (chunkId: string) =>
-  responseData(
-    serverApi.delete(`/chunks/${chunkId}`) as Promise<Response<{ id: string }>>,
-  )
+  responseData(serverApi.delete(`/chunks/${chunkId}`) as Promise<Response<{ id: string }>>)
 
-export const reorderDocumentChunks = (
-  documentId: string,
-  payload: ChunkReorderPayload,
-) =>
+export const reorderDocumentChunks = (documentId: string, payload: ChunkReorderPayload) =>
   responseData(
-    serverApi.patch(
-      `/documents/${documentId}/chunks/reorder`,
-      payload,
-    ) as Promise<Response<KnowledgeChunk[]>>,
+    serverApi.patch(`/documents/${documentId}/chunks/reorder`, payload) as Promise<
+      Response<KnowledgeChunk[]>
+    >,
   )
 
 export const deleteDocument = (documentId: string) =>
-  responseData(
-    serverApi.delete(`/documents/${documentId}`) as Promise<
-      Response<{ id: string }>
-    >,
-  )
+  responseData(serverApi.delete(`/documents/${documentId}`) as Promise<Response<{ id: string }>>)
 
 export const testKnowledgeBaseRetrieval = (
   knowledgeBaseId: string,
   payload: RetrievalTestPayload,
 ) =>
   responseData(
-    serverApi.post(
-      `/knowledge-bases/${knowledgeBaseId}/retrieval-test`,
-      payload,
-    ) as Promise<Response<RetrievalResult>>,
+    serverApi.post(`/knowledge-bases/${knowledgeBaseId}/retrieval-test`, payload) as Promise<
+      Response<RetrievalResult>
+    >,
   )

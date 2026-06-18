@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CheckIcon, PlusIcon, XIcon } from '@lucide/vue'
 import {
@@ -41,6 +41,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import PaginationBar from '@/components/common/PaginationBar.vue'
 import { getKnowledgeBase, type KnowledgeBase } from '@/apis/knowledge-bases'
 import {
   createManualDocument,
@@ -63,6 +64,9 @@ const knowledgeBaseId = computed(() => String(route.params.knowledgeBaseId ?? ''
 const knowledgeBase = ref<KnowledgeBase | null>(null)
 const documents = ref<KnowledgeDocument[]>([])
 const loading = ref(false)
+const documentPage = ref(1)
+const documentPageSize = 20
+const documentTotal = ref(0)
 const documentKeyword = ref('')
 const documentStatusFilter = ref<DocumentStatus | ''>('')
 const editOpen = ref(false)
@@ -100,26 +104,6 @@ const documentStatusFilterValue = computed({
   },
 })
 
-const filteredDocuments = computed(() => {
-  const query = documentKeyword.value.trim().toLowerCase()
-
-  return documents.value.filter((document) => {
-    const matchedStatus =
-      documentStatusFilter.value === '' || document.status === documentStatusFilter.value
-    const searchableText = [
-      document.name,
-      document.description ?? '',
-      sourceText(document),
-      statusText(document.status),
-      document.errorMessage ?? '',
-    ]
-      .join(' ')
-      .toLowerCase()
-
-    return matchedStatus && (!query || searchableText.includes(query))
-  })
-})
-
 const indexedCount = computed(
   () => documents.value.filter((document) => document.status === 'INDEXED').length,
 )
@@ -128,16 +112,27 @@ const totalChunks = computed(() =>
   documents.value.reduce((total, document) => total + document.chunkCount, 0),
 )
 
+const loadDocumentsPage = async () => {
+  const pageResult = await listDocuments(knowledgeBaseId.value, {
+    page: documentPage.value,
+    pageSize: documentPageSize,
+    keyword: documentKeyword.value.trim() || undefined,
+    status: documentStatusFilter.value || 'ALL',
+  })
+  documents.value = pageResult.items
+  documentTotal.value = pageResult.total
+  documentPage.value = pageResult.page
+}
+
 const load = async () => {
   loading.value = true
 
   try {
-    const [knowledgeBaseDetail, documentList] = await Promise.all([
+    const [knowledgeBaseDetail] = await Promise.all([
       getKnowledgeBase(knowledgeBaseId.value),
-      listDocuments(knowledgeBaseId.value),
+      loadDocumentsPage(),
     ])
     knowledgeBase.value = knowledgeBaseDetail
-    documents.value = documentList
   } catch (cause) {
     showErrorMessage(cause, '加载文档失败')
   } finally {
@@ -174,11 +169,12 @@ const createBlankDocument = async () => {
   quickCreateSaving.value = true
 
   try {
-    const saved = await createManualDocument(knowledgeBaseId.value, {
+    await createManualDocument(knowledgeBaseId.value, {
       name,
       chunks: [],
     })
-    documents.value.unshift(saved)
+    documentPage.value = 1
+    await loadDocumentsPage()
     cancelQuickCreate()
   } catch (cause) {
     showErrorMessage(cause, '创建文档失败')
@@ -236,7 +232,7 @@ const confirmRemoveDocument = async () => {
 
   try {
     await deleteDocument(deletingDocument.value.id)
-    documents.value = documents.value.filter((item) => item.id !== deletingDocument.value?.id)
+    await loadDocumentsPage()
     deleteOpen.value = false
     deletingDocument.value = null
   } catch (cause) {
@@ -304,6 +300,24 @@ const sourceText = (document: KnowledgeDocument) =>
     WEB_IMPORT: '网页导入',
   })[document.sourceType]
 
+const changeDocumentPage = async (page: number) => {
+  documentPage.value = page
+  loading.value = true
+
+  try {
+    await loadDocumentsPage()
+  } catch (cause) {
+    showErrorMessage(cause, '加载文档失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+watch([documentKeyword, documentStatusFilter], () => {
+  documentPage.value = 1
+  void load()
+})
+
 onMounted(load)
 </script>
 
@@ -313,9 +327,9 @@ onMounted(load)
       <Badge variant="outline" class="max-w-full truncate">
         {{ knowledgeBase?.name || '知识库' }}
       </Badge>
-      <Badge variant="secondary">文档 {{ documents.length }}</Badge>
-      <Badge variant="secondary">已索引 {{ indexedCount }} / {{ documents.length }}</Badge>
-      <Badge variant="secondary">分段 {{ totalChunks }}</Badge>
+      <Badge variant="secondary">文档 {{ documentTotal }}</Badge>
+      <Badge variant="secondary">当前页已索引 {{ indexedCount }} / {{ documents.length }}</Badge>
+      <Badge variant="secondary">当前页分段 {{ totalChunks }}</Badge>
     </header>
 
     <section
@@ -336,7 +350,7 @@ onMounted(load)
             检索测试
           </Button>
           <span class="text-sm text-muted-foreground">
-            当前 {{ filteredDocuments.length }} / {{ documents.length }}
+            当前页 {{ documents.length }} / {{ documentTotal }}
           </span>
         </div>
         <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
@@ -379,14 +393,14 @@ onMounted(load)
               正在加载文档...
             </TableCell>
           </TableRow>
-          <TableRow v-else-if="filteredDocuments.length === 0">
+          <TableRow v-else-if="documents.length === 0">
             <TableCell colspan="7" class="h-24 text-center text-muted-foreground">
               还没有文档
             </TableCell>
           </TableRow>
           <template v-else>
             <TableRow
-              v-for="document in filteredDocuments"
+              v-for="document in documents"
               :key="document.id"
               class="cursor-pointer"
               @click="openParagraph(document)"
@@ -437,6 +451,13 @@ onMounted(load)
           </template>
         </TableBody>
       </Table>
+      <PaginationBar
+        :page="documentPage"
+        :page-size="documentPageSize"
+        :total="documentTotal"
+        :disabled="loading"
+        @update:page="changeDocumentPage"
+      />
 
       <div class="border-t border-border bg-muted/20 p-3">
         <form

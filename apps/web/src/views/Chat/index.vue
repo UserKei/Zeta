@@ -56,10 +56,10 @@ const load = async () => {
   try {
     const [agentDetail, sessionList] = await Promise.all([
       getAgent(agentId.value),
-      listChatSessions(),
+      listChatSessions({ pageSize: 100 }),
     ])
     agent.value = agentDetail
-    sessions.value = sessionList
+    sessions.value = sessionList.items
   } catch (cause) {
     showErrorMessage(cause, '加载聊天页失败')
   } finally {
@@ -71,7 +71,8 @@ const loadSession = async (session: ChatSession) => {
   sessionId.value = session.id
 
   try {
-    messages.value = await listChatMessages(session.id)
+    const messagePage = await listChatMessages(session.id, { pageSize: 100 })
+    messages.value = messagePage.items
   } catch (cause) {
     showErrorMessage(cause, '加载会话失败')
   }

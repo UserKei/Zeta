@@ -1,3 +1,5 @@
+import type { PageQuery } from "../pagination";
+
 export const DocumentSourceType = {
   FILE_UPLOAD: "FILE_UPLOAD",
   MANUAL: "MANUAL",
@@ -58,6 +60,15 @@ export type KnowledgeChunk = {
   status: ChunkStatus;
   createdAt: string;
   updatedAt: string;
+};
+
+export type KnowledgeDocumentListQuery = PageQuery & {
+  keyword?: string;
+  status?: DocumentStatus | "ALL";
+};
+
+export type KnowledgeChunkListQuery = PageQuery & {
+  keyword?: string;
 };
 
 export type ChunkDraftPayload = {

@@ -21,16 +21,21 @@ import type {
   ChatImproveRecordDetail,
   ChatImproveResponse,
   ChatMessage,
+  ChatMessageListQuery,
   ChatPayload,
   ChatResponse,
   ChatSession,
+  ChatSessionListQuery,
   ChatSessionSummary,
+  ChatSessionSummaryQuery,
   ChatStreamEvent,
 } from '@zeta/common/chat';
+import type { PageResult } from '@zeta/common/pagination';
 import type { RetrievalHit } from '@zeta/common/knowledge-docs';
 import { AiExtractedDocumentService } from '../knowledge-docs/ai-extracted-document.service';
 import { KnowledgeDocsService } from '../knowledge-docs/knowledge-docs.service';
 import { RetrievalService } from '../retrieval/retrieval.service';
+import { normalizePagination, toPageResult } from '../common/pagination';
 import { chatMessageSelect, chatSessionSelect } from './chat.select';
 
 type ChatSessionRecord = Prisma.ChatSessionGetPayload<{
@@ -39,6 +44,18 @@ type ChatSessionRecord = Prisma.ChatSessionGetPayload<{
 type ChatMessageRecord = Prisma.ChatMessageGetPayload<{
   select: typeof chatMessageSelect;
 }>;
+type ChatSessionSummaryRow = {
+  id: string;
+  userId: string;
+  agentId: string;
+  title: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  agentName: string;
+  messageCount: number | bigint;
+  improveCount: number | bigint;
+  total: number | bigint;
+};
 
 const DEFAULT_CHAT_TOP_K = 5;
 const MAX_CHAT_TOP_K = 20;
@@ -129,74 +146,142 @@ export class ChatService {
     };
   }
 
-  async listSessions(userId: string): Promise<ChatSession[]> {
-    const sessions = await this.prisma.chatSession.findMany({
-      where: { userId },
-      orderBy: { updatedAt: 'desc' },
-      select: chatSessionSelect,
-    });
+  async listSessions(
+    userId: string,
+    query: ChatSessionListQuery = {},
+  ): Promise<PageResult<ChatSession>> {
+    const pagination = normalizePagination(query);
+    const where: Prisma.ChatSessionWhereInput = { userId };
+    const [total, sessions] = await Promise.all([
+      this.prisma.chatSession.count({ where }),
+      this.prisma.chatSession.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: pagination.skip,
+        take: pagination.take,
+        select: chatSessionSelect,
+      }),
+    ]);
 
-    return sessions.map((session) => this.toSessionResponse(session));
+    return toPageResult(
+      sessions.map((session) => this.toSessionResponse(session)),
+      total,
+      pagination,
+    );
   }
 
   async listAgentSessionSummaries(
     agentId: string,
     userId: string,
-  ): Promise<ChatSessionSummary[]> {
-    const sessions = await this.prisma.chatSession.findMany({
-      where: { userId, agentId },
-      orderBy: { updatedAt: 'desc' },
-      select: chatSessionSelect,
-    });
-    const sessionIds = sessions.map((session) => session.id);
-
-    if (sessionIds.length === 0) {
-      return [];
-    }
-
-    const messageRows = await this.prisma.chatMessage.findMany({
-      where: { sessionId: { in: sessionIds } },
-      select: { sessionId: true, metadata: true },
-    });
-    const stats = new Map(
-      sessionIds.map((sessionId) => [
-        sessionId,
-        { messageCount: 0, improveCount: 0 },
-      ]),
+    query: ChatSessionSummaryQuery = {},
+  ): Promise<PageResult<ChatSessionSummary>> {
+    const pagination = normalizePagination(query);
+    const keyword = query.keyword?.trim();
+    const keywordSql = keyword
+      ? Prisma.sql`AND COALESCE(s.title, '') ILIKE ${`%${keyword}%`}`
+      : Prisma.empty;
+    const markSql =
+      query.markFilter === 'MARKED'
+        ? Prisma.sql`AND ss."improveCount" > 0`
+        : query.markFilter === 'UNMARKED'
+          ? Prisma.sql`AND ss."improveCount" = 0`
+          : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<ChatSessionSummaryRow[]>(
+      Prisma.sql`
+        WITH session_stats AS (
+          SELECT
+            s.id,
+            COUNT(m.id)::int AS "messageCount",
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN jsonb_typeof(m.metadata->'improveRecords') = 'array'
+                    THEN jsonb_array_length(m.metadata->'improveRecords')
+                  ELSE 0
+                END
+              ),
+              0
+            )::int AS "improveCount"
+          FROM chat_sessions s
+          LEFT JOIN chat_messages m ON m.session_id = s.id
+          WHERE s.user_id = ${userId}::uuid
+            AND s.agent_id = ${agentId}::uuid
+            ${keywordSql}
+          GROUP BY s.id
+        ),
+        filtered AS (
+          SELECT
+            s.id,
+            s.user_id AS "userId",
+            s.agent_id AS "agentId",
+            s.title,
+            s.created_at AS "createdAt",
+            s.updated_at AS "updatedAt",
+            ss."messageCount",
+            ss."improveCount",
+            COUNT(*) OVER()::int AS total
+          FROM chat_sessions s
+          JOIN session_stats ss ON ss.id = s.id
+          WHERE TRUE
+            ${markSql}
+        )
+        SELECT
+          filtered.*,
+          agents.name AS "agentName"
+        FROM filtered
+        JOIN agents ON agents.id = filtered."agentId"
+        ORDER BY filtered."updatedAt" DESC
+        LIMIT ${pagination.take}
+        OFFSET ${pagination.skip}
+      `,
     );
+    const total = rows[0] ? Number(rows[0].total) : 0;
 
-    for (const message of messageRows) {
-      const sessionStats = stats.get(message.sessionId);
-
-      if (!sessionStats) {
-        continue;
-      }
-
-      sessionStats.messageCount += 1;
-      sessionStats.improveCount += this.toImproveRecords(
-        message.metadata,
-      ).length;
-    }
-
-    return sessions.map((session) => ({
-      ...this.toSessionResponse(session),
-      ...(stats.get(session.id) ?? { messageCount: 0, improveCount: 0 }),
-    }));
+    return toPageResult(
+      rows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        agentId: row.agentId,
+        title: row.title,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        agent: {
+          id: row.agentId,
+          name: row.agentName,
+        },
+        messageCount: Number(row.messageCount),
+        improveCount: Number(row.improveCount),
+      })),
+      total,
+      pagination,
+    );
   }
 
   async listMessages(
     sessionId: string,
     userId: string,
-  ): Promise<ChatMessage[]> {
+    query: ChatMessageListQuery = {},
+  ): Promise<PageResult<ChatMessage>> {
     await this.requireOwnedSession(sessionId, userId);
+    const pagination = normalizePagination(query);
 
-    const messages = await this.prisma.chatMessage.findMany({
-      where: { sessionId },
-      orderBy: { createdAt: 'asc' },
-      select: chatMessageSelect,
-    });
+    const where: Prisma.ChatMessageWhereInput = { sessionId };
+    const [total, messages] = await Promise.all([
+      this.prisma.chatMessage.count({ where }),
+      this.prisma.chatMessage.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        skip: pagination.skip,
+        take: pagination.take,
+        select: chatMessageSelect,
+      }),
+    ]);
 
-    return messages.map((message) => this.toMessageResponse(message));
+    return toPageResult(
+      messages.map((message) => this.toMessageResponse(message)),
+      total,
+      pagination,
+    );
   }
 
   async improveMessage(

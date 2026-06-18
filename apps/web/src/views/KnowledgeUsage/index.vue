@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import PaginationBar from '@/components/common/PaginationBar.vue'
 import {
   getKnowledgeBaseUsage,
   type KnowledgeUsageRange,
@@ -31,6 +32,9 @@ const knowledgeBaseId = computed(() => String(route.params.knowledgeBaseId ?? ''
 const loading = ref(false)
 const range = ref<KnowledgeUsageRange>('30d')
 const usage = ref<KnowledgeUsageSummary | null>(null)
+const documentPage = ref(1)
+const chunkPage = ref(1)
+const usagePageSize = 10
 
 const rangeOptions: Array<{ label: string; value: KnowledgeUsageRange }> = [
   { label: '近 7 天', value: '7d' },
@@ -72,7 +76,15 @@ const load = async () => {
   loading.value = true
 
   try {
-    usage.value = await getKnowledgeBaseUsage(knowledgeBaseId.value, range.value)
+    usage.value = await getKnowledgeBaseUsage(knowledgeBaseId.value, {
+      range: range.value,
+      documentPage: documentPage.value,
+      documentPageSize: usagePageSize,
+      chunkPage: chunkPage.value,
+      chunkPageSize: usagePageSize,
+    })
+    documentPage.value = usage.value.topDocuments.page
+    chunkPage.value = usage.value.topChunks.page
   } catch (cause) {
     showErrorMessage(cause, '加载知识热度失败')
   } finally {
@@ -114,7 +126,21 @@ const goChunk = (documentId: string, chunkId: string) => {
   })
 }
 
-watch(range, load)
+const changeDocumentPage = (page: number) => {
+  documentPage.value = page
+  void load()
+}
+
+const changeChunkPage = (page: number) => {
+  chunkPage.value = page
+  void load()
+}
+
+watch(range, () => {
+  documentPage.value = 1
+  chunkPage.value = 1
+  void load()
+})
 
 onMounted(load)
 </script>
@@ -165,13 +191,13 @@ onMounted(load)
           <CardHeader class="border-b border-border py-4">
             <div class="flex items-center justify-between">
               <CardTitle>热门文档</CardTitle>
-              <CardDescription> {{ usage?.topDocuments.length ?? 0 }} 个文档 </CardDescription>
+              <CardDescription> {{ usage?.topDocuments.total ?? 0 }} 个文档 </CardDescription>
             </div>
           </CardHeader>
 
           <CardContent class="min-h-0 flex-1 overflow-auto p-0">
             <div
-              v-if="!usage || usage.topDocuments.length === 0"
+              v-if="!usage || usage.topDocuments.items.length === 0"
               class="grid min-h-48 place-items-center p-6 text-center text-muted-foreground"
             >
               暂无引用数据
@@ -186,7 +212,7 @@ onMounted(load)
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow v-for="document in usage.topDocuments" :key="document.documentId">
+                <TableRow v-for="document in usage.topDocuments.items" :key="document.documentId">
                   <TableCell class="min-w-56 whitespace-normal">
                     <div class="grid gap-1">
                       <strong class="truncate text-foreground" :title="document.documentName">
@@ -213,25 +239,33 @@ onMounted(load)
               </TableBody>
             </Table>
           </CardContent>
+          <PaginationBar
+            v-if="usage"
+            :page="documentPage"
+            :page-size="usagePageSize"
+            :total="usage.topDocuments.total"
+            :disabled="loading"
+            @update:page="changeDocumentPage"
+          />
         </Card>
 
         <Card class="min-h-0 gap-0 py-0">
           <CardHeader class="border-b border-border py-4">
             <div class="flex items-center justify-between">
               <CardTitle>热门分段</CardTitle>
-              <CardDescription> {{ usage?.topChunks.length ?? 0 }} 个分段 </CardDescription>
+              <CardDescription> {{ usage?.topChunks.total ?? 0 }} 个分段 </CardDescription>
             </div>
           </CardHeader>
 
           <CardContent class="min-h-0 flex-1 overflow-auto p-4">
             <div
-              v-if="!usage || usage.topChunks.length === 0"
+              v-if="!usage || usage.topChunks.items.length === 0"
               class="grid min-h-48 place-items-center text-center text-muted-foreground"
             >
               暂无引用数据
             </div>
             <div v-else class="grid gap-3">
-              <Card v-for="chunk in usage.topChunks" :key="chunk.chunkId" size="sm">
+              <Card v-for="chunk in usage.topChunks.items" :key="chunk.chunkId" size="sm">
                 <CardContent>
                   <header
                     class="mb-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-start"
@@ -268,6 +302,14 @@ onMounted(load)
               </Card>
             </div>
           </CardContent>
+          <PaginationBar
+            v-if="usage"
+            :page="chunkPage"
+            :page-size="usagePageSize"
+            :total="usage.topChunks.total"
+            :disabled="loading"
+            @update:page="changeChunkPage"
+          />
         </Card>
       </div>
 

@@ -13,7 +13,10 @@ jest.mock('@libs/model-adapters', () => ({
 }));
 
 jest.mock('@libs/shared/generated/prisma/client', () => ({
-  Prisma: {},
+  Prisma: {
+    empty: {},
+    sql: jest.fn(() => ({})),
+  },
 }));
 
 jest.mock('@libs/shared/generated/prisma/enums', () => ({
@@ -48,54 +51,22 @@ describe('ChatService listAgentSessionSummaries', () => {
   it('returns session counts without loading full message payloads', async () => {
     const updatedAt = new Date('2026-06-02T08:00:00.000Z');
     const prisma = {
-      chatSession: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: 'session-1',
-            userId: 'user-1',
-            agentId: 'agent-1',
-            title: '线段树',
-            createdAt: updatedAt,
-            updatedAt,
-            agent: {
-              id: 'agent-1',
-              name: '算法助手',
-            },
-          },
-        ]),
-      },
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: 'session-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+          title: '线段树',
+          createdAt: updatedAt,
+          updatedAt,
+          agentName: '算法助手',
+          messageCount: 2,
+          improveCount: 2,
+          total: 1,
+        },
+      ]),
       chatMessage: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            sessionId: 'session-1',
-            metadata: {
-              improveRecords: [
-                {
-                  knowledgeBaseId: 'kb-1',
-                  documentId: 'doc-1',
-                  documentName: '补充知识',
-                  chunkId: 'chunk-1',
-                  chunkTitle: '标题 1',
-                  chunkPosition: 0,
-                  createdAt: updatedAt.toISOString(),
-                },
-                {
-                  knowledgeBaseId: 'kb-1',
-                  documentId: 'doc-1',
-                  documentName: '补充知识',
-                  chunkId: 'chunk-2',
-                  chunkTitle: '标题 2',
-                  chunkPosition: 1,
-                  createdAt: updatedAt.toISOString(),
-                },
-              ],
-            },
-          },
-          {
-            sessionId: 'session-1',
-            metadata: {},
-          },
-        ]),
+        findMany: jest.fn(),
       },
     };
     const service = createService(prisma);
@@ -105,22 +76,23 @@ describe('ChatService listAgentSessionSummaries', () => {
         listAgentSessionSummaries: (
           agentId: string,
           userId: string,
-        ) => Promise<Array<{ messageCount: number; improveCount: number }>>;
+        ) => Promise<{
+          items: Array<{ messageCount: number; improveCount: number }>;
+          total: number;
+        }>;
       }
     ).listAgentSessionSummaries('agent-1', 'user-1');
 
-    expect(summaries).toEqual([
+    expect(summaries.items).toEqual([
       expect.objectContaining({
         id: 'session-1',
         messageCount: 2,
         improveCount: 2,
       }),
     ]);
-    expect(prisma.chatMessage.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: { sessionId: true, metadata: true },
-      }),
-    );
+    expect(summaries.total).toBe(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.chatMessage.findMany).not.toHaveBeenCalled();
   });
 });
 

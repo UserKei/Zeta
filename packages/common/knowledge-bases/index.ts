@@ -1,3 +1,5 @@
+import type { PageResult } from "../pagination";
+
 export const KnowledgeBaseStatus = {
   ACTIVE: "ACTIVE",
   DISABLED: "DISABLED",
@@ -78,6 +80,14 @@ export type KnowledgeUsageSummary = {
   citedChunkCount: number;
   chunkCoverageRate: number;
   lastCitedAt: string | null;
-  topDocuments: KnowledgeUsageDocumentItem[];
-  topChunks: KnowledgeUsageChunkItem[];
+  topDocuments: PageResult<KnowledgeUsageDocumentItem>;
+  topChunks: PageResult<KnowledgeUsageChunkItem>;
+};
+
+export type KnowledgeUsageQuery = {
+  range?: KnowledgeUsageRange;
+  documentPage?: number;
+  documentPageSize?: number;
+  chunkPage?: number;
+  chunkPageSize?: number;
 };

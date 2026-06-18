@@ -3,6 +3,7 @@ import type {
   KnowledgeBase,
   KnowledgeBasePayload,
   KnowledgeBaseUpdatePayload,
+  KnowledgeUsageQuery,
   KnowledgeUsageRange,
   KnowledgeUsageSummary,
 } from '@zeta/common/knowledge-bases'
@@ -12,6 +13,7 @@ export type {
   KnowledgeBasePayload,
   KnowledgeBaseStatus,
   KnowledgeBaseUpdatePayload,
+  KnowledgeUsageQuery,
   KnowledgeUsageRange,
   KnowledgeUsageSummary,
 } from '@zeta/common/knowledge-bases'
@@ -33,9 +35,15 @@ export const updateKnowledgeBase = (id: string, payload: KnowledgeBaseUpdatePayl
 export const deleteKnowledgeBase = (id: string) =>
   responseData(serverApi.delete(`/knowledge-bases/${id}`) as Promise<Response<{ id: string }>>)
 
-export const getKnowledgeBaseUsage = (id: string, range: KnowledgeUsageRange) =>
-  responseData(
+export const getKnowledgeBaseUsage = (
+  id: string,
+  rangeOrQuery: KnowledgeUsageRange | KnowledgeUsageQuery,
+) => {
+  const params = typeof rangeOrQuery === 'string' ? { range: rangeOrQuery } : rangeOrQuery
+
+  return responseData(
     serverApi.get(`/knowledge-bases/${id}/usage`, {
-      params: { range },
+      params,
     }) as Promise<Response<KnowledgeUsageSummary>>,
   )
+}

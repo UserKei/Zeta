@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UploadedFiles,
   UseGuards,
@@ -26,8 +27,10 @@ import {
 } from './document-import.service';
 import {
   ChunkDto,
+  ChunkListQueryDto,
   ChunkReorderDto,
   ChunkUpdateDto,
+  DocumentListQueryDto,
   DocumentUpdateDto,
   FileImportFormDto,
   ManualDocumentDto,
@@ -49,8 +52,14 @@ export class KnowledgeDocsController {
   ) {}
 
   @Get('knowledge-bases/:knowledgeBaseId/documents')
-  listByKnowledgeBase(@Param('knowledgeBaseId') knowledgeBaseId: string) {
-    return this.knowledgeDocsService.listByKnowledgeBase(knowledgeBaseId);
+  listByKnowledgeBase(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Query() query: DocumentListQueryDto,
+  ) {
+    return this.knowledgeDocsService.listByKnowledgeBase(
+      knowledgeBaseId,
+      query,
+    );
   }
 
   @Post('knowledge-bases/:knowledgeBaseId/documents/manual')
@@ -206,8 +215,8 @@ export class KnowledgeDocsController {
   }
 
   @Get('documents/:id/chunks')
-  listChunks(@Param('id') id: string) {
-    return this.knowledgeDocsService.listChunks(id);
+  listChunks(@Param('id') id: string, @Query() query: ChunkListQueryDto) {
+    return this.knowledgeDocsService.listChunks(id, query);
   }
 
   @Get('documents/:id')
